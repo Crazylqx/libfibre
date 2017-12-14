@@ -10,4 +10,4 @@ For now, the project lives in the <tt>src/libfibre</tt> subdirectory of the
 Running `make` in <tt>src/libfibre</tt> should build the fibre library and a
 three example applications: `test1`, `ordering`, and `echotest`.
 
-Currently, only Linux/epoll is supported, but FreeBSD/kqueue is coming soon.
+Currently, only Linux/epoll is well-tested, but FreeBSD/kqueue is also supported.
