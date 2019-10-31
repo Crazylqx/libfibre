@@ -1,0 +1,124 @@
+/******************************************************************************
+    Copyright (C) Martin Karsten 2015-2019
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+******************************************************************************/
+#ifndef _lfbasics_h_
+#define _lfbasics_h_ 1
+
+#include "runtime/Basics.h"
+#include "runtime/ScopedLocks.h"
+#include "libfibre/OsLocks.h"
+
+#include <atomic>
+#if __FreeBSD__
+#include <sys/thr.h>     // thr_self
+#else // __linux__ below
+#include <unistd.h>      // syscall
+#include <sys/syscall.h> // __NR_gettid
+#endif
+
+// **** bootstrap object needs to come first
+
+static class _Bootstrapper {
+  static std::atomic<int> counter;
+public:
+  _Bootstrapper();
+  ~_Bootstrapper();
+} _lfBootstrap;
+
+// **** debug output
+
+extern InternalLock* _lfDebugOutputLock;
+
+inline void dprint() {}
+
+template<typename T, typename... Args>
+inline void dprint(T x, const Args&... a) {
+  std::cerr << x;
+  dprint(a...);
+}
+
+template<typename... Args>
+inline void dprintl(const Args&... a) {
+  ScopedLock<InternalLock> al(*_lfDebugOutputLock);
+#if __FreeBSD__
+  long tid;
+  thr_self(&tid);
+  dprint(tid, ' ', a..., '\n');
+#else // __linux__ below
+  dprint(syscall(__NR_gettid), ' ', a..., '\n');
+#endif
+}
+
+// **** system processor (here pthread) context
+
+class BasePoller;
+class EventScope;
+class FibreCluster;
+class OsProcessor;
+class ClusterPoller;
+class StackContext;
+
+// it seems noinline is needed for TLS and then volatile is free anyway...
+// http://stackoverflow.com/questions/25673787/making-thread-local-variables-fully-volatile
+// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66631
+class Context {
+protected: // definitions and initialization are in OsProcessor.cc
+  static thread_local StackContext*  volatile currStack;
+  static thread_local OsProcessor*   volatile currProc;
+  static thread_local FibreCluster*  volatile currCluster;
+  static thread_local EventScope*    volatile currScope;
+public:
+  static void setCurrStack(StackContext& s, _friend<StackContext>) __no_inline;
+  static StackContext*  CurrStack()         __no_inline;
+  static OsProcessor*   CurrProcessor()     __no_inline;
+  static FibreCluster*  CurrCluster()       __no_inline;
+  static EventScope*    CurrEventScope()    __no_inline;
+};
+
+static inline StackContext* CurrStack() {
+  StackContext* s = Context::CurrStack();
+  GENASSERT(s);
+  return s;
+}
+
+static inline OsProcessor& CurrProcessor() {
+  OsProcessor* p = Context::CurrProcessor();
+  GENASSERT(p);
+  return *p;
+}
+
+static inline FibreCluster& CurrCluster() {
+  FibreCluster* c = Context::CurrCluster();
+  GENASSERT(c);
+  return *c;
+}
+
+static inline EventScope& CurrEventScope() {
+  EventScope* e = Context::CurrEventScope();
+  GENASSERT(e);
+  return *e;
+}
+
+// **** global constants
+
+#ifdef SPLIT_STACK
+static const size_t defaultStackSize =  2 * pagesize<1>();
+#else
+static const size_t defaultStackSize = 16 * pagesize<1>();
+#endif
+static const size_t stackProtection = pagesize<1>();
+
+#endif /* _lfbasics_h_ */
