@@ -96,7 +96,7 @@ void BaseProcessor::idleLoop() {
 #else /* TESTING_LOADBALANCING */
     readyCount.P();
     StackContext* nextStack = tryLocal();
-    GENASSERT(nextStack);
+    RASSERT0(nextStack);
     yieldDirect(*nextStack);
 #endif
   }
@@ -138,7 +138,7 @@ StackContext& BaseProcessor::scheduleFull(_friend<StackContext>) {
 #else /* TESTING_LOADBALANCING */
   if (readyCount.tryP()) {
     StackContext* nextStack = tryLocal();
-    GENASSERT(nextStack);
+    RASSERT0(nextStack);
     return *nextStack;
   }
 #endif

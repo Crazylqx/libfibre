@@ -98,7 +98,7 @@ public:
   }
 
   void push(T& first, T& last) {
-    GENASSERT1(!test(last), FmtHex(&first));
+    RASSERT(!test(last), FmtHex(&first));
     last.link[NUM].next = head;
     head = &first;
   }
@@ -108,7 +108,7 @@ public:
   }
 
   T* pop() {
-    GENASSERT1(!empty(), FmtHex(this));
+    RASSERT(!empty(), FmtHex(this));
     T* last = head;
     head = last->link[NUM].next;
     clear(*last);
@@ -116,7 +116,7 @@ public:
   }
 
   T* pop(size_t& count) { // returns pointer to last element popped
-    GENASSERT1(!empty(), FmtHex(this));
+    RASSERT(!empty(), FmtHex(this));
     T* last = head;
     for (size_t i = 1; i < count; i += 1) {
       if (last->link[NUM].next == nullptr) count = i; // breaks loop and sets count
@@ -148,7 +148,7 @@ private:
 public:
   IntrusiveQueue() : head(nullptr), tail(nullptr) {}
   bool empty() const {
-    GENASSERT1((head == nullptr) == (tail == nullptr), FmtHex(this));
+    RASSERT((head == nullptr) == (tail == nullptr), FmtHex(this));
     return head == nullptr;
   }
 
@@ -168,10 +168,10 @@ public:
   }
 
   void push(T& first, T& last) {
-    GENASSERT1(!test(last), FmtHex(&first));
+    RASSERT(!test(last), FmtHex(&first));
     if (!head) head = &first;
     else {
-      GENASSERT1(tail != nullptr, FmtHex(this));
+      RASSERT(tail != nullptr, FmtHex(this));
       tail->link[NUM].next = &first;
     }
 #if !TESTING_ENABLE_ASSERTIONS
@@ -185,7 +185,7 @@ public:
   }
 
   T* pop() {
-    GENASSERT1(!empty(), FmtHex(this));
+    RASSERT(!empty(), FmtHex(this));
     T* last = head;
     head = last->link[NUM].next;
     if (tail == last) tail = nullptr;
@@ -194,7 +194,7 @@ public:
   }
 
   T* pop(size_t& count) {
-    GENASSERT1(!empty(), FmtHex(this));
+    RASSERT(!empty(), FmtHex(this));
     T* last = head;
     for (size_t i = 1; i < count; i += 1) {
       if (last->link[NUM].next == nullptr) count = i; // breaks loop and sets count
@@ -207,7 +207,7 @@ public:
   }
 
   T* popAll() {
-    GENASSERT1(!empty(), FmtHex(this));
+    RASSERT(!empty(), FmtHex(this));
     T* last = tail;
     head = tail = nullptr;
     clear(*last);
@@ -233,14 +233,14 @@ template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveRing {
   static_assert(NUM < CNT, "NUM >= CNT");
 
   static void separate(T& first, T& last) {
-    GENASSERT1(test(first), FmtHex(&first));
-    GENASSERT1(test(last), FmtHex(&last));
+    RASSERT(test(first), FmtHex(&first));
+    RASSERT(test(last), FmtHex(&last));
     first.link[NUM].prev->link[NUM].next =  last.link[NUM].next;
      last.link[NUM].next->link[NUM].prev = first.link[NUM].prev;
   }
 
   static void combine_before(T& next, T& first, T&last) {
-    GENASSERT1(test(next), FmtHex(&next));
+    RASSERT(test(next), FmtHex(&next));
     last.link[NUM].next = &next;
     next.link[NUM].prev->link[NUM].next = &first;
     first.link[NUM].prev = next.link[NUM].prev;
@@ -248,7 +248,7 @@ template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveRing {
   }
 
   static void combine_after(T& prev, T& first, T& last) {
-    GENASSERT1(test(prev), FmtHex(&prev));
+    RASSERT(test(prev), FmtHex(&prev));
     first.link[NUM].prev = &prev;
     prev.link[NUM].next->link[NUM].prev = &last;
     last.link[NUM].next = prev.link[NUM].next;
@@ -285,8 +285,8 @@ public:
   }
 
   static void insert_before(T& next, T& first, T&last) {
-    GENASSERT1(first.link[NUM].prev == nullptr, FmtHex(&first));
-    GENASSERT1(last.link[NUM].next == nullptr, FmtHex(&last));
+    RASSERT(first.link[NUM].prev == nullptr, FmtHex(&first));
+    RASSERT(last.link[NUM].next == nullptr, FmtHex(&last));
     combine_before(next, first, last);
   }
 
@@ -295,8 +295,8 @@ public:
   }
 
   static void insert_after(T& prev, T& first, T& last) {
-    GENASSERT1(first.link[NUM].prev == nullptr, FmtHex(&first));
-    GENASSERT1(last.link[NUM].next == nullptr, FmtHex(&last));
+    RASSERT(first.link[NUM].prev == nullptr, FmtHex(&first));
+    RASSERT(last.link[NUM].next == nullptr, FmtHex(&last));
     combine_after(prev, first, last);
   }
 
@@ -315,8 +315,8 @@ public:
   }
 
   static void join_before(T& next, T& first, T&last) {
-    GENASSERT1(first.link[NUM].prev == &last, FmtHex(&first));
-    GENASSERT1(last.link[NUM].next == &first, FmtHex(&last));
+    RASSERT(first.link[NUM].prev == &last, FmtHex(&first));
+    RASSERT(last.link[NUM].next == &first, FmtHex(&last));
     combine_before(next, first, last);
   }
 
@@ -325,8 +325,8 @@ public:
   }
 
   static void join_after(T& prev, T& first, T&last) {
-    GENASSERT1(first.link[NUM].prev == &last, FmtHex(&first));
-    GENASSERT1(last.link[NUM].next == &first, FmtHex(&last));
+    RASSERT(first.link[NUM].prev == &last, FmtHex(&first));
+    RASSERT(last.link[NUM].next == &first, FmtHex(&last));
     combine_after(prev, first, last);
   }
 
@@ -378,7 +378,7 @@ public:
   bool     empty() const { return front() == edge(); }
 
   T* remove(T& first, size_t& count) {
-    GENASSERT1(test(first), FmtHex(&first));
+    RASSERT(test(first), FmtHex(&first));
     T* last = &first;
     for (size_t i = 1; i < count; i += 1) {
       if (last->link[NUM].next == edge()) count = i; // breaks loop and sets count
@@ -393,8 +393,8 @@ public:
   void push_back(T& elem)             { insert_after (*back(),  elem); }
   void splice_back(T& first, T& last) { insert_after (*back(),  first, last); }
 
-  T* pop_front() { GENASSERT1(!empty(), FmtHex(this)); return remove(*front()); }
-  T* pop_back()  { GENASSERT1(!empty(), FmtHex(this)); return remove(*back()); }
+  T* pop_front() { RASSERT(!empty(), FmtHex(this)); return remove(*front()); }
+  T* pop_back()  { RASSERT(!empty(), FmtHex(this)); return remove(*back()); }
 
   void transferFrom(IntrusiveList& el, size_t& count) {
     if (el.empty()) return;

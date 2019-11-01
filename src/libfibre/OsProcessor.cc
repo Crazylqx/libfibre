@@ -99,7 +99,7 @@ inline void OsProcessor::startPthreadHelper(funcptr1_t idleLoopStarter) {
 OsProcessor::OsProcessor(funcvoid1_t initFunc, ptr_t arg) : OsProcessor(::CurrCluster(), initFunc, arg) {}
 
 OsProcessor::OsProcessor(FibreCluster& fc, funcvoid1_t initFunc, ptr_t arg) : BaseProcessor(fc), initFibre(nullptr) {
-  GENASSERT(&::CurrEventScope() == &fc.getEventScope());
+  RASSERT0(&::CurrEventScope() == &fc.getEventScope());
   if (initFunc) {
     initFibre = new Fibre(*this);
     initFibre->setup((ptr_t)initFunc, (ptr_t)arg);

@@ -48,7 +48,7 @@ public:
     }
   }
   void release() {
-    GENASSERT(locked);
+    RASSERT0(locked);
     __atomic_clear(&locked, __ATOMIC_SEQ_CST);
   }
 } __caligned;
@@ -85,7 +85,7 @@ public:
   }
   template<bool full = false>
   size_t release(T caller) {
-    GENASSERT(owner == caller);
+    RASSERT0(owner == caller);
     counter = full ? 0 : (counter - 1);
     if (counter == 0) __atomic_store_n(&owner, noOwner, __ATOMIC_SEQ_CST);
     return counter;
@@ -110,7 +110,7 @@ public:
     while slowpath(myticket != serving) Pause();
   }
   void release() {
-    GENASSERT(sword(ticket-serving) > 0);
+    RASSERT0(sword(ticket-serving) > 0);
     __atomic_fetch_add(&serving, 1, __ATOMIC_SEQ_CST);
   }
 } __caligned;
@@ -138,7 +138,7 @@ public:
     while slowpath(n.wait) Pause();
   }
   void release(Node& n) {
-    GENASSERT(tail != nullptr);
+    RASSERT0(tail != nullptr);
     // could check 'n.next' first, but no memory consistency then
     if (_CAS(&tail, &n, (Node*)nullptr, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return;
     while slowpath(!n.next) Pause();
@@ -166,7 +166,7 @@ public:
     while slowpath(!tryAcquireWrite()) Pause();
   }
   void release() {
-    GENASSERT(state != 0);
+    RASSERT0(state != 0);
     if (state < 0) __atomic_add_fetch(&state, 1, __ATOMIC_SEQ_CST);
     else __atomic_sub_fetch(&state, 1, __ATOMIC_SEQ_CST);
   }

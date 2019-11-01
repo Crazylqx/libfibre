@@ -59,6 +59,10 @@ static const vaddr stackAlignment  = 16;
 // expressions
 #define fastpath(x) (__builtin_expect((bool(x)),true))
 #define slowpath(x) (__builtin_expect((bool(x)),false))
+// functions
+#define __yes_inline __attribute__((__always_inline__))
+#define __no_inline  __attribute__((__noinline__))
+#define __noreturn   __attribute__((__noreturn__))
 // data structures
 #define __packed     __attribute__((__packed__))
 #define __section(x) __attribute__((__section__(x)))
@@ -68,10 +72,6 @@ static const vaddr stackAlignment  = 16;
 #else
 #define __caligned
 #endif
-// functions
-#define __yes_inline __attribute__((__always_inline__))
-#define __no_inline  __attribute__((__noinline__))
-#define __noreturn   __attribute__((__noreturn__))
 
 static inline void unreachable() __noreturn;
 static inline void unreachable() {

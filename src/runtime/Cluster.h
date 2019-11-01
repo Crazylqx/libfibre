@@ -101,7 +101,7 @@ public:
   Cluster() : ringCount(0), placeProc(nullptr), stagingProc(*this, "Staging") {}
   ~Cluster() {
     ScopedLock<RuntimeClusterLock> sl(ringLock);
-    GENASSERT1(!ringCount, ringCount);
+    RASSERT(!ringCount, ringCount);
   }
 
   void addProcessor(BaseProcessor& proc) {
@@ -117,7 +117,7 @@ public:
 
   void removeProcessor(BaseProcessor& proc) {
     ScopedLock<RuntimeClusterLock> sl(ringLock);
-    GENASSERT(placeProc);
+    RASSERT0(placeProc);
     // move placeProc, if necessary
     if (placeProc == &proc) placeProc = ProcessorRing::next(*placeProc);
     // ring empty?
@@ -133,7 +133,7 @@ public:
 #if TESTING_LOADBALANCING
     if (sg) return stagingProc;
 #endif
-    GENASSERT(placeProc);
+    RASSERT0(placeProc);
     ScopedLock<RuntimeClusterLock> sl(ringLock);
     placeProc = ProcessorRing::next(*placeProc); // ring insert/remove is traversal-safe
     return *placeProc;

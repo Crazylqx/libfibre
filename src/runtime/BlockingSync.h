@@ -202,12 +202,12 @@ class BlockingQueue {
 
 public:
   BlockingQueue() = default;
-  ~BlockingQueue() { GENASSERT(empty()); }
+  ~BlockingQueue() { RASSERT0(empty()); }
   bool empty() const { return queue.empty(); }
 
   template<typename Lock>
   void reset(Lock& lock) {
-    GENASSERT(lock.test());
+    RASSERT0(lock.test());
     StackContext* s = queue.front();
     while (s != queue.edge()) {
       ResumeInfo* ri = s->raceResume();
@@ -341,7 +341,7 @@ protected:
     if (!owner) {
       owner = cs;
     } else if (owner == cs) {
-      GENASSERT1(OwnerLock, FmtHex(owner));
+      RASSERT(OwnerLock, FmtHex(owner));
     } else {
       return bq.block(lock, args...);
     }
@@ -361,7 +361,7 @@ public:
 
   void release() {
     ScopedLock<Lock> al(lock);
-    GENASSERT1(owner == CurrStack(), FmtHex(owner));
+    RASSERT(owner == CurrStack(), FmtHex(owner));
     owner = bq.unblock();
   }
 };
@@ -379,7 +379,7 @@ protected:
     for (;;) {
       lock.acquire();
       if (!owner) break;
-      if (owner == cs) { GENASSERT1(OwnerLock, FmtHex(owner)); break; }
+      if (owner == cs) { RASSERT(OwnerLock, FmtHex(owner)); break; }
       if (!bq.block(lock, args...)) return false;
     }
     owner = cs;
@@ -397,7 +397,7 @@ public:
 
   void release() {
     ScopedLock<Lock> al(lock);
-    GENASSERT1(owner == CurrStack(), FmtHex(owner));
+    RASSERT(owner == CurrStack(), FmtHex(owner));
     owner = nullptr;
     bq.unblock();
   }
@@ -413,7 +413,7 @@ protected:
   bool internalAcquire(const Args&... args) {
     StackContext* cs = CurrStack();
     if (OwnerLock && cs == owner) return true;
-    GENASSERTN(cs != owner, FmtHex(cs), FmtHex(owner));
+    RASSERT(cs != owner, FmtHex(cs), FmtHex(owner));
     size_t cnt = 0;
     size_t spin = SpinStart;
     for (;;) {
@@ -440,7 +440,7 @@ public:
   bool tryAcquire() { return acquire(false); }
 
   void release() {
-    GENASSERT1(owner == CurrStack(), FmtHex(owner));
+    RASSERT(owner == CurrStack(), FmtHex(owner));
     __atomic_store_n(&owner, nullptr, __ATOMIC_RELAXED); // memory sync via sem.V()
     sem.V();
   }
@@ -523,13 +523,13 @@ public:
 
   void release() {
     ScopedLock<Lock> al(lock);
-    GENASSERT(state != 0);
+    RASSERT0(state != 0);
     if (state > 0) {             // reader leaves; if open -> writer next
       state -= 1;
       if (state > 0) return;
       if (!bqW.unblock()) bqR.unblock();
     } else {                     // writer leaves -> readers next
-      GENASSERT(state == -1);
+      RASSERT0(state == -1);
       state += 1;
       if (!bqR.unblock()) bqW.unblock();
     }
@@ -544,9 +544,9 @@ class Barrier {
   size_t counter;
   BQ bq;
 public:
-  Barrier(size_t t = 1) : target(t), counter(0) { GENASSERT(t); }
+  Barrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t); }
   void reset(size_t t = 1) {
-    GENASSERT(t);
+    RASSERT0(t);
     lock.acquire();
     target = t;
     counter = 0;
@@ -609,11 +609,11 @@ public:
     }
     if (state == Posted) return true;
     if (state == Detached) return false;
-    GENABORT1(FmtHex(state));
+    RABORT(FmtHex(state));
   }
 
   bool post() {                       // returns false, if already detached
-    GENASSERT(state != Posted);       // check for spurious posts
+    RASSERT0(state != Posted);       // check for spurious posts
     if (state == Detached) return false;
     if (state != Running) waiter->resume();
     state = Posted;
@@ -621,7 +621,7 @@ public:
   }
 
   void detach() {                     // returns false, if already posted or detached
-    GENASSERT(state != Detached && state != Posted);
+    RASSERT0(state != Detached && state != Posted);
     if (state != Running) waiter->resume();
     state = Detached;
   }

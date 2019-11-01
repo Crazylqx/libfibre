@@ -55,7 +55,7 @@ _Bootstrapper::_Bootstrapper() {
     // bootstrap system via event scope
     char* e = getenv("FibreDefaultPollers");
     size_t p = e ? atoi(e) : 1;
-    GENASSERT(p > 0);
+    RASSERT0(p > 0);
     _lfEventScope = new EventScope(_friend<_Bootstrapper>(), p);
   }
 }

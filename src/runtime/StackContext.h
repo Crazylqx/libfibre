@@ -93,8 +93,8 @@ protected:
   StackContext(BaseProcessor& proc, bool aff = false); // main constructor
   StackContext(Cluster&, bool bg = false);             // uses delegation
   ~StackContext() {
-    GENASSERTN(suspendState == Running, FmtHex(this), suspendState);
-    GENASSERT1(resumeInfo == nullptr, FmtHex(this));
+    RASSERT(suspendState == Running, FmtHex(this), suspendState);
+    RASSERT(resumeInfo == nullptr, FmtHex(this));
   }
 
   void initStackPointer(vaddr sp) {
@@ -139,20 +139,20 @@ public:
 
   // Running -> Prepared; Prepared -> Suspended is attempted in postSuspend()
   void prepareSuspend(_friend<BaseSuspender>) {
-    GENASSERTN(suspendState == Running, FmtHex(this), suspendState);
+    RASSERT(suspendState == Running, FmtHex(this), suspendState);
     __atomic_store_n( &suspendState, Prepared, __ATOMIC_RELAXED );
   }
 
   // Prepared/Suspended -> Running; resume stack, if necessary
   void resume() {
     SuspendState prevState = __atomic_exchange_n( &suspendState, Running, __ATOMIC_RELAXED );
-    GENASSERTN(prevState != Running, FmtHex(this), prevState);
+    RASSERT(prevState != Running, FmtHex(this), prevState);
     if (prevState == Suspended) resumeInternal();
   }
 
   // set ResumeInfo to facilitate later resume race
   void setupResumeRace(ResumeInfo& ri, _friend<ResumeInfo>) {
-    GENASSERTN(suspendState == Prepared, FmtHex(this), suspendState);
+    RASSERT(suspendState == Prepared, FmtHex(this), suspendState);
     __atomic_store_n( &resumeInfo, &ri, __ATOMIC_RELAXED );
   }
 

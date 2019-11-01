@@ -69,20 +69,4 @@ namespace Runtime {
 #define RCHECK(expr, args...)
 #endif
 
-#if defined(KERNEL)
-#define KABORT     RABORT0
-#define KABORT1    RABORT
-#define KABORTN    RABORT
-#define KCHECK     RCHECK0
-#define KCHECK1    RCHECK
-#define KCHECKN    RCHECK
-#define KASSERT    RASSERT0
-#define KASSERT1   RASSERT
-#define KASSERTN   RASSERT
-#endif
-#define GENABORT1  RABORT
-#define GENASSERT  RASSERT0
-#define GENASSERT1 RASSERT
-#define GENASSERTN RASSERT
-
 #endif /* _Assertions_h_ */

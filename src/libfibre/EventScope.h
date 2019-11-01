@@ -117,7 +117,7 @@ public:
   }
 
   FibreCluster& addDiskCluster() {
-    GENASSERT(!diskCluster);
+    RASSERT0(!diskCluster);
     diskCluster = new FibreCluster;
     return *diskCluster;
   }
@@ -144,7 +144,7 @@ public:
   void registerFD(int fd) {
     static_assert(Input || Output, "must set Input or Output in registerFD()");
 
-    GENASSERT(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdcount);
     SyncRW& fdsync = fdSyncVector[fd];
     const size_t target = (Input ? BasePoller::Input : 0) | (Output ? BasePoller::Output : 0);
 #if TESTING_PROCESSOR_POLLER
@@ -172,7 +172,7 @@ public:
 #endif
 
 #else // TESTING_LAZY_FD_REGISTRATION
-    GENASSERT(!fdsync.poller);
+    RASSERT0(!fdsync.poller);
     fdsync.status |= target;
     const bool change = false;
     fdsync.poller = &cp;
@@ -182,7 +182,7 @@ public:
   }
 
   void deregisterFD(int fd) {
-    GENASSERT(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdcount);
     SyncRW& fdsync = fdSyncVector[fd];
 #if TESTING_LAZY_FD_REGISTRATION && __linux__
     ScopedLock<FibreMutex> sl(fdsync.regLock);
@@ -190,62 +190,62 @@ public:
 //    if (fdsync.poller) fdsync.poller->resetFD(fd);
     fdsync.poller = nullptr;
     fdsync.status = 0;
-    GENASSERT(fdsync.RD.empty());
-    GENASSERT(fdsync.WR.empty());
+    RASSERT0(fdsync.RD.empty());
+    RASSERT0(fdsync.WR.empty());
   }
 
   void registerPollFD(int fd) {
-    GENASSERT(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdcount);
     masterPoller->setupPollFD(fd, false); // set using ONESHOT to reduce polling
   }
 
   void blockPollFD(int fd) {
-    GENASSERT(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdcount);
     masterPoller->setupPollFD(fd, true);  // reset using ONESHOT to reduce polling
     fdSyncVector[fd].RD.P();
   }
 
   void unblockPollFD(int fd, _friend<PollerFibre>) {
-    GENASSERT(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdcount);
     fdSyncVector[fd].RD.V();
   }
 
   void suspendFD(int fd) {
-    GENASSERT(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdcount);
     fdSyncVector[fd].RD.P_fake();
     fdSyncVector[fd].WR.P_fake();
   }
 
   void resumeFD(int fd) {
-    GENASSERT(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdcount);
     fdSyncVector[fd].RD.V();
     fdSyncVector[fd].WR.V();
   }
 
   template<bool Input>
   void block(int fd) {
-    GENASSERT(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdcount);
     SyncIO& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
     sync.P();
   }
 
   template<bool Input>
   bool tryblock(int fd) {
-    GENASSERT(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdcount);
     SyncIO& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
     return sync.tryP();
   }
 
   template<bool Input, bool Enqueue = true>
   StackContext* unblock(int fd, _friend<BasePoller>) {
-    GENASSERT(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdcount);
     SyncIO& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
     return sync.V<Enqueue>();
   }
 
   template<typename T, class... Args>
   T directIO(T (*diskfunc)(Args...), Args... a) {
-    GENASSERT(diskCluster);
+    RASSERT0(diskCluster);
     BaseProcessor& proc = Fibre::migrateNow(*diskCluster, _friend<EventScope>());
     int result = diskfunc(a...);
     Fibre::migrateNow(proc, _friend<EventScope>());
@@ -265,7 +265,7 @@ public:
 
   template<bool Input, bool Yield, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
-    GENASSERTN(fd >= 0 && fd < fdcount, fd, fdcount);
+    RASSERT(fd >= 0 && fd < fdcount, fd, fdcount);
     T ret;
     if (Yield)
 #if TESTING_IOYIELD_CONDITIONAL
@@ -363,7 +363,7 @@ static inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
     CurrEventScope().block<false>(fd);
     socklen_t sz = sizeof(ret);
     SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &sz));
-    GENASSERT1(ret == 0, ret);
+    RASSERT(ret == 0, ret);
     CurrEventScope().stats->clientconn.count();
   }
   return ret;

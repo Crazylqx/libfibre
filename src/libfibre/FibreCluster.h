@@ -92,7 +92,7 @@ public:
         fc->continueSem.P();
         break;
       default:
-        GENABORT1(fc->state);
+        RABORT(fc->state);
       }
     }
   }

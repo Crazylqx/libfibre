@@ -90,25 +90,25 @@ public:
 
 static inline StackContext* CurrStack() {
   StackContext* s = Context::CurrStack();
-  GENASSERT(s);
+  RASSERT0(s);
   return s;
 }
 
 static inline OsProcessor& CurrProcessor() {
   OsProcessor* p = Context::CurrProcessor();
-  GENASSERT(p);
+  RASSERT0(p);
   return *p;
 }
 
 static inline FibreCluster& CurrCluster() {
   FibreCluster* c = Context::CurrCluster();
-  GENASSERT(c);
+  RASSERT0(c);
   return *c;
 }
 
 static inline EventScope& CurrEventScope() {
   EventScope* e = Context::CurrEventScope();
-  GENASSERT(e);
+  RASSERT0(e);
   return *e;
 }
 

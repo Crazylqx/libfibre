@@ -35,7 +35,7 @@ inline void StackContext::switchStack(StackContext& nextStack) {
   // various checks
   static_assert(Code == Idle || Code == Yield || Code == Migrate || Code == Suspend || Code == Terminate, "Illegal SwitchCode");
   CHECK_PREEMPTION(0);
-  GENASSERTN(this == CurrStack() && this != &nextStack, FmtHex(this), ' ', FmtHex(CurrStack()), ' ', FmtHex(&nextStack));
+  RASSERT(this == CurrStack() && this != &nextStack, FmtHex(this), ' ', FmtHex(CurrStack()), ' ', FmtHex(&nextStack));
 
   // context switch
   RuntimeDebugS("Stack switch <", char(Code), "> on ", FmtHex(&CurrProcessor()),": ", FmtHex(this), " (to ", FmtHex(processor), ") -> ", FmtHex(&nextStack));
@@ -74,7 +74,7 @@ void StackContext::postSuspend(StackContext* prevStack) {
   SuspendState prevState = Prepared;
   bool suspended = __atomic_compare_exchange_n( &prevStack->suspendState, &prevState, Suspended, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED );
   if (!suspended) {
-    GENASSERTN(prevState == Running, FmtHex(prevStack), prevState);
+    RASSERT(prevState == Running, FmtHex(prevStack), prevState);
     prevStack->resumeInternal();
   }
 }

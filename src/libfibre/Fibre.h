@@ -48,10 +48,10 @@ class Fibre : public StackContext {
     vaddr stackBottom = (vaddr)__splitstack_makecontext(size, splitStackContext, &size);
 #else
     // check that requested size is a multiple of page size
-    GENASSERT1(aligned(size, stackProtection), size);
+    RASSERT(aligned(size, stackProtection), size);
     // reserve/map size + protection
     ptr_t ptr = mmap(0, size + stackProtection, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
-    GENASSERT(ptr != MAP_FAILED);
+    RASSERT0(ptr != MAP_FAILED);
     // set up protection page
     SYSCALL(mprotect(ptr, stackProtection, PROT_NONE));
     stackBottom = vaddr(ptr) + stackProtection;

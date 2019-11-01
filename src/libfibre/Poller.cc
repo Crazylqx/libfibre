@@ -25,7 +25,7 @@ inline int BasePoller::doPoll() {
 #else // __linux__ below
   int evcnt = epoll_wait(pollFD, events, maxPoll, Blocking ? -1 : 0);
 #endif
-  if (evcnt < 0) { GENASSERT1(lfErrno() == EINTR, lfErrno()); evcnt = 0; } // gracefully handle EINTR
+  if (evcnt < 0) { RASSERT(lfErrno() == EINTR, lfErrno()); evcnt = 0; } // gracefully handle EINTR
   RuntimeDebugP("Poller ", FmtHex(this), " got ", evcnt, " events from ", pollFD);
   return evcnt;
 }

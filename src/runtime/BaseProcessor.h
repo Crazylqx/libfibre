@@ -68,7 +68,7 @@ public:
 #endif
 
   void enqueue(StackContext& s) {
-    GENASSERT1(s.getPriority() < NumPriority, s.getPriority());
+    RASSERT(s.getPriority() < NumPriority, s.getPriority());
 #if TESTING_LOCKED_READYQUEUE
     ScopedLock<RuntimeLock> sl(readyLock);
 #endif

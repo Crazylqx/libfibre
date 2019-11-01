@@ -152,12 +152,12 @@ public:
       int ret = sem_trywait(&sem);
       if (ret == 0) return true;
       else if (lfErrno() == EAGAIN) return false;
-      else { GENASSERT1(lfErrno() == EINTR, lfErrno()); }
+      else { RASSERT(lfErrno() == EINTR, lfErrno()); }
     }
   }
   bool P(bool wait = true) {
     if (!wait) return tryP();
-    while (sem_wait(&sem) < 0) { GENASSERT1(lfErrno() == EINTR, lfErrno()); }
+    while (sem_wait(&sem) < 0) { RASSERT(lfErrno() == EINTR, lfErrno()); }
     return true;
   }
   bool P(const Time& timeout) {
@@ -165,7 +165,7 @@ public:
       int ret = sem_timedwait(&sem, &timeout);
       if (ret == 0) return true;
       else if (lfErrno() == ETIMEDOUT) return false;
-      else { GENASSERT1(lfErrno() == EINTR, lfErrno()); }
+      else { RASSERT(lfErrno() == EINTR, lfErrno()); }
     }
   }
   void V() {

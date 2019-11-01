@@ -59,13 +59,13 @@ public:
   // dedicated constructor for bootstrap: pthread becomes mainFibre
   OsProcessor(FibreCluster& cluster, _friend<_Bootstrapper>);
 
-  ~OsProcessor() { GENABORT1("Cannot delete OsProcessor"); }
+  ~OsProcessor() { RABORT("Cannot delete OsProcessor"); }
 
   // dedicated support routine to set up dummy context for poller pthreads
   static void setupFakeContext(StackContext* sc, EventScope* es, _friend<PollerThread>);
 
 #if TESTING_PROCESSOR_POLLER
-  BasePoller& getPoller() { GENASSERT(pollFibre); return *pollFibre; }
+  BasePoller& getPoller() { RASSERT0(pollFibre); return *pollFibre; }
 #endif
 
   pthread_t getSysID() { return sysThread; }

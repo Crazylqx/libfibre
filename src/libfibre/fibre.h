@@ -118,7 +118,7 @@ static inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *
 }
 
 static inline int fibre_join(fibre_t thread, void **retval) {
-  GENASSERT(retval == nullptr);
+  RASSERT0(retval == nullptr);
   delete thread;
   return 0;
 }
@@ -133,7 +133,7 @@ static inline int fibre_yield(void) {
 }
 
 static inline int fibre_migrate(FibreCluster* c) {
-  GENASSERT(c);
+  RASSERT0(c);
   Fibre::migrateNow(*c);
   return 0;
 }
@@ -144,7 +144,7 @@ static inline int fibre_sem_destroy(fibre_sem_t *sem) {
 }
 
 static inline int fibre_sem_init(fibre_sem_t *sem, int pshared, unsigned int value) {
-  GENASSERT(pshared == 0);
+  RASSERT0(pshared == 0);
   sem->reset(value);
   return 0;
 }
@@ -178,7 +178,7 @@ static inline int fibre_binsem_destroy(fibre_binsem_t *binsem) {
 }
 
 static inline int fibre_binsem_init(fibre_binsem_t *binsem, int pshared, unsigned int value) {
-  GENASSERT(pshared == 0);
+  RASSERT0(pshared == 0);
   binsem->reset(value);
   return 0;
 }
@@ -211,7 +211,7 @@ static inline int fibre_mutex_destroy(fibre_mutex_t *mutex) {
 }
 
 static inline int fibre_mutex_init(fibre_mutex_t *restrict mutex, const fibre_mutexattr_t *restrict attr) {
-  GENASSERT(attr == nullptr);
+  RASSERT0(attr == nullptr);
   return 0;
 }
 
@@ -238,7 +238,7 @@ static inline int fibre_cond_destroy(fibre_cond_t *cond) {
 }
 
 static inline int fibre_cond_init(fibre_cond_t *restrict cond, const fibre_condattr_t *restrict attr) {
-  GENASSERT(attr == nullptr);
+  RASSERT0(attr == nullptr);
   return 0;
 }
 
@@ -269,7 +269,7 @@ static inline int fibre_rwlock_destroy(fibre_rwlock_t *rwlock) {
 }
 
 static inline int fibre_rwlock_init(fibre_rwlock_t *restrict rwlock, const fibre_rwlockattr_t *restrict attr) {
-  GENASSERT(attr == nullptr);
+  RASSERT0(attr == nullptr);
   return 0;
 }
 
@@ -309,7 +309,7 @@ static inline int fibre_barrier_destroy(fibre_barrier_t *barrier) {
 }
 
 static inline int fibre_barrier_init(fibre_barrier_t *restrict barrier, const fibre_barrierattr_t *restrict attr, unsigned count) {
-  GENASSERT(attr == nullptr);
+  RASSERT0(attr == nullptr);
   barrier->reset(count);
   return 0;
 }
