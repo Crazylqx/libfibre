@@ -20,3 +20,11 @@ The following students (in alphabetical order) have helped with various parts of
 - Peng Chen (split stack support)
 - Wen Shi (gdb extension)
 - Shuangyi Tong (multiple event scopes)
+
+### License
+
+KOS is currently distributed under the GNU GPL license, although this could change in the future. See <tt>[LICENSE](LICENSE)</tt> for details.
+
+### Feedback / Questions
+
+Please send any questions or feedback to mkarsten|**at**|uwaterloo.ca.

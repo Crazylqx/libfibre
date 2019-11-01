@@ -17,26 +17,26 @@
 #ifndef _lfbasics_h_
 #define _lfbasics_h_ 1
 
-#include "runtime/Basics.h"
-#include "runtime/ScopedLocks.h"
-#include "libfibre/OsLocks.h"
-
-#include <atomic>
-#if __FreeBSD__
-#include <sys/thr.h>     // thr_self
-#else // __linux__ below
-#include <unistd.h>      // syscall
-#include <sys/syscall.h> // __NR_gettid
-#endif
-
 // **** bootstrap object needs to come first
 
+#include <atomic>
 static class _Bootstrapper {
   static std::atomic<int> counter;
 public:
   _Bootstrapper();
   ~_Bootstrapper();
 } _lfBootstrap;
+
+// **** other includes
+
+#include "libfibre/OsLocks.h"
+
+#if __FreeBSD__
+#include <sys/thr.h>     // thr_self
+#else // __linux__ below
+#include <unistd.h>      // syscall
+#include <sys/syscall.h> // __NR_gettid
+#endif
 
 // **** debug output
 
@@ -71,7 +71,7 @@ class OsProcessor;
 class ClusterPoller;
 class StackContext;
 
-// it seems noinline is needed for TLS and then volatile is free anyway...
+// 'noinline' is needed for TLS and then volatile is free anyway...
 // http://stackoverflow.com/questions/25673787/making-thread-local-variables-fully-volatile
 // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66631
 class Context {

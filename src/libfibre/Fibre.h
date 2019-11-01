@@ -17,6 +17,7 @@
 #ifndef _Fibre_h_
 #define _Fibre_h_ 1
 
+#include "libfibre/lfbasics.h" // make sure _Bootstrapper comes first
 #include "libfibre/FibreCluster.h"
 
 #include <sys/mman.h>

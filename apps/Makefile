@@ -1,4 +1,5 @@
 include ../Makefile.config
+TOPDIR=$(realpath ..)
 SOURCES=$(wildcard *.cpp)
 PROGS=$(subst .cpp,,$(SOURCES))
 
@@ -11,8 +12,11 @@ endif
 
 all: $(PROGS)
 
-$(PROGS): %: %.cpp $(LIBA) $(LIBSO)
-	$(CXX) $(CXXFLAGS) $< -o $@ -L../src $(LIBS) -Wl,-rpath=$(CURDIR)/../src
+../src/libfibre.so:
+	$(MAKE) -C .. lib
+
+$(PROGS): %: %.cpp ../src/libfibre.so
+	$(CXX) $(CXXFLAGS) $< -o $@ -L../src $(LIBS) -Wl,-rpath=$(TOPDIR)/src
 
 pordering: ordering.cpp
 	$(CXX) -pthread $< -o $@
@@ -95,10 +99,9 @@ extra: athreadtest bthreadtest fthreadtest gthreadtest lthreadtest mthreadtest p
 .PHONY: clean vclean dep depend
 
 clean:
-	rm -f $(PROGS) $(LIBA) $(LIBSO) $(OBJECTS) $(SOBJECTS) $(EOBJECTS) $(AS_OBJECTS)
+	rm -f $(PROGS) pordering
 	rm -f athreadtest bthreadtest fthreadtest gthreadtest lthreadtest mthreadtest pthreadtest qthreadtest uthreadtest
 	rm -f fwebserver gwebserver lwebserver pwebserver uwebserver
-	rm -f pordering
 
 vclean: clean
 	rm -f Makefile.dep

@@ -19,7 +19,6 @@
 
 #include "runtime/Stats.h"
 #include "runtime-glue/RuntimeDebug.h"
-#include "libfibre/lfbasics.h"
 
 class BaseProcessor;
 
