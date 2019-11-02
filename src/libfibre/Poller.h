@@ -17,8 +17,8 @@
 #ifndef _Poller_h_
 #define _Poller_h_ 1
 
+#include "runtime/Debug.h"
 #include "runtime/Stats.h"
-#include "runtime-glue/RuntimeDebug.h"
 
 class BaseProcessor;
 
@@ -81,7 +81,7 @@ protected:
     uint64_t val = 1;
     val = SYSCALL_EQ(write(waker, &val, sizeof(val)), sizeof(val));
 #endif
-    RuntimeDebugP("Poller ", FmtHex(this), " woke ", pollFD, " via ", waker);
+    DBG::outl(DBG::Polling, "Poller ", FmtHex(this), " woke ", pollFD, " via ", waker);
   }
 
 public:
@@ -89,13 +89,13 @@ public:
     stats = new PollerStats(this, n);
 #if __FreeBSD__
     pollFD = SYSCALLIO(kqueue());
-    RuntimeDebugP("Poller ", FmtHex(this), " create ", pollFD);
+    DBG::outl(DBG::Polling, "Poller ", FmtHex(this), " create ", pollFD);
     EV_SET(&waker, 0, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, 0);
     SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
 #else // __linux__ below
     pollFD = SYSCALLIO(epoll_create1(EPOLL_CLOEXEC));
     waker = SYSCALLIO(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)); // binary semaphore semantics w/o EFD_SEMAPHORE
-    RuntimeDebugP("Poller ", FmtHex(this), " create ", pollFD, " and ", waker);
+    DBG::outl(DBG::Polling, "Poller ", FmtHex(this), " create ", pollFD, " and ", waker);
     setupFD(waker, Input);
 #endif
   }
@@ -107,7 +107,7 @@ public:
   }
 
   void setupFD(int fd, size_t status, bool change = false) {
-    RuntimeDebugP("Poller ", FmtHex(this), " register ", fd, " on ", pollFD, " for ", status);
+    DBG::outl(DBG::Polling, "Poller ", FmtHex(this), " register ", fd, " on ", pollFD, " for ", status);
 #if __FreeBSD__
     struct kevent ev[2];
     int idx = 0;
@@ -129,7 +129,7 @@ public:
   }
 
   void resetFD(int fd) {
-    RuntimeDebugP("Poller ", FmtHex(this), " deregister ", fd, " on ", pollFD);
+    DBG::outl(DBG::Polling, "Poller ", FmtHex(this), " deregister ", fd, " on ", pollFD);
 #if __FreeBSD__
     struct kevent ev[2];
     EV_SET(&ev[0], fd, EVFILT_READ, EV_DELETE, 0, 0, 0);

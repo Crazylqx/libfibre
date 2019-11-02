@@ -17,9 +17,9 @@
 #ifndef _BaseProcessor_h_
 #define _BaseProcessor_h_ 1
 
+#include "runtime/Debug.h"
 #include "runtime/Stats.h"
 #include "runtime/StackContext.h"
-#include "runtime-glue/RuntimeDebug.h"
 #include "runtime-glue/RuntimeLock.h"
 
 class Cluster;
@@ -107,7 +107,7 @@ protected:
   }
 
   void enqueueDirect(StackContext& s) {
-    RuntimeDebugS("Stack ", FmtHex(&s), " queueing on ", FmtHex(this));
+    DBG::outl(DBG::Scheduling, "Stack ", FmtHex(&s), " queueing on ", FmtHex(this));
     stats->enq.count();
     readyQueue.enqueue(s);
   }

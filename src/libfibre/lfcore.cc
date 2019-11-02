@@ -20,15 +20,15 @@
 #include <execinfo.h> // see _lfAbort
 #include <cxxabi.h>   // see _lfAbort
 
-// global pointers
-InternalLock* _lfDebugOutputLock = nullptr;     // lfbasics.h
-
 // default EventScope object
-static EventScope* _lfEventScope = nullptr;     // EventScope.h
+static EventScope* _lfEventScope = nullptr;    // EventScope.h
+
+// other global pointers
+InternalLock*    _lfDebugOutputLock = nullptr; // RuntimeDebug.h
 
 #if TESTING_ENABLE_DEBUGGING
-InternalLock*    _lfGlobalStackLock  = nullptr; // StackContext.h
-GlobalStackList* _lfGlobalStackList  = nullptr; // StackContext.h
+InternalLock*    _lfGlobalStackLock = nullptr; // StackContext.h
+GlobalStackList* _lfGlobalStackList = nullptr; // StackContext.h
 #endif
 
 #if TESTING_ENABLE_STATISTICS
@@ -39,6 +39,19 @@ IntrusiveQueue<StatsObject>* StatsObject::lst = nullptr; // Stats.h
 
 // bootstrap counter definition
 std::atomic<int> _Bootstrapper::counter(0);
+
+static const char* DebugOptions[] = {
+  "basic",
+  "blocking",
+  "polling",
+  "scheduling",
+  "threads",
+  "warning",
+};
+
+static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::MaxLevel, "debug options mismatch");
+
+//static char debugstring[1024] = "poll,sched";
 
 _Bootstrapper::_Bootstrapper() {
   if (++counter == 1) {
@@ -57,13 +70,14 @@ _Bootstrapper::_Bootstrapper() {
     size_t p = e ? atoi(e) : 1;
     RASSERT0(p > 0);
     _lfEventScope = new EventScope(_friend<_Bootstrapper>(), p);
+//    DBG::init(DebugOptions, debugstring, false);
   }
 }
 
 _Bootstrapper::~_Bootstrapper() {
   if (--counter == 0) {
     // delete _lfEventScope
-    delete _lfDebugOutputLock;
+    // delete _lfDebugOutputLock;
 #if TESTING_ENABLE_DEBUGGING
     delete _lfGlobalStackList;
     delete _lfGlobalStackLock;
@@ -126,19 +140,18 @@ void _lfAbort() {
 // ******************** ASSERT OUTPUT *********************
 
 #if TESTING_ENABLE_ASSERTIONS
-static BinaryLock<> _abortLock;
-void _SYSCALLabortLock()   { _abortLock.acquire(); }
-void _SYSCALLabortUnlock() { _abortLock.release(); }
+void _SYSCALLabortLock()   { _lfDebugOutputLock->acquire(); }
+void _SYSCALLabortUnlock() { _lfDebugOutputLock->release(); }
 void _SYSCALLabort()       { _lfAbort(); }
 #endif
 
 namespace Runtime {
   namespace Assert {
     void lock() {
-      _abortLock.acquire();
+      _lfDebugOutputLock->acquire();
     }
     void unlock() {
-      _abortLock.release();
+      _lfDebugOutputLock->release();
     }
     void abort() {
       _lfAbort();

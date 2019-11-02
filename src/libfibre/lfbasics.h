@@ -38,30 +38,6 @@ public:
 #include <sys/syscall.h> // __NR_gettid
 #endif
 
-// **** debug output
-
-extern InternalLock* _lfDebugOutputLock;
-
-inline void dprint() {}
-
-template<typename T, typename... Args>
-inline void dprint(T x, const Args&... a) {
-  std::cerr << x;
-  dprint(a...);
-}
-
-template<typename... Args>
-inline void dprintl(const Args&... a) {
-  ScopedLock<InternalLock> al(*_lfDebugOutputLock);
-#if __FreeBSD__
-  long tid;
-  thr_self(&tid);
-  dprint(tid, ' ', a..., '\n');
-#else // __linux__ below
-  dprint(syscall(__NR_gettid), ' ', a..., '\n');
-#endif
-}
-
 // **** system processor (here pthread) context
 
 class BasePoller;

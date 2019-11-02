@@ -19,17 +19,67 @@
 
 #include "libfibre/lfbasics.h"
 
-template<typename... Args> inline void RuntimeDebugB(const Args&... a) {
-//  dprintl(a...);
+#include <iostream>
+
+enum DBG::Level : size_t {
+  Basic = 0,
+  Blocking,
+  Polling,
+  Scheduling,
+  Threads,
+  Warning,
+  MaxLevel
+};
+
+static inline void dprint() {}
+
+template<typename T, typename... Args>
+inline void dprint(T x, const Args&... a) {
+  std::cerr << x;
+  dprint(a...);
 }
-template<typename... Args> inline void RuntimeDebugS(const Args&... a) {
-//  dprintl(a...);
+
+static inline void dprintl() {
+  std::cerr << std::endl;
 }
-template<typename... Args> inline void RuntimeDebugT(const Args&... a) {
-//  dprintl(a...);
+
+static inline void dprinttid() {
+#if __FreeBSD__
+  long tid;
+  thr_self(&tid);
+  dprint(tid, ' ');
+#else // __linux__ below
+  dprint(syscall(__NR_gettid), ' ');
+#endif
 }
-template<typename... Args> inline void RuntimeDebugP(const Args&... a) {
-//  dprintl(a...);
+
+extern InternalLock* _lfDebugOutputLock;
+
+template<typename... Args>
+inline void DBG::out1(DBG::Level c, const Args&... a) {
+  if (c && !test(c)) return;
+  dprint(a...);
+}
+
+template<typename... Args>
+inline void DBG::outs(DBG::Level c, const Args&... a) {
+  if (c && !test(c)) return;
+  dprinttid();
+  dprint(a...);
+}
+
+template<typename... Args>
+inline void DBG::outl(DBG::Level c, const Args&... a) {
+  if (c && !test(c)) return;
+  ScopedLock<InternalLock> sl(*_lfDebugOutputLock);
+  dprinttid();
+  dprint(a...);
+  dprintl();
+}
+
+inline void DBG::outl(DBG::Level c) {
+  if (c && !test(c)) return;
+  dprintl();
 }
 
 #endif /* _RuntimeDebug_h_ */

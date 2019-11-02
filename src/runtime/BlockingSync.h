@@ -17,9 +17,9 @@
 #ifndef _BlockingSync_h_
 #define _BlockingSync_h_ 1
 
+#include "runtime/Debug.h"
 #include "runtime/Stats.h"
 #include "runtime/StackContext.h"
-#include "runtime-glue/RuntimeDebug.h"
 #include "runtime-glue/RuntimeLock.h"
 #include "runtime-glue/RuntimeTimer.h"
 
@@ -95,7 +95,7 @@ public:
     doSuspend(stack);
   }
   virtual void fireTimer() {
-    RuntimeDebugB( "Stack ", FmtHex(&stack), " timed out");
+    DBG::outl(DBG::Blocking, "Stack ", FmtHex(&stack), " timed out");
     stack.resume();
   }
 };
@@ -190,7 +190,7 @@ inline bool TimerQueue::checkExpiry(const Time& now, Time& newTime) {
 
 static inline void sleepStack(const Time& timeout) {
   TimeoutInfo ti;
-  RuntimeDebugB( "Stack ", FmtHex(CurrStack()), " sleep ", timeout);
+  DBG::outl(DBG::Blocking, "Stack ", FmtHex(CurrStack()), " sleep ", timeout);
   ti.suspendRelative(timeout);
 }
 
@@ -215,7 +215,7 @@ public:
       if (ri) {
         ri->cancelTimer();
         BlockedStackList::remove(*s);
-        RuntimeDebugB( "Stack ", FmtHex(s), " clear/resume from ", FmtHex(&queue));
+        DBG::outl(DBG::Blocking, "Stack ", FmtHex(s), " clear/resume from ", FmtHex(&queue));
         s->resume();
       }
       s = ns;
@@ -227,9 +227,9 @@ public:
   bool block(Lock& lock, bool wait) {
     if (wait) {
       BlockingInfo<Lock> bi(lock);
-      RuntimeDebugB( "Stack ", FmtHex(CurrStack()), " blocking on ", FmtHex(&queue));
+      DBG::outl(DBG::Blocking, "Stack ", FmtHex(CurrStack()), " blocking on ", FmtHex(&queue));
       bi.suspend(queue);
-      RuntimeDebugB( "Stack ", FmtHex(CurrStack()), " continuing on ", FmtHex(&queue));
+      DBG::outl(DBG::Blocking, "Stack ", FmtHex(CurrStack()), " continuing on ", FmtHex(&queue));
       return true;
     }
     lock.release();
@@ -241,9 +241,9 @@ public:
     Time now = Runtime::Timer::now();
     if (timeout > now) {
       TimeoutBlockingInfo<Lock> tbi(lock);
-      RuntimeDebugB( "Stack ", FmtHex(CurrStack()), " blocking on ", FmtHex(&queue), " timeout ", timeout);
+      DBG::outl(DBG::Blocking, "Stack ", FmtHex(CurrStack()), " blocking on ", FmtHex(&queue), " timeout ", timeout);
       bool ret = tbi.suspendAbsolute(queue, timeout, now);
-      RuntimeDebugB( "Stack ", FmtHex(CurrStack()), " continuing on ", FmtHex(&queue));
+      DBG::outl(DBG::Blocking, "Stack ", FmtHex(CurrStack()), " continuing on ", FmtHex(&queue));
       return ret;
     }
     lock.release();
@@ -260,7 +260,7 @@ public:
       if (ri) {
         ri->cancelTimer();
         BlockedStackList::remove(*s);
-        RuntimeDebugB( "Stack ", FmtHex(s), " resume from ", FmtHex(&queue));
+        DBG::outl(DBG::Blocking, "Stack ", FmtHex(s), " resume from ", FmtHex(&queue));
         if (Enqueue) s->resume();
         return s;
       }

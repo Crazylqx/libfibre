@@ -128,6 +128,11 @@ static inline void bit_flp(mword& a, size_t idx) {
   else a ^= b;
 }
 
+static inline bool bit_tst(const mword& a, size_t idx) {
+  mword b = mword(1) << idx;
+  return a & b;
+}
+
 template<unsigned int N>
 static constexpr size_t pagesizebits() {
   static_assert( N <= pagelevels + 1, "page level template violation" );

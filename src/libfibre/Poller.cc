@@ -26,7 +26,7 @@ inline int BasePoller::doPoll() {
   int evcnt = epoll_wait(pollFD, events, maxPoll, Blocking ? -1 : 0);
 #endif
   if (evcnt < 0) { RASSERT(lfErrno() == EINTR, lfErrno()); evcnt = 0; } // gracefully handle EINTR
-  RuntimeDebugP("Poller ", FmtHex(this), " got ", evcnt, " events from ", pollFD);
+  DBG::outl(DBG::Polling, "Poller ", FmtHex(this), " got ", evcnt, " events from ", pollFD);
   return evcnt;
 }
 

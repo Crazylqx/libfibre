@@ -19,7 +19,7 @@
 inline StackContext* BaseProcessor::tryLocal() {
   StackContext* s = readyQueue.dequeue();
   if (s) {
-    RuntimeDebugS("tryLocal: ", FmtHex(this), ' ', FmtHex(s));
+    DBG::outl(DBG::Scheduling, "tryLocal: ", FmtHex(this), ' ', FmtHex(s));
     stats->deq.count();
   }
   return s;
@@ -29,7 +29,7 @@ inline StackContext* BaseProcessor::tryLocal() {
 inline StackContext* BaseProcessor::tryStage() {
   StackContext* s = cluster.stage();
   if (s) {
-    RuntimeDebugS("tryStage: ", FmtHex(this), ' ', FmtHex(s));
+    DBG::outl(DBG::Scheduling, "tryStage: ", FmtHex(this), ' ', FmtHex(s));
     if (s->getAffinity()) {
       stats->borrow.count();
     } else {
@@ -51,7 +51,7 @@ inline StackContext* BaseProcessor::trySteal() {
     if (sp == this) return nullptr;
     StackContext* s = sp->readyQueue.tryDequeue();
     if (s) {
-      RuntimeDebugS("trySteal: ", FmtHex(this), ' ', FmtHex(s));
+      DBG::outl(DBG::Scheduling, "trySteal: ", FmtHex(this), ' ', FmtHex(s));
       stats->steal.count();
       return s;
     }
