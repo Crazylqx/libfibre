@@ -19,6 +19,6 @@
 
 #include "libfibre/OsLocks.h"
 
-typedef OsLock<4,1024,1> RuntimeLock;
+typedef InternalLock RuntimeLock;
 
 #endif /* _RuntimeLock_h_ */

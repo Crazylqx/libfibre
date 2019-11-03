@@ -19,8 +19,6 @@
 
 #include "libfibre/lfbasics.h"
 
-#include <iostream>
-
 enum DBG::Level : size_t {
   Basic = 0,
   Blocking,

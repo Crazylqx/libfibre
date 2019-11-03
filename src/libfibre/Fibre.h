@@ -35,14 +35,14 @@ extern GlobalStackList* _lfGlobalStackList;
 #endif
 
 class Fibre : public StackContext {
-  FloatingPointFlags   fp;          // FP context
-  size_t               stackSize;   // stack size
+  FloatingPointFlags fp;        // FP context
+  size_t stackSize;             // stack size
 #ifdef SPLIT_STACK
-  void*                splitStackContext[10];
+  void* splitStackContext[10];  // memory for split-stack context
 #else
-  vaddr                stackBottom; // bottom of allocated memory for stack
+  vaddr stackBottom;            // bottom of allocated memory for stack
 #endif
-  SyncPoint<InternalLock> done;     // synchronization (join) at destructor
+  SyncPoint<InternalLock> done; // synchronization (join) at destructor
 
   size_t stackAlloc(size_t size) {
 #ifdef SPLIT_STACK

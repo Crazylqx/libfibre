@@ -175,41 +175,4 @@ public:
 
 typedef OsLock<4,1024,1> InternalLock;
 
-#if 0 /* unused */
-template<bool Binary>
-class FlexOsSemaphore {
-  InternalLock lock;
-  OsCondition cond;
-  ssize_t counter;
-  size_t signal;
-public:
-  FlexOsSemaphore(ssize_t c = 0) : counter(c), signal(0) {}
-  bool empty() { return counter >= 0; }
-  bool open() { return counter > 0; }
-  bool P() {
-    ScopedLock<InternalLock> sl(lock);
-    counter -= 1;
-    if (counter < 0) {
-      while (!signal) cond.wait(lock);
-      signal -= 1;
-    }
-    return true;
-  }
-  bool tryP() {
-    ScopedLock<InternalLock> sl(lock);
-    if (counter < 1) return false;
-    counter -= 1;
-    return true;
-  }
-  void V() {
-    ScopedLock<InternalLock> sl(lock);
-    counter += 1;
-    if (counter < 1) {
-      signal += 1;
-      cond.signal();
-    } else if (Binary) counter = 1;
-  }
-};
-#endif
-
 #endif /* _OsLocks_h_ */

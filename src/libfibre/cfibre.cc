@@ -19,7 +19,6 @@
 
 struct _cfibre_t         : public Fibre {};
 struct _cfibre_sem_t     : public fibre_sem_t {};
-struct _cfibre_binsem_t  : public fibre_binsem_t {};
 struct _cfibre_mutex_t   : public fibre_mutex_t {};
 struct _cfibre_cond_t    : public fibre_cond_t {};
 struct _cfibre_rwlock_t  : public fibre_rwlock_t {};
@@ -202,38 +201,6 @@ extern "C" int cfibre_sem_post(cfibre_sem_t *sem) {
 
 extern "C" int cfibre_sem_getvalue(cfibre_sem_t *sem, int *sval) {
   return fibre_sem_getvalue(*sem, sval);
-}
-
-extern "C" int cfibre_binsem_destroy(cfibre_binsem_t *binsem) {
-  int ret = fibre_binsem_destroy(*binsem);
-  delete *binsem;
-  *binsem = nullptr;
-  return ret;
-}
-
-extern "C" int cfibre_binsem_init(cfibre_binsem_t *binsem, int pshared, unsigned int value) {
-  *binsem = (cfibre_binsem_t)new fibre_binsem_t;
-  return fibre_binsem_init(*binsem, pshared, value);
-}
-
-extern "C" int cfibre_binsem_wait(cfibre_binsem_t *binsem) {
-  return fibre_binsem_wait(*binsem);
-}
-
-extern "C" int cfibre_binsem_trywait(cfibre_binsem_t *binsem) {
-  return fibre_binsem_trywait(*binsem);
-}
-
-extern "C" int cfibre_binsem_timedwait(cfibre_binsem_t *binsem, const struct timespec *abs_timeout) {
-  return fibre_binsem_timedwait(*binsem, abs_timeout);
-}
-
-extern "C" int cfibre_binsem_post(cfibre_binsem_t *binsem) {
-  return fibre_binsem_post(*binsem);
-}
-
-extern "C" int cfibre_binsem_getvalue(cfibre_binsem_t *binsem, int *sval) {
-  return fibre_binsem_getvalue(*binsem, sval);
 }
 
 extern "C" int cfibre_mutex_destroy(cfibre_mutex_t *mutex) {

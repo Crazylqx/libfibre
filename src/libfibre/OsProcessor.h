@@ -22,12 +22,11 @@
 #include "runtime/BlockingSync.h"
 #include "libfibre/Poller.h"
 
-typedef FifoSemaphore<InternalLock,false> FibreSemaphore;
-typedef FifoSemaphore<InternalLock,true>  FibreBinarySemaphore;
-typedef Mutex<InternalLock>               FibreMutex;
-typedef Condition<FibreMutex>             FibreCondition;
-typedef LockRW<InternalLock>              FibreLockRW;
-typedef Barrier<InternalLock>             FibreBarrier;
+typedef FifoSemaphore<InternalLock> FibreSemaphore;
+typedef Mutex<InternalLock>         FibreMutex;
+typedef Condition<FibreMutex>       FibreCondition;
+typedef LockRW<InternalLock>        FibreLockRW;
+typedef Barrier<InternalLock>       FibreBarrier;
 
 class OsProcessor : public Context, public BaseProcessor {
   pthread_t               sysThread;

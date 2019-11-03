@@ -26,7 +26,6 @@
 
 typedef Fibre*               fibre_t;
 typedef FibreSemaphore       fibre_sem_t;
-typedef FibreBinarySemaphore fibre_binsem_t;
 typedef FibreMutex           fibre_mutex_t;
 typedef FibreCondition       fibre_cond_t;
 typedef FibreLockRW          fibre_rwlock_t;
@@ -169,40 +168,6 @@ static inline int fibre_sem_post(fibre_sem_t *sem) {
 
 static inline int fibre_sem_getvalue(fibre_sem_t *sem, int *sval) {
   *sval = sem->getValue();
-  return 0;
-}
-
-static inline int fibre_binsem_destroy(fibre_binsem_t *binsem) {
-  binsem->reset();
-  return 0;
-}
-
-static inline int fibre_binsem_init(fibre_binsem_t *binsem, int pshared, unsigned int value) {
-  RASSERT0(pshared == 0);
-  binsem->reset(value);
-  return 0;
-}
-
-static inline int fibre_binsem_wait(fibre_binsem_t *binsem) {
-  binsem->P();
-  return 0;
-}
-
-static inline int fibre_binsem_trywait(fibre_binsem_t *binsem) {
-  return binsem->tryP() ? 0 : EAGAIN;
-}
-
-static inline int fibre_binsem_timedwait(fibre_binsem_t *binsem, const struct timespec *abs_timeout) {
-  return binsem->P(*abs_timeout) ? 0 : ETIMEDOUT;
-}
-
-static inline int fibre_binsem_post(fibre_binsem_t *binsem) {
-  binsem->V();
-  return 0;
-}
-
-static inline int fibre_binsem_getvalue(fibre_binsem_t *binsem, int *sval) {
-  *sval = binsem->getValue();
   return 0;
 }
 

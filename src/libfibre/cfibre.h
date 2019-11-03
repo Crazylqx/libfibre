@@ -24,7 +24,6 @@
 
 struct _cfibre_t;
 struct _cfibre_sem_t;
-struct _cfibre_binsem_t;
 struct _cfibre_mutex_t;
 struct _cfibre_cond_t;
 struct _cfibre_rwlock_t;
@@ -33,7 +32,6 @@ struct _cfibre_sproc_t;
 
 typedef struct _cfibre_t*         cfibre_t;
 typedef struct _cfibre_sem_t*     cfibre_sem_t;
-typedef struct _cfibre_binsem_t*  cfibre_binsem_t;
 typedef struct _cfibre_mutex_t*   cfibre_mutex_t;
 typedef struct _cfibre_cond_t*    cfibre_cond_t;
 typedef struct _cfibre_rwlock_t*  cfibre_rwlock_t;
@@ -95,14 +93,6 @@ int cfibre_sem_trywait(cfibre_sem_t *sem);
 int cfibre_sem_timedwait(cfibre_sem_t *sem, const struct timespec *abs_timeout);
 int cfibre_sem_post(cfibre_sem_t *sem);
 int cfibre_sem_getvalue(cfibre_sem_t *sem, int *sval);
-
-int cfibre_binsem_destroy(cfibre_binsem_t *binsem);
-int cfibre_binsem_init(cfibre_binsem_t *binsem, int pshared, unsigned int value);
-int cfibre_binsem_wait(cfibre_binsem_t *binsem);
-int cfibre_binsem_trywait(cfibre_binsem_t *binsem);
-int cfibre_binsem_timedwait(cfibre_binsem_t *binsem, const struct timespec *abs_timeout);
-int cfibre_binsem_post(cfibre_binsem_t *binsem);
-int cfibre_binsem_getvalue(cfibre_binsem_t *binsem, int *sval);
 
 int cfibre_mutex_destroy(cfibre_mutex_t *mutex);
 int cfibre_mutex_init(cfibre_mutex_t *restrict mutex, const cfibre_mutexattr_t *restrict attr);

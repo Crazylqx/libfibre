@@ -29,7 +29,7 @@ class EventScope {
   // A vector for FDs works well here in principle, because POSIX guarantees lowest-numbered FDs:
   // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
   // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
-  class SyncIO : public FibreBinarySemaphore {
+  class SyncIO : public FifoSemaphore<InternalLock,true> {
     void enter() { lock.acquire(); }
     void leave() { lock.release(); }
     void P_locked() {
@@ -267,17 +267,7 @@ public:
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
     RASSERT(fd >= 0 && fd < fdcount, fd, fdcount);
     T ret;
-    if (Yield)
-#if TESTING_IOYIELD_CONDITIONAL
-    if (!fdSyncVector[fd].status)
-#endif
-    {
-#if TESTING_TRY_IO_BEFORE_YIELD
-      ret = iofunc(fd, a...);
-      if (ret >= 0 || !NBtest<Input>()) return ret;
-#endif
-      Fibre::yield();
-    }
+    if (Yield) Fibre::yield();
     ret = iofunc(fd, a...);
     if (ret >= 0 || !NBtest<Input>()) return ret;
     SyncIO::Access sync(Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR);
