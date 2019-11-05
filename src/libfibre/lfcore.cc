@@ -49,7 +49,7 @@ static const char* DebugOptions[] = {
   "warning",
 };
 
-static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::MaxLevel, "debug options mismatch");
+static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug options mismatch");
 
 //static char debugstring[1024] = "poll,sched";
 

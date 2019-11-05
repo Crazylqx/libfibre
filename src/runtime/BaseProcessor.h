@@ -107,7 +107,7 @@ protected:
   }
 
   void enqueueDirect(StackContext& s) {
-    DBG::outl(DBG::Scheduling, "Stack ", FmtHex(&s), " queueing on ", FmtHex(this));
+    DBG::outl(DBG::Level::Scheduling, "Stack ", FmtHex(&s), " queueing on ", FmtHex(this));
     stats->enq.count();
     readyQueue.enqueue(s);
   }

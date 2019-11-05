@@ -38,7 +38,7 @@ inline void StackContext::switchStack(StackContext& nextStack) {
   RASSERT(this == CurrStack() && this != &nextStack, FmtHex(this), ' ', FmtHex(CurrStack()), ' ', FmtHex(&nextStack));
 
   // context switch
-  DBG::outl(DBG::Scheduling, "Stack switch <", char(Code), "> on ", FmtHex(&CurrProcessor()),": ", FmtHex(this), " (to ", FmtHex(processor), ") -> ", FmtHex(&nextStack));
+  DBG::outl(DBG::Level::Scheduling, "Stack switch <", char(Code), "> on ", FmtHex(&CurrProcessor()),": ", FmtHex(this), " (to ", FmtHex(processor), ") -> ", FmtHex(&nextStack));
   RuntimePreStackSwitch(*this, nextStack, _friend<StackContext>());
   switch (Code) {
     case Idle:      stackSwitch(this, postIdle,      &stackPointer, nextStack.stackPointer); break;
