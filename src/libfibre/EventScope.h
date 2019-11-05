@@ -25,34 +25,14 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+// A vector for FDs works well here in principle, because POSIX guarantees lowest-numbered FDs:
+// http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
+// A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
 class EventScope {
-  // A vector for FDs works well here in principle, because POSIX guarantees lowest-numbered FDs:
-  // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
-  // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
-  class SyncIO : public FifoSemaphore<InternalLock,true> {
-    void enter() { lock.acquire(); }
-    void leave() { lock.release(); }
-    void P_locked() {
-      if (counter > 0) counter -= 1;
-      else {
-        bq.block(lock, true);
-        lock.acquire();
-      }
-    }
-    friend class Access;
-  public:
-    class Access {
-      SyncIO& sio;
-    public:
-      Access(SyncIO& s) : sio(s) { sio.enter(); }
-      ~Access() { sio.leave(); }
-      void block() { sio.P_locked(); }
-    };
-  };
-
+  typedef FifoSemaphore<InternalLock,true> SyncSem;
   struct SyncRW {
-    SyncIO RD;
-    SyncIO WR;
+    SyncSem RD;
+    SyncSem WR;
 #if TESTING_LAZY_FD_REGISTRATION && __linux__
     FibreMutex regLock;
 #endif
@@ -144,6 +124,10 @@ public:
   void registerFD(int fd) {
     static_assert(Input || Output, "must set Input or Output in registerFD()");
 
+#if TESTING_LAZY_FD_REGISTRATION
+    if (Lazy) return;
+#endif
+
     RASSERT0(fd >= 0 && fd < fdcount);
     SyncRW& fdsync = fdSyncVector[fd];
     const size_t target = (Input ? BasePoller::Input : 0) | (Output ? BasePoller::Output : 0);
@@ -154,15 +138,12 @@ public:
 #endif
 
 #if TESTING_LAZY_FD_REGISTRATION
-    if (Lazy) return;
-
 #if __FreeBSD__ // can atomically check flags and set poller
     size_t prev = __atomic_fetch_or(&fdsync.status, target, __ATOMIC_RELAXED);
     if ((prev & target) == target) return;
     const bool change = false;
     BasePoller* pp = nullptr;
     __atomic_compare_exchange_n(&fdsync.poller, &pp, &cp, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
-
 #else // Linux: serialize concurrent registrations - EPOLL_CTL_ADD vs. _MOD
     if ((fdsync.status & target) == target) return;   // outside of lock: faster, but double regs possible...
     ScopedLock<FibreMutex> sl(fdsync.regLock);
@@ -170,7 +151,6 @@ public:
     bool change = fdsync.poller;                      // already registered for polling?
     if (!fdsync.poller) fdsync.poller = &cp;          // else set poller
 #endif
-
 #else // TESTING_LAZY_FD_REGISTRATION
     RASSERT0(!fdsync.poller);
     fdsync.status |= target;
@@ -225,22 +205,22 @@ public:
   template<bool Input>
   void block(int fd) {
     RASSERT0(fd >= 0 && fd < fdcount);
-    SyncIO& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    sync.P();
+    SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
+    sem.P();
   }
 
   template<bool Input>
   bool tryblock(int fd) {
     RASSERT0(fd >= 0 && fd < fdcount);
-    SyncIO& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    return sync.tryP();
+    SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
+    return sem.tryP();
   }
 
   template<bool Input, bool Enqueue = true>
   StackContext* unblock(int fd, _friend<BasePoller>) {
     RASSERT0(fd >= 0 && fd < fdcount);
-    SyncIO& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    return sync.V<Enqueue>();
+    SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
+    return sem.V<Enqueue>();
   }
 
   template<typename T, class... Args>
@@ -270,14 +250,14 @@ public:
     if (Yield) Fibre::yield();
     ret = iofunc(fd, a...);
     if (ret >= 0 || !NBtest<Input>()) return ret;
-    SyncIO::Access sync(Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR);
 #if TESTING_LAZY_FD_REGISTRATION
     registerFD<Input,!Input,false,false>(fd);
 #endif
+    SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
     for (;;) {
-      sync.block();
+      sem.P();
       ret = iofunc(fd, a...);
-      if (ret >= 0 || lfErrno() != EAGAIN) return ret;
+      if (ret >= 0 || !NBtest<Input>()) return ret;
     }
   }
 };
