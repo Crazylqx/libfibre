@@ -19,11 +19,11 @@
 
 #if TESTING_ENABLE_STATISTICS
 
-static ProcessorStats*  totalProcessorStats  = nullptr;
-static SchedulerStats*  totalSchedulerStats  = nullptr;
-static TimerStats*      totalTimerStats      = nullptr;
-static ConnectionStats* totalConnectionStats = nullptr;
-static PollerStats*     totalPollerStats     = nullptr;
+static ProcessorStats*   totalProcessorStats   = nullptr;
+static LoadManagerStats* totalLoadManagerStats = nullptr;
+static TimerStats*       totalTimerStats       = nullptr;
+static ConnectionStats*  totalConnectionStats  = nullptr;
+static PollerStats*      totalPollerStats      = nullptr;
 
 bool StatsObject::print(ostream& os) {
   os << name << ' ' << FmtHex(obj);
@@ -31,11 +31,11 @@ bool StatsObject::print(ostream& os) {
 }
 
 void StatsObject::printAll(ostream& os) {
-  totalProcessorStats  = new ProcessorStats (0, "Processor (total)");
-  totalSchedulerStats  = new SchedulerStats (0, "Scheduler (total)");
-  totalTimerStats      = new TimerStats     (0, "Timer (total)");
-  totalConnectionStats = new ConnectionStats(0, "Connections (total)");
-  totalPollerStats     = new PollerStats    (0, "Poller (total)");
+  totalProcessorStats   = new ProcessorStats  (0, "Processor (total)");
+  totalLoadManagerStats = new LoadManagerStats(0, "LoadManager (total)");
+  totalTimerStats       = new TimerStats      (0, "Timer (total)");
+  totalConnectionStats  = new ConnectionStats (0, "Connections (total)");
+  totalPollerStats      = new PollerStats     (0, "Poller (total)");
   while (!lst->empty()) {
     StatsObject* o = lst->pop();
     if (o->print(os)) os << std::endl;
@@ -51,8 +51,8 @@ bool ProcessorStats::print(ostream& os) {
   return true;
 }
 
-bool SchedulerStats::print(ostream& os) {
-  if (totalSchedulerStats && this != totalSchedulerStats) totalSchedulerStats->aggregate(*this);
+bool LoadManagerStats::print(ostream& os) {
+  if (totalLoadManagerStats && this != totalLoadManagerStats) totalLoadManagerStats->aggregate(*this);
   if (tasks == 0) return false;
   StatsObject::print(os);
   os << tasks << ' ' << blocks;
@@ -69,9 +69,9 @@ bool TimerStats::print(ostream& os) {
 
 bool ConnectionStats::print(ostream& os) {
   if (totalConnectionStats && this != totalConnectionStats) totalConnectionStats->aggregate(*this);
-  if (servconn + clientconn == 0) return false;
+  if (srvconn + cliconn + resets == 0) return false;
   StatsObject::print(os);
-  os << " server:" << servconn << " client:" << clientconn;
+  os << " server:" << srvconn << " client:" << cliconn << " resets: " << resets;
   return true;
 }
 

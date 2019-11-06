@@ -21,7 +21,6 @@
 #define __LIBFIBRE__ 1
 #endif
 
-#include "libfibre/Fibre.h"
 #include "libfibre/EventScope.h"
 
 typedef Fibre*               fibre_t;

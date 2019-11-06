@@ -26,16 +26,14 @@ class FibreCluster : public Cluster {
   ClusterPoller* pollVec;
   size_t         pollCount;
 
-  enum State { Run, Pause } state;
-
-  FibreSemaphore maintStartSem;
+  FibreSemaphore pauseSem;
   FibreSemaphore confirmSem;
   FibreSemaphore continueSem;
-  OsSemaphore    pauseSem;
-  OsProcessor*   maintenanceProc;
+  OsSemaphore    sleepSem;
+  OsProcessor*   pauseProc;
 
   FibreCluster(EventScope& es, _friend<FibreCluster>, size_t p = 1) : scope(es),
-    pollCount(p), state(Run), pauseSem(1), maintenanceProc(nullptr) {
+    pollCount(p), sleepSem(1), pauseProc(nullptr) {
       pollVec = (ClusterPoller*)new char[sizeof(ClusterPoller[pollCount])];
       for (size_t p = 0; p < pollCount; p += 1) new (&pollVec[p]) ClusterPoller(es, stagingProc);
     }
@@ -54,45 +52,24 @@ public:
 
   void pause() {
     ringLock.acquire();
-    state = Pause;
-    maintenanceProc = &CurrProcessor();
-    pauseSem.P();
-    for (size_t p = 0; p < ringCount; p += 1) maintStartSem.V();
+    pauseProc = &CurrProcessor();
+    sleepSem.P();
+    for (size_t p = 0; p < ringCount; p += 1) pauseSem.V();
     for (size_t p = 0; p < ringCount; p += 1) confirmSem.P();
   }
 
   void resume() {
-    pauseSem.V();
+    sleepSem.V();
     ringLock.release();
   }
 
-  void wakeAll() {
-    ringLock.acquire();
-    state = Run;
-    maintenanceProc = nullptr;
-    for (size_t p = 0; p < ringCount; p += 1) maintStartSem.V();
-    for (size_t p = 0; p < ringCount; p += 1) confirmSem.P();
-    for (size_t p = 0; p < ringCount; p += 1) continueSem.V();
-    ringLock.release();
-  }
-
-  static void maintenance(FibreCluster* fc, OsProcessor* proc) {
+  static void maintenance(FibreCluster* fc) {
     for (;;) {
-      fc->maintStartSem.P();
-      switch (fc->state) {
-      case Pause:
-        fc->confirmSem.V();
-        if (fc->maintenanceProc != &CurrProcessor()) {
-          fc->pauseSem.P();
-          fc->pauseSem.V();
-        }
-        break;
-      case Run:
-        fc->confirmSem.V();
-        fc->continueSem.P();
-        break;
-      default:
-        RABORT(fc->state);
+      fc->pauseSem.P();
+      fc->confirmSem.V();
+      if (fc->pauseProc != &CurrProcessor()) {
+        fc->sleepSem.P();
+        fc->sleepSem.V();
       }
     }
   }

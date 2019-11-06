@@ -21,27 +21,14 @@
 
 #include <limits.h>       // PTHREAD_STACK_MIN
 
-// instance definitions for Context members declared in lfbasics.h
-thread_local StackContext*  volatile Context::currStack         = nullptr;
-thread_local OsProcessor*   volatile Context::currProc          = nullptr;
-thread_local FibreCluster*  volatile Context::currCluster       = nullptr;
-thread_local EventScope*    volatile Context::currScope         = nullptr;
-
-// noinline routines for Context declared in lfbasics.h
-void Context::setCurrStack(StackContext& s, _friend<StackContext>) { currStack = &s; }
-StackContext*  Context::CurrStack()         { return currStack; }
-OsProcessor*   Context::CurrProcessor()     { return currProc; }
-FibreCluster*  Context::CurrCluster()       { return currCluster; }
-EventScope*    Context::CurrEventScope()    { return currScope; }
-
 inline void OsProcessor::setupContext(FibreCluster& fc) {
-  Context::currProc          = this;
-  Context::currCluster       = &fc;
-  Context::currScope         = &fc.getEventScope();
+  Context::currProc = this;
+  Context::currCluster = &fc;
+  Context::currScope = &fc.getEventScope();
   handoverStack = nullptr;
   maintenanceFibre = new Fibre(*this);
   maintenanceFibre->setPriority(TopPriority);
-  maintenanceFibre->run(FibreCluster::maintenance, &fc, this);
+  maintenanceFibre->run(FibreCluster::maintenance, &fc);
 #if TESTING_PROCESSOR_POLLER
   pollFibre = new PollerFibre(*Context::currScope, *this, false);
   pollFibre->start();

@@ -46,11 +46,11 @@ extern "C" cfibre_cluster_t cfibre_cluster_self() {
 }
 
 extern "C" int cfibre_errno() {
-  return lfErrno();
+  return _SysErrno();
 }
 
 extern "C" int* cfibre_errno_set() {
-  return &lfErrnoSet();
+  return &_SysErrnoSet();
 }
 
 extern "C" int cfibre_pause() {

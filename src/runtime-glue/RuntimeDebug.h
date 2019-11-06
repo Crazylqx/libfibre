@@ -18,6 +18,14 @@
 #define _RuntimeDebug_h_ 1
 
 #include "libfibre/lfbasics.h"
+#include "libfibre/OsLocks.h"
+
+#if __FreeBSD__
+#include <sys/thr.h>     // thr_self
+#else // __linux__ below
+#include <unistd.h>      // syscall
+#include <sys/syscall.h> // __NR_gettid
+#endif
 
 enum DBG::Level : size_t {
   Basic = 0,

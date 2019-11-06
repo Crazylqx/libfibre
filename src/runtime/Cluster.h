@@ -21,13 +21,13 @@
 
 #if TESTING_LOADBALANCING
 
-class Scheduler {
+class LoadManager {
   volatile ssize_t stackCounter;
   RuntimeLock procLock;
   ProcessorList waitingProcs;
   BlockedStackList waitingStacks;
 
-  SchedulerStats* stats;
+  LoadManagerStats* stats;
 
   StackContext* block(BaseProcessor& proc) {
     procLock.acquire();
@@ -55,7 +55,7 @@ class Scheduler {
   }
 
 public:
-  Scheduler() : stackCounter(0) { stats = new SchedulerStats(this); }
+  LoadManager() : stackCounter(0) { stats = new LoadManagerStats(this); }
 
 #if TESTING_OPTIMISTIC_ISRS
   void reportReadyStack()  { __atomic_sub_fetch(&stackCounter, 1, __ATOMIC_RELAXED); }
@@ -86,11 +86,11 @@ public:
 
 #else
 
-class Scheduler {};
+class LoadManager {};
 
 #endif
 
-class Cluster : public Scheduler {
+class Cluster : public LoadManager {
 protected:
   RuntimeClusterLock ringLock;
   size_t             ringCount;

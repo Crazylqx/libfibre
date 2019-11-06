@@ -206,7 +206,7 @@ static inline bool connHandler(void* connFD) {
       goto closeAndOut;
     }
 #else
-    while ((rret = lfInput(recv, (uintptr_t)connFD, (void*)(buf + buflen), sizeof(buf) - buflen, 0)) < 0 && lfErrno() == EINTR);
+    while ((rret = lfInput(recv, (uintptr_t)connFD, (void*)(buf + buflen), sizeof(buf) - buflen, 0)) < 0 && _SysErrno() == EINTR);
 #endif
     if (rret == 0) {
       if (buflen == plen) {
@@ -216,10 +216,10 @@ static inline bool connHandler(void* connFD) {
       }
       goto closeAndOut;
     } else if (rret < 0) {
-      if (lfErrno() == ECONNRESET) {
+      if (_SysErrno() == ECONNRESET) {
 //        cerr << "ECONNRESET: FD " << (uintptr_t)connFD << endl;
       } else {
-        cerr << "read error: FD " << (uintptr_t)connFD << ' ' << lfErrno() << endl;
+        cerr << "read error: FD " << (uintptr_t)connFD << ' ' << _SysErrno() << endl;
       }
       goto closeAndOut;
     }

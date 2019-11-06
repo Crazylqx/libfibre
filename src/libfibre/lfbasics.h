@@ -27,24 +27,13 @@ public:
   ~_Bootstrapper();
 } _lfBootstrap;
 
-// **** other includes
-
-#include "libfibre/OsLocks.h"
-
-#if __FreeBSD__
-#include <sys/thr.h>     // thr_self
-#else // __linux__ below
-#include <unistd.h>      // syscall
-#include <sys/syscall.h> // __NR_gettid
-#endif
+#include "runtime/Basics.h"
 
 // **** system processor (here pthread) context
 
-class BasePoller;
 class EventScope;
 class FibreCluster;
 class OsProcessor;
-class ClusterPoller;
 class StackContext;
 
 // 'noinline' is needed for TLS and then volatile is free anyway...
@@ -52,16 +41,16 @@ class StackContext;
 // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66631
 class Context {
 protected: // definitions and initialization are in OsProcessor.cc
-  static thread_local StackContext*  volatile currStack;
-  static thread_local OsProcessor*   volatile currProc;
-  static thread_local FibreCluster*  volatile currCluster;
-  static thread_local EventScope*    volatile currScope;
+  static thread_local StackContext* volatile currStack;
+  static thread_local OsProcessor*  volatile currProc;
+  static thread_local FibreCluster* volatile currCluster;
+  static thread_local EventScope*   volatile currScope;
 public:
   static void setCurrStack(StackContext& s, _friend<StackContext>) __no_inline;
-  static StackContext*  CurrStack()         __no_inline;
-  static OsProcessor*   CurrProcessor()     __no_inline;
-  static FibreCluster*  CurrCluster()       __no_inline;
-  static EventScope*    CurrEventScope()    __no_inline;
+  static StackContext* CurrStack()      __no_inline;
+  static OsProcessor*  CurrProcessor()  __no_inline;
+  static FibreCluster* CurrCluster()    __no_inline;
+  static EventScope*   CurrEventScope() __no_inline;
 };
 
 static inline StackContext* CurrStack() {

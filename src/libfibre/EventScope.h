@@ -30,7 +30,7 @@
 // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
 class EventScope {
   typedef FifoSemaphore<InternalLock,true> SyncSem;
-  struct SyncRW {
+  struct SyncFD {
     SyncSem RD;
     SyncSem WR;
 #if TESTING_LAZY_FD_REGISTRATION && __linux__
@@ -38,10 +38,10 @@ class EventScope {
 #endif
     BasePoller* poller;
     size_t status;
-    SyncRW() : poller(nullptr), status(0) {}
+    SyncFD() : poller(nullptr), status(0) {}
   } *fdSyncVector;
 
-  int fdcount;
+  int fdCount;
 
   MasterPoller* masterPoller; // runs without cluster
   TimerQueue    timerQueue;   // scope-global timer queue
@@ -54,7 +54,7 @@ class EventScope {
   FibreCluster* mainCluster;
   OsProcessor*  mainProcessor;
 
-  // simple kludge to provides event-scope-local data
+  // simple kludge to provide event-scope-local data
   void*         clientData;
 
   // initialization happens after new scope is created with pthread_create() and unshare()
@@ -62,9 +62,9 @@ class EventScope {
     stats = new ConnectionStats(this);
     struct rlimit rl;
     SYSCALL(getrlimit(RLIMIT_NOFILE, &rl));          // get hard limit for file descriptor count
-    fdcount = rl.rlim_max + MasterPoller::extraTimerFD;
-    fdSyncVector = new SyncRW[fdcount];              // create vector of R/W sync points
-    masterPoller = new MasterPoller(*this, fdcount - 1, _friend<EventScope>()); // start master poller & timer handling
+    fdCount = rl.rlim_max + MasterPoller::extraTimerFD;
+    fdSyncVector = new SyncFD[fdCount];              // create vector of R/W sync points
+    masterPoller = new MasterPoller(*this, fdCount - 1, _friend<EventScope>()); // start master poller & timer handling
     mainCluster->startPoller(_friend<EventScope>()); // start main cluster's poller
   }
 
@@ -72,13 +72,13 @@ public:
   ConnectionStats* stats;
 
   EventScope(size_t p = 1, void* cd = nullptr) : diskCluster(nullptr), clientData(cd) {
-    mainCluster = new FibreCluster(*this, _friend<EventScope>(), p); // poller start delayed
+    mainCluster = new FibreCluster(*this, _friend<EventScope>(), p); // delayed master poller start
     mainProcessor = new OsProcessor(*mainCluster, *this, _friend<EventScope>());
     // OsProcessor calls split(), which calls init()
     mainProcessor->waitUntilRunning(); // wait for new pthread running
   }
   EventScope(_friend<_Bootstrapper> fb, size_t p = 1) : diskCluster(nullptr), clientData(nullptr) {
-    mainCluster = new FibreCluster(*this, _friend<EventScope>(), p); // poller start delayed);
+    mainCluster = new FibreCluster(*this, _friend<EventScope>(), p); // delayed master poller start
     mainProcessor = new OsProcessor(*mainCluster, fb);
     init(); // bootstrap event scope -> no unshare() necessary
   }
@@ -128,8 +128,8 @@ public:
     if (Lazy) return;
 #endif
 
-    RASSERT0(fd >= 0 && fd < fdcount);
-    SyncRW& fdsync = fdSyncVector[fd];
+    RASSERT0(fd >= 0 && fd < fdCount);
+    SyncFD& fdsync = fdSyncVector[fd];
     const size_t target = (Input ? BasePoller::Input : 0) | (Output ? BasePoller::Output : 0);
 #if TESTING_PROCESSOR_POLLER
     BasePoller& cp = Cluster ? CurrCluster().getPoller(fd) : CurrProcessor().getPoller();
@@ -162,8 +162,8 @@ public:
   }
 
   void deregisterFD(int fd) {
-    RASSERT0(fd >= 0 && fd < fdcount);
-    SyncRW& fdsync = fdSyncVector[fd];
+    RASSERT0(fd >= 0 && fd < fdCount);
+    SyncFD& fdsync = fdSyncVector[fd];
 #if TESTING_LAZY_FD_REGISTRATION && __linux__
     ScopedLock<FibreMutex> sl(fdsync.regLock);
 #endif
@@ -175,50 +175,50 @@ public:
   }
 
   void registerPollFD(int fd) {
-    RASSERT0(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdCount);
     masterPoller->setupPollFD(fd, false); // set using ONESHOT to reduce polling
   }
 
   void blockPollFD(int fd) {
-    RASSERT0(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdCount);
     masterPoller->setupPollFD(fd, true);  // reset using ONESHOT to reduce polling
     fdSyncVector[fd].RD.P();
   }
 
   void unblockPollFD(int fd, _friend<PollerFibre>) {
-    RASSERT0(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdCount);
     fdSyncVector[fd].RD.V();
   }
 
   void suspendFD(int fd) {
-    RASSERT0(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdCount);
     fdSyncVector[fd].RD.P_fake();
     fdSyncVector[fd].WR.P_fake();
   }
 
   void resumeFD(int fd) {
-    RASSERT0(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdCount);
     fdSyncVector[fd].RD.V();
     fdSyncVector[fd].WR.V();
   }
 
   template<bool Input>
   void block(int fd) {
-    RASSERT0(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdCount);
     SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
     sem.P();
   }
 
   template<bool Input>
   bool tryblock(int fd) {
-    RASSERT0(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdCount);
     SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
     return sem.tryP();
   }
 
   template<bool Input, bool Enqueue = true>
   StackContext* unblock(int fd, _friend<BasePoller>) {
-    RASSERT0(fd >= 0 && fd < fdcount);
+    RASSERT0(fd >= 0 && fd < fdCount);
     SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
     return sem.V<Enqueue>();
   }
@@ -234,18 +234,19 @@ public:
 
   template<bool Input>
   static inline bool NBtest() {
+    int serrno = _SysErrno();
 #if __FreeBSD__
     // workaround - suspect: https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=129169 - or similar?
-    int ferrno = lfErrno();
-    return ferrno == EAGAIN || (Input == false && ferrno == ENOTCONN);
+    return serrno == EAGAIN || (Input == false && serrno == ENOTCONN);
 #else // __linux__
-    return lfErrno() == EAGAIN;
+//    if (serrno == ECONNRESET) CurrEventScope().stats->resets.count();
+    return serrno == EAGAIN;
 #endif
   }
 
   template<bool Input, bool Yield, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
-    RASSERT(fd >= 0 && fd < fdcount, fd, fdcount);
+    RASSERT0(fd >= 0 && fd < fdCount);
     T ret;
     if (Yield) Fibre::yield();
     ret = iofunc(fd, a...);
@@ -290,7 +291,7 @@ static inline int lfSocket(int domain, int type, int protocol) {
 // POSIX says that bind might fail with EINPROGRESS (but not on Linux/FreeBSD)
 static inline int lfBind(int fd, const sockaddr *addr, socklen_t addrlen) {
   int ret = bind(fd, addr, addrlen);
-  if (ret < 0 && lfErrno() != EINPROGRESS) return ret;
+  if (ret < 0 && _SysErrno() != EINPROGRESS) return ret;
   return 0;
 }
 
@@ -306,7 +307,7 @@ static inline int lfListen(int fd, int backlog) {
 static inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
   int ret = accept4(fd, addr, addrlen, flags | SOCK_NONBLOCK);
   if (ret >= 0) {
-    CurrEventScope().stats->servconn.count();
+    CurrEventScope().stats->srvconn.count();
     CurrEventScope().registerFD<true,true,true,false>(ret);
   }
   return ret;
@@ -316,7 +317,7 @@ static inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int fl
 static inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
   int ret = CurrEventScope().syncIO<true,false>(accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK);
   if (ret >= 0) {
-    CurrEventScope().stats->servconn.count();
+    CurrEventScope().stats->srvconn.count();
     CurrEventScope().registerFD<true,true,true,false>(ret);
   }
   return ret;
@@ -326,15 +327,15 @@ static inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags
 static inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
   int ret = connect(fd, addr, addrlen);
   if (ret >= 0) {
-    CurrEventScope().stats->clientconn.count();
+    CurrEventScope().stats->cliconn.count();
     CurrEventScope().registerFD<true,true,true,false>(fd);
-  } else if (lfErrno() == EINPROGRESS) {
+  } else if (_SysErrno() == EINPROGRESS) {
     CurrEventScope().registerFD<true,true,false,false>(fd);
     CurrEventScope().block<false>(fd);
     socklen_t sz = sizeof(ret);
     SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &sz));
     RASSERT(ret == 0, ret);
-    CurrEventScope().stats->clientconn.count();
+    CurrEventScope().stats->cliconn.count();
   }
   return ret;
 }

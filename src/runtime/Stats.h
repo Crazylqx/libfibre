@@ -164,12 +164,12 @@ struct ProcessorStats : public StatsObject {
   }
 };
 
-struct SchedulerStats : public StatsObject {
+struct LoadManagerStats : public StatsObject {
   Counter tasks;
   HashTable<64> blocks;
-  SchedulerStats(void* o, const char* n = "Scheduler") : StatsObject(o, n) {}
+  LoadManagerStats(void* o, const char* n = "LoadManager") : StatsObject(o, n) {}
   bool print(ostream& os);
-  void aggregate(const SchedulerStats& x) {
+  void aggregate(const LoadManagerStats& x) {
     tasks.aggregate(x.tasks);
   }
 };
@@ -184,13 +184,15 @@ struct TimerStats : public StatsObject {
 };
 
 struct ConnectionStats : public StatsObject {
-  Counter servconn;
-  Counter clientconn;
+  Counter srvconn;
+  Counter cliconn;
+  Counter resets;
   ConnectionStats(void* o, const char* n = "Connections") : StatsObject(o, n) {}
   bool print(ostream& os);
   void aggregate(const ConnectionStats& x) {
-    servconn.aggregate(x.servconn);
-    clientconn.aggregate(x.clientconn);
+    srvconn.aggregate(x.srvconn);
+    cliconn.aggregate(x.cliconn);
+    resets.aggregate(x.resets);
   }
 };
 

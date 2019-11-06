@@ -28,15 +28,15 @@
 #if defined __LIBFIBRE__
 // errno is TLS, so must not be inlined
 // see, for example, http://www.crystalclearsoftware.com/soc/coroutine/coroutine/coroutine_thread.html
-extern int lfErrno() __no_inline;
-extern int& lfErrnoSet() __no_inline;
+extern int _SysErrno() __no_inline;
+extern int& _SysErrnoSet() __no_inline;
 extern void _SYSCALLabort() __noreturn;
 extern void _SYSCALLabort();
 extern void _SYSCALLabortLock();
 extern void _SYSCALLabortUnlock();
 #else
-static inline int lfErrno() { return errno; }
-static inline int& lfErrnoSet() { return errno; }
+static inline int _SysErrno() { return errno; }
+static inline int& _SysErrnoSet() { return errno; }
 static inline void _SYSCALLabort();
 static inline void _SYSCALLabort() { abort(); }
 static inline void _SYSCALLabortLock() {}
@@ -47,9 +47,9 @@ static inline void _SYSCALLabortUnlock() {}
 #ifndef SYSCALL_CMP
 #define SYSCALL_CMP(call,cmp,expected,errcode) ({\
   int ret ## __COUNTER__ = call;\
-  if slowpath(!(ret ## __COUNTER__ cmp expected || ret ## __COUNTER__ == errcode || lfErrno() == errcode)) {\
+  if slowpath(!(ret ## __COUNTER__ cmp expected || ret ## __COUNTER__ == errcode || _SysErrno() == errcode)) {\
     _SYSCALLabortLock();\
-    printf("FAILED SYSCALL: %s -> %d (expected %s %lli), errno: %d\nat: %s:%d\n", #call, ret ## __COUNTER__, #cmp, (long long)expected, lfErrno(), __FILE__, __LINE__);\
+    printf("FAILED SYSCALL: %s -> %d (expected %s %lli), errno: %d\nat: %s:%d\n", #call, ret ## __COUNTER__, #cmp, (long long)expected, _SysErrno(), __FILE__, __LINE__);\
     _SYSCALLabortUnlock();\
     _SYSCALLabort();\
   }\
@@ -60,10 +60,10 @@ static inline void _SYSCALLabortUnlock() {}
 #endif
 
 #define SYSCALL(call)            SYSCALL_CMP(call,==,0,0)
+#define SYSCALLIO(call)          SYSCALL_CMP(call,>=,0,0)
 #define SYSCALL_EQ(call,val)     SYSCALL_CMP(call,==,val,0)
 #define SYSCALL_GE(call,val)     SYSCALL_CMP(call,>=,val,0)
 #define TRY_SYSCALL(call,code)   SYSCALL_CMP(call,==,0,code)
-#define SYSCALLIO(call)          SYSCALL_CMP(call,>=,0,0)
 #define TRY_SYSCALLIO(call,code) SYSCALL_CMP(call,>=,0,code)
 
 #endif /* _syscall_macro_h_ */

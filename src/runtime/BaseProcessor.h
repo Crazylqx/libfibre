@@ -23,7 +23,6 @@
 #include "runtime-glue/RuntimeLock.h"
 
 class Cluster;
-class Scheduler;
 
 class ReadyQueue {
   RuntimeLock readyLock;
