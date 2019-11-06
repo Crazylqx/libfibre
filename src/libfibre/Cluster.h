@@ -14,13 +14,13 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
-#ifndef _FibreCluster_h_
-#define _FibreCluster_h_ 1
+#ifndef _Cluster_h_
+#define _Cluster_h_ 1
 
-#include "runtime/Cluster.h"
+#include "runtime/Scheduler.h"
 #include "libfibre/Poller.h"
 
-class FibreCluster : public Cluster {
+class Cluster : public Scheduler {
   EventScope&   scope;
 
   ClusterPoller* pollVec;
@@ -32,18 +32,18 @@ class FibreCluster : public Cluster {
   OsSemaphore    sleepSem;
   OsProcessor*   pauseProc;
 
-  FibreCluster(EventScope& es, _friend<FibreCluster>, size_t p = 1) : scope(es),
+  Cluster(EventScope& es, _friend<Cluster>, size_t p = 1) : scope(es),
     pollCount(p), sleepSem(1), pauseProc(nullptr) {
       pollVec = (ClusterPoller*)new char[sizeof(ClusterPoller[pollCount])];
       for (size_t p = 0; p < pollCount; p += 1) new (&pollVec[p]) ClusterPoller(es, stagingProc);
     }
 public:
-  FibreCluster(EventScope& es, size_t p = 1) : FibreCluster(es, _friend<FibreCluster>(), p)
+  Cluster(EventScope& es, size_t p = 1) : Cluster(es, _friend<Cluster>(), p)
     { for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start(); }
-  FibreCluster(size_t p = 1) : FibreCluster(CurrEventScope(), p) {}
+  Cluster(size_t p = 1) : Cluster(CurrEventScope(), p) {}
 
   // special constructor and start routine for bootstrapping event scope
-  FibreCluster(EventScope& es, _friend<EventScope>, size_t p = 1) : FibreCluster(es, _friend<FibreCluster>(), p) {}
+  Cluster(EventScope& es, _friend<EventScope>, size_t p = 1) : Cluster(es, _friend<Cluster>(), p) {}
   void startPoller(_friend<EventScope>) { for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start(); }
 
   EventScope& getEventScope() { return scope; }
@@ -63,16 +63,16 @@ public:
     ringLock.release();
   }
 
-  static void maintenance(FibreCluster* fc) {
+  static void maintenance(Cluster* cl) {
     for (;;) {
-      fc->pauseSem.P();
-      fc->confirmSem.V();
-      if (fc->pauseProc != &CurrProcessor()) {
-        fc->sleepSem.P();
-        fc->sleepSem.V();
+      cl->pauseSem.P();
+      cl->confirmSem.V();
+      if (cl->pauseProc != &CurrProcessor()) {
+        cl->sleepSem.P();
+        cl->sleepSem.V();
       }
     }
   }
 };
 
-#endif /* _FibreCluster_h_ */
+#endif /* _Cluster_h_ */

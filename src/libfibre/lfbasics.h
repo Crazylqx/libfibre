@@ -31,9 +31,10 @@ public:
 
 // **** system processor (here pthread) context
 
+class Cluster;
 class EventScope;
-class FibreCluster;
 class OsProcessor;
+class Scheduler;
 class StackContext;
 
 // 'noinline' is needed for TLS and then volatile is free anyway...
@@ -43,13 +44,13 @@ class Context {
 protected: // definitions and initialization are in OsProcessor.cc
   static thread_local StackContext* volatile currStack;
   static thread_local OsProcessor*  volatile currProc;
-  static thread_local FibreCluster* volatile currCluster;
+  static thread_local Cluster*      volatile currCluster;
   static thread_local EventScope*   volatile currScope;
 public:
   static void setCurrStack(StackContext& s, _friend<StackContext>) __no_inline;
   static StackContext* CurrStack()      __no_inline;
   static OsProcessor*  CurrProcessor()  __no_inline;
-  static FibreCluster* CurrCluster()    __no_inline;
+  static Cluster*      CurrCluster()    __no_inline;
   static EventScope*   CurrEventScope() __no_inline;
 };
 
@@ -65,8 +66,8 @@ static inline OsProcessor& CurrProcessor() {
   return *p;
 }
 
-static inline FibreCluster& CurrCluster() {
-  FibreCluster* c = Context::CurrCluster();
+static inline Cluster& CurrCluster() {
+  Cluster* c = Context::CurrCluster();
   RASSERT0(c);
   return *c;
 }

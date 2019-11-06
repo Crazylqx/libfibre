@@ -14,7 +14,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
-#include "runtime/Cluster.h"
+#include "runtime/Scheduler.h"
 
 inline StackContext* BaseProcessor::tryLocal() {
   StackContext* s = readyQueue.dequeue();
@@ -27,7 +27,7 @@ inline StackContext* BaseProcessor::tryLocal() {
 
 #if TESTING_LOADBALANCING
 inline StackContext* BaseProcessor::tryStage() {
-  StackContext* s = cluster.stage();
+  StackContext* s = scheduler.stage();
   if (s) {
     DBG::outl(DBG::Level::Scheduling, "tryStage: ", FmtHex(this), ' ', FmtHex(s));
     if (s->getAffinity()) {
@@ -70,7 +70,7 @@ inline StackContext* BaseProcessor::scheduleInternal() {
 void BaseProcessor::idleLoop() {
   for (;;) {
 #if TESTING_LOADBALANCING
-    StackContext* nextStack = cluster.getReadyStack(*this);
+    StackContext* nextStack = scheduler.getReadyStack(*this);
     if (nextStack) {
       stats->handover.count();
       yieldDirect(*nextStack);
@@ -84,7 +84,7 @@ void BaseProcessor::idleLoop() {
     }
     // might have gotten a token, but not a stack -> correct
     stats->correction.count();
-    cluster.correctReadyStack();
+    scheduler.correctReadyStack();
 #else /* TESTING_OPTIMISTIC_ISRS */
     for (;;) {
       nextStack = scheduleInternal();
@@ -104,7 +104,7 @@ void BaseProcessor::idleLoop() {
 
 void BaseProcessor::enqueueResume(StackContext& s, _friend<StackContext>) {
 #if TESTING_LOADBALANCING
-  if (!cluster.addReadyStack(s)) enqueueDirect(s);
+  if (!scheduler.addReadyStack(s)) enqueueDirect(s);
 #else
   enqueueDirect(s);
   readyCount.V();
@@ -122,11 +122,11 @@ StackContext& BaseProcessor::scheduleFull(_friend<StackContext>) {
 #if TESTING_OPTIMISTIC_ISRS
     StackContext* nextStack = scheduleInternal();
     if (nextStack) {
-      cluster.reportReadyStack();
+      scheduler.reportReadyStack();
       return *nextStack;
     }
 #else /* TESTING_OPTIMISTIC_ISRS */
-    if (cluster.tryGetReadyStack()) {
+    if (scheduler.tryGetReadyStack()) {
       for (;;) {
         StackContext* nextStack = scheduleInternal();
         if (nextStack) return *nextStack;

@@ -22,7 +22,7 @@
 #include "runtime/StackContext.h"
 #include "runtime-glue/RuntimeLock.h"
 
-class Cluster;
+class Scheduler;
 
 class ReadyQueue {
   RuntimeLock readyLock;
@@ -93,9 +93,9 @@ class BaseProcessor : public ProcessorRing::Link {
   void idleLoopTerminate();
 
 protected:
-  size_t        stackCount;
-  Cluster&      cluster;
+  Scheduler&    scheduler;
   StackContext* idleStack;
+  size_t        stackCount;
 
   ProcessorStats* stats;
 
@@ -112,11 +112,11 @@ protected:
   }
 
 public:
-  BaseProcessor(Cluster& c, const char* n = "Processor") : stackCount(0), cluster(c), idleStack(nullptr) {
+  BaseProcessor(Scheduler& c, const char* n = "Processor") : scheduler(c), idleStack(nullptr), stackCount(0) {
     stats = new ProcessorStats(this, n);
   }
 
-  Cluster& getCluster() { return cluster; }
+  Scheduler& getScheduler() { return scheduler; }
 
   void addStack(_friend<StackContext>) {
 //    __atomic_add_fetch(&stackCount, 1, __ATOMIC_RELAXED);
@@ -126,7 +126,7 @@ public:
   }
 
 #if TESTING_LOADBALANCING
-  StackContext* tryDequeue(_friend<Cluster>) {
+  StackContext* tryDequeue(_friend<Scheduler>) {
     return readyQueue.tryDequeue();
   }
 #endif

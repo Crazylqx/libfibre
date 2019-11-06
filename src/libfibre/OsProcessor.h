@@ -39,7 +39,7 @@ class OsProcessor : public Context, public BaseProcessor {
   PollerFibre*            pollFibre;
 #endif
 
-  inline void setupContext(FibreCluster& fc);
+  inline void setupContext(Cluster& fc);
 
   template<typename T = void>
   inline void  idleLoopCreateFibre(void (*initFunc)(T*, _friend<OsProcessor>) = nullptr, T* arg = nullptr);
@@ -52,11 +52,11 @@ class OsProcessor : public Context, public BaseProcessor {
 public:
   // regular constructors: create pthread and use for idle loop
   OsProcessor(funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
-  OsProcessor(FibreCluster& cluster, funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
+  OsProcessor(Cluster& cluster, funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
   // dedicated constructor for event scope: pthread executes EventScope::split before idle
-  OsProcessor(FibreCluster& cluster, EventScope& scope, _friend<EventScope>);
+  OsProcessor(Cluster& cluster, EventScope& scope, _friend<EventScope>);
   // dedicated constructor for bootstrap: pthread becomes mainFibre
-  OsProcessor(FibreCluster& cluster, _friend<_Bootstrapper>);
+  OsProcessor(Cluster& cluster, _friend<_Bootstrapper>);
 
   ~OsProcessor() { RABORT("Cannot delete OsProcessor"); }
 

@@ -14,7 +14,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
-#include "runtime/Cluster.h"
+#include "runtime/Scheduler.h"
 #include "runtime/StackContext.h"
 #include "runtime-glue/RuntimeStack.h"
 
@@ -27,8 +27,8 @@ StackContext::StackContext(BaseProcessor& proc, bool aff)
   processor->addStack(_friend<StackContext>());
 }
 
-StackContext::StackContext(Cluster& cluster, bool bg)
-: StackContext(cluster.placement(_friend<StackContext>(), bg), bg) {}
+StackContext::StackContext(Scheduler& scheduler, bool bg)
+: StackContext(scheduler.placement(_friend<StackContext>(), bg), bg) {}
 
 template<StackContext::SwitchCode Code>
 inline void StackContext::switchStack(StackContext& nextStack) {
@@ -148,12 +148,12 @@ void StackContext::changeProcessor(BaseProcessor& p) {
 }
 
 void StackContext::rebalance() {
-  if (!affinity) changeProcessor(CurrCluster().placement(_friend<StackContext>(), true));
+  if (!affinity) changeProcessor(CurrProcessor().getScheduler().placement(_friend<StackContext>(), true));
 }
 
-// migrate to cluster; adjust stackCounts, clear affinity
-void StackContext::migrateNow(Cluster& cluster) {
-  migrateNow(cluster.placement(_friend<StackContext>(), true));
+// migrate to scheduler; adjust stackCounts, clear affinity
+void StackContext::migrateNow(Scheduler& scheduler) {
+  migrateNow(scheduler.placement(_friend<StackContext>(), true));
 }
 
 // migrate to proessor; adjust stackCounts, clear affinity
@@ -166,11 +166,11 @@ void StackContext::migrateNow(BaseProcessor& proc) {
   RuntimeEnablePreemption();
 }
 
-// migrate to cluster (for disk I/O), don't change stackCount or affinity
-BaseProcessor& StackContext::migrateNow(Cluster& cluster, _friend<EventScope>) {
+// migrate to scheduler (for disk I/O), don't change stackCount or affinity
+BaseProcessor& StackContext::migrateNow(Scheduler& scheduler, _friend<EventScope>) {
   StackContext* sc = CurrStack();
   BaseProcessor* proc = sc->processor;
-  sc->processor = &cluster.placement(_friend<StackContext>(), true);
+  sc->processor = &scheduler.placement(_friend<StackContext>(), true);
   RuntimeDisablePreemption();
   sc->switchStack<Migrate>(CurrProcessor().scheduleFull(_friend<StackContext>()));
   RuntimeEnablePreemption();

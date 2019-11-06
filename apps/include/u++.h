@@ -11,7 +11,7 @@
 
 typedef uProcessor OsProcessor;
 #define CurrProcessor uThisProcessor
-typedef uCluster FibreCluster;
+typedef uCluster Cluster;
 #define CurrCluster uThisCluster
 
 _Task Fibre {

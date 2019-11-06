@@ -20,6 +20,6 @@
 #include "libfibre/OsProcessor.h"
 
 typedef OsProcessor RuntimeProcessor;
-typedef FibreMutex RuntimeClusterLock; // user lock needed for cluster maintenance
+typedef FibreMutex RuntimeSchedulerLock; // user lock needed for cluster maintenance
 
 #endif /* _RuntimeProcessor_h_ */

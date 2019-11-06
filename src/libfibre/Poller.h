@@ -33,7 +33,6 @@ class BaseProcessor;
 
 class EventScope;
 class Fibre;
-class FibreCluster;
 class StackContext;
 
 class BasePoller {

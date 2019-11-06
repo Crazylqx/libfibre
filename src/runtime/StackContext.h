@@ -31,7 +31,7 @@ class BaseSuspender;
 class ResumeInfo;
 class BaseProcessor;
 class KernelProcessor;
-class Cluster;
+class Scheduler;
 
 #if TESTING_ENABLE_DEBUGGING
 static const size_t StackLinkCount = 3;
@@ -91,7 +91,7 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
 protected:
   // constructor/destructors can only be called by derived classes
   StackContext(BaseProcessor& proc, bool aff = false); // main constructor
-  StackContext(Cluster&, bool bg = false);             // uses delegation
+  StackContext(Scheduler&, bool bg = false);             // uses delegation
   ~StackContext() {
     RASSERT(suspendState == Running, FmtHex(this), suspendState);
     RASSERT(resumeInfo == nullptr, FmtHex(this));
@@ -174,9 +174,9 @@ public:
 
   // migration
   void rebalance();
-  static void migrateNow(Cluster&);
+  static void migrateNow(Scheduler&);
   static void migrateNow(BaseProcessor&);
-  static BaseProcessor& migrateNow(Cluster&, _friend<EventScope>);
+  static BaseProcessor& migrateNow(Scheduler&, _friend<EventScope>);
   static void migrateNow(BaseProcessor&, _friend<EventScope>);
 };
 

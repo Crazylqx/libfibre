@@ -402,10 +402,10 @@ static void scopemain(void* arg) {
 
   // set additional clusters and processors
   unsigned int clusterCount = (threadCount - 1) / clusterSize + 1;
-  FibreCluster** cluster = new FibreCluster*[clusterCount];
+  Cluster** cluster = new Cluster*[clusterCount];
   cluster[0] = &CurrCluster();
   for (unsigned int c = 1; c < clusterCount; c += 1) {
-    cluster[c] = new FibreCluster;
+    cluster[c] = new Cluster;
   }
   OsProcessor** sproc = new OsProcessor*[threadCount];
   sproc[0] = &CurrProcessor();

@@ -18,7 +18,7 @@
 #define _Fibre_h_ 1
 
 #include "libfibre/lfbasics.h" // make sure _Bootstrapper comes first
-#include "libfibre/FibreCluster.h"
+#include "libfibre/Cluster.h"
 
 #include <sys/mman.h>
 
@@ -91,8 +91,8 @@ class Fibre : public StackContext {
 
 public:
   // general constructor
-  Fibre(FibreCluster& cluster = CurrCluster(), size_t sz = defaultStackSize, bool bg = false)
-  : StackContext(cluster, bg), stackSize(stackAlloc(sz)) { initDebug(); }
+  Fibre(Cluster& cl = CurrCluster(), size_t sz = defaultStackSize, bool bg = false)
+  : StackContext(cl, bg), stackSize(stackAlloc(sz)) { initDebug(); }
 
   // constructor with affinity to processor
   Fibre(BaseProcessor &sp, size_t sz = defaultStackSize)

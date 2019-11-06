@@ -39,13 +39,13 @@ IntrusiveQueue<StatsObject>* StatsObject::lst = nullptr; // Stats.h
 
 thread_local StackContext* volatile Context::currStack   = nullptr;
 thread_local OsProcessor*  volatile Context::currProc    = nullptr;
-thread_local FibreCluster* volatile Context::currCluster = nullptr;
+thread_local Cluster*      volatile Context::currCluster = nullptr;
 thread_local EventScope*   volatile Context::currScope   = nullptr;
 
 void Context::setCurrStack(StackContext& s, _friend<StackContext>) { currStack = &s; }
 StackContext* Context::CurrStack()      { return currStack; }
 OsProcessor*  Context::CurrProcessor()  { return currProc; }
-FibreCluster* Context::CurrCluster()    { return currCluster; }
+Cluster*      Context::CurrCluster()    { return currCluster; }
 EventScope*   Context::CurrEventScope() { return currScope; }
 
 // ******************** BOOTSTRAP *************************

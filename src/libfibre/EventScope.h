@@ -48,10 +48,10 @@ class EventScope {
 
   // on Linux, file I/O cannot be monitored via select/poll/epoll
   // therefore, all file operations are executed on dedicated processor(s)
-  FibreCluster* diskCluster;
+  Cluster*      diskCluster;
 
   // main cluster, processor. fibre
-  FibreCluster* mainCluster;
+  Cluster*      mainCluster;
   OsProcessor*  mainProcessor;
 
   // simple kludge to provide event-scope-local data
@@ -72,13 +72,13 @@ public:
   ConnectionStats* stats;
 
   EventScope(size_t p = 1, void* cd = nullptr) : diskCluster(nullptr), clientData(cd) {
-    mainCluster = new FibreCluster(*this, _friend<EventScope>(), p); // delayed master poller start
+    mainCluster = new Cluster(*this, _friend<EventScope>(), p); // delayed master poller start
     mainProcessor = new OsProcessor(*mainCluster, *this, _friend<EventScope>());
     // OsProcessor calls split(), which calls init()
     mainProcessor->waitUntilRunning(); // wait for new pthread running
   }
   EventScope(_friend<_Bootstrapper> fb, size_t p = 1) : diskCluster(nullptr), clientData(nullptr) {
-    mainCluster = new FibreCluster(*this, _friend<EventScope>(), p); // delayed master poller start
+    mainCluster = new Cluster(*this, _friend<EventScope>(), p); // delayed master poller start
     mainProcessor = new OsProcessor(*mainCluster, fb);
     init(); // bootstrap event scope -> no unshare() necessary
   }
@@ -96,13 +96,13 @@ public:
     This->init();
   }
 
-  FibreCluster& addDiskCluster() {
+  Cluster& addDiskCluster() {
     RASSERT0(!diskCluster);
-    diskCluster = new FibreCluster;
+    diskCluster = new Cluster;
     return *diskCluster;
   }
 
-  FibreCluster& getMainCluster() { return *mainCluster; }
+  Cluster& getMainCluster() { return *mainCluster; }
 
   void setClientData(void* cd) { clientData = cd; }
   void* getClientData() { return clientData; }

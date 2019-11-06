@@ -23,9 +23,9 @@ struct _cfibre_mutex_t   : public fibre_mutex_t {};
 struct _cfibre_cond_t    : public fibre_cond_t {};
 struct _cfibre_rwlock_t  : public fibre_rwlock_t {};
 struct _cfibre_barrier_t : public fibre_barrier_t {};
-struct _cfibre_cluster_t : public FibreCluster {};
+struct _cfibre_cluster_t : public Cluster {};
 struct _cfibre_sproc_t   : public OsProcessor {
-  _cfibre_sproc_t(FibreCluster& c, funcvoid1_t func = nullptr, ptr_t arg = nullptr) : OsProcessor(c, func, arg) {}
+  _cfibre_sproc_t(Cluster& c, funcvoid1_t func = nullptr, ptr_t arg = nullptr) : OsProcessor(c, func, arg) {}
 };
 
 struct _cfibre_attr_t    : public fibre_attr_t {};
@@ -84,12 +84,12 @@ extern "C" int cfibre_sproc_prepare_cluster(cfibre_sproc_t* sproc, cfibre_cluste
 }
 
 extern "C" int cfibre_sproc_create(cfibre_sproc_t* sproc) {
-  *sproc = new _cfibre_sproc_t(*(FibreCluster*)(*sproc));
+  *sproc = new _cfibre_sproc_t(*(Cluster*)(*sproc));
   return 0;
 }
 
 extern "C" int cfibre_sproc_create_init(cfibre_sproc_t* sproc, void (*func)(void *), void *arg) {
-  *sproc = new _cfibre_sproc_t(*(FibreCluster*)(*sproc), func, arg);
+  *sproc = new _cfibre_sproc_t(*(Cluster*)(*sproc), func, arg);
   return 0;
 }
 
@@ -144,7 +144,7 @@ extern "C" int cfibre_attr_setcluster(cfibre_attr_t *attr, cfibre_cluster_t clus
 }
 
 extern "C" int cfibre_attr_getcluster(const cfibre_attr_t *attr, cfibre_cluster_t *cluster) {
-  return fibre_attr_getcluster(*attr, (FibreCluster**)cluster);
+  return fibre_attr_getcluster(*attr, (Cluster**)cluster);
 }
 
 extern "C" int cfibre_create(cfibre_t *thread, const cfibre_attr_t *attr, void *(*start_routine) (void *), void *arg) {

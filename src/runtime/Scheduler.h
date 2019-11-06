@@ -14,8 +14,8 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
-#ifndef _Cluster_h_
-#define _Cluster_h_ 1
+#ifndef _Scheduler_h_
+#define _Scheduler_h_ 1
 
 #include "runtime-glue/RuntimeProcessor.h"
 
@@ -90,22 +90,22 @@ class LoadManager {};
 
 #endif
 
-class Cluster : public LoadManager {
+class Scheduler : public LoadManager {
 protected:
-  RuntimeClusterLock ringLock;
-  size_t             ringCount;
-  BaseProcessor*     placeProc;
-  BaseProcessor      stagingProc;
+  RuntimeSchedulerLock ringLock;
+  size_t               ringCount;
+  BaseProcessor*       placeProc;
+  BaseProcessor        stagingProc;
 
 public:
-  Cluster() : ringCount(0), placeProc(nullptr), stagingProc(*this, "Staging") {}
-  ~Cluster() {
-    ScopedLock<RuntimeClusterLock> sl(ringLock);
+  Scheduler() : ringCount(0), placeProc(nullptr), stagingProc(*this, "Staging") {}
+  ~Scheduler() {
+    ScopedLock<RuntimeSchedulerLock> sl(ringLock);
     RASSERT(!ringCount, ringCount);
   }
 
   void addProcessor(BaseProcessor& proc) {
-    ScopedLock<RuntimeClusterLock> sl(ringLock);
+    ScopedLock<RuntimeSchedulerLock> sl(ringLock);
     if (placeProc == nullptr) {
       ProcessorRing::close(proc);
       placeProc = &proc;
@@ -116,7 +116,7 @@ public:
   }
 
   void removeProcessor(BaseProcessor& proc) {
-    ScopedLock<RuntimeClusterLock> sl(ringLock);
+    ScopedLock<RuntimeSchedulerLock> sl(ringLock);
     RASSERT0(placeProc);
     // move placeProc, if necessary
     if (placeProc == &proc) placeProc = ProcessorRing::next(*placeProc);
@@ -134,7 +134,7 @@ public:
     if (sg) return stagingProc;
 #endif
     RASSERT0(placeProc);
-    ScopedLock<RuntimeClusterLock> sl(ringLock);
+    ScopedLock<RuntimeSchedulerLock> sl(ringLock);
     placeProc = ProcessorRing::next(*placeProc); // ring insert/remove is traversal-safe
     return *placeProc;
 #endif
@@ -142,9 +142,9 @@ public:
 
 #if TESTING_LOADBALANCING
   StackContext* stage()  {
-    return stagingProc.tryDequeue(_friend<Cluster>());
+    return stagingProc.tryDequeue(_friend<Scheduler>());
   }
 #endif
 };
 
-#endif /* _Cluster_h_ */
+#endif /* _Scheduler_h_ */

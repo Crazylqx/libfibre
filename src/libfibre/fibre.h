@@ -34,7 +34,7 @@ struct fibre_attr_t {
   size_t stackSize;
   bool detached;
   bool background;
-  FibreCluster* cluster;
+  Cluster* cluster;
   void init() {
     stackSize = defaultStackSize;
     detached = false;
@@ -93,12 +93,12 @@ static inline int fibre_attr_getbackground(const fibre_attr_t *attr, int *backgr
   return 0;
 }
 
-static inline int fibre_attr_setcluster(fibre_attr_t *attr, FibreCluster* cluster) {
+static inline int fibre_attr_setcluster(fibre_attr_t *attr, Cluster* cluster) {
   attr->cluster = cluster;
   return 0;
 }
 
-static inline int fibre_attr_getcluster(const fibre_attr_t *attr, FibreCluster* *cluster) {
+static inline int fibre_attr_getcluster(const fibre_attr_t *attr, Cluster* *cluster) {
   *cluster = attr->cluster;
   return 0;
 }
@@ -130,7 +130,7 @@ static inline int fibre_yield(void) {
   return 0;
 }
 
-static inline int fibre_migrate(FibreCluster* c) {
+static inline int fibre_migrate(Cluster* c) {
   RASSERT0(c);
   Fibre::migrateNow(*c);
   return 0;
