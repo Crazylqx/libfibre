@@ -30,7 +30,6 @@ typedef Barrier<InternalLock>       FibreBarrier;
 
 class OsProcessor : public Context, public BaseProcessor {
   pthread_t               sysThread;
-  SyncPoint<InternalLock> running;
   Fibre*                  initFibre;
   Fibre*                  maintenanceFibre;
   Benaphore<OsSemaphore>  haltNotify; // benaphore better for spinning
@@ -39,36 +38,28 @@ class OsProcessor : public Context, public BaseProcessor {
   PollerFibre*            pollFibre;
 #endif
 
-  inline void setupContext(Cluster& fc);
-
-  template<typename T = void>
-  inline void  idleLoopCreateFibre(void (*initFunc)(T*, _friend<OsProcessor>) = nullptr, T* arg = nullptr);
-  static void  idleLoopStartFibre(OsProcessor*);
-  static void* idleLoopStartPthread(void*);
-  static void* idleLoopStartEventScope(void*);
-
-  inline void startPthreadHelper(funcptr1_t idleLoopStarter);
+  inline void  setupContext();
+  static void  idleLoopStartFibre(OsProcessor* This);
+  inline void  idleLoopCreatePthread(funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
+  static ptr_t idleLoopStartPthread(OsProcessor* This);
 
 public:
   // regular constructors: create pthread and use for idle loop
   OsProcessor(funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
   OsProcessor(Cluster& cluster, funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
-  // dedicated constructor for event scope: pthread executes EventScope::split before idle
-  OsProcessor(Cluster& cluster, EventScope& scope, _friend<EventScope>);
+  // dedicated constructor for event scope: pthread executes initFunc before idle
+  OsProcessor(Cluster& cluster, funcvoid1_t initFunc, ptr_t arg, _friend<EventScope>);
   // dedicated constructor for bootstrap: pthread becomes mainFibre
   OsProcessor(Cluster& cluster, _friend<_Bootstrapper>);
 
   ~OsProcessor() { RABORT("Cannot delete OsProcessor"); }
-
-  // dedicated support routine to set up dummy context for poller pthreads
-  static void setupFakeContext(StackContext* sc, EventScope* es, _friend<PollerThread>);
+  void waitUntilRunning();
 
 #if TESTING_PROCESSOR_POLLER
   BasePoller& getPoller() { RASSERT0(pollFibre); return *pollFibre; }
 #endif
 
   pthread_t getSysID() { return sysThread; }
-  void waitUntilRunning() { running.wait(); }
 
   StackContext* suspend() {
 #if TESTING_HALT_SPIN

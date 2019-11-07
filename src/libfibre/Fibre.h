@@ -106,7 +106,7 @@ public:
   Fibre(OsProcessor &sp, _friend<OsProcessor>)
   : StackContext(sp), stackSize(0) { initDebug(); }
 
-  //  explicit final notifcation for idle loop or main loop (bootstrap) on pthread stack
+  //  explicit final notification for idle loop or main loop (bootstrap) on pthread stack
   void endDirect(_friend<OsProcessor>) {
     done.post();
   }

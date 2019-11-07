@@ -61,11 +61,18 @@ class EventScope {
   void init() {
     stats = new ConnectionStats(this);
     struct rlimit rl;
-    SYSCALL(getrlimit(RLIMIT_NOFILE, &rl));          // get hard limit for file descriptor count
+    SYSCALL(getrlimit(RLIMIT_NOFILE, &rl));           // get hard limit for file descriptor count
     fdCount = rl.rlim_max + MasterPoller::extraTimerFD;
-    fdSyncVector = new SyncFD[fdCount];              // create vector of R/W sync points
+    fdSyncVector = new SyncFD[fdCount];               // create vector of R/W sync points
     masterPoller = new MasterPoller(*this, fdCount - 1, _friend<EventScope>()); // start master poller & timer handling
-    mainCluster->startPoller(_friend<EventScope>()); // start main cluster's poller
+    mainCluster->startPolling(_friend<EventScope>()); // start main cluster's poller
+  }
+
+  static void split(void* This) {
+#if __linux__
+    SYSCALL(unshare(CLONE_FILES));
+#endif
+    reinterpret_cast<EventScope*>(This)->init();
   }
 
 public:
@@ -73,9 +80,8 @@ public:
 
   EventScope(size_t p = 1, void* cd = nullptr) : diskCluster(nullptr), clientData(cd) {
     mainCluster = new Cluster(*this, _friend<EventScope>(), p); // delayed master poller start
-    mainProcessor = new OsProcessor(*mainCluster, *this, _friend<EventScope>());
-    // OsProcessor calls split(), which calls init()
-    mainProcessor->waitUntilRunning(); // wait for new pthread running
+    mainProcessor = new OsProcessor(*mainCluster, split, this, _friend<EventScope>());
+    mainProcessor->waitUntilRunning(); // wait for new pthread to finish initialization
   }
   EventScope(_friend<_Bootstrapper> fb, size_t p = 1) : diskCluster(nullptr), clientData(nullptr) {
     mainCluster = new Cluster(*this, _friend<EventScope>(), p); // delayed master poller start
@@ -87,13 +93,6 @@ public:
     delete mainCluster;
     delete masterPoller;
     delete[] fdSyncVector;
-  }
-
-  static void split(EventScope* This, _friend<OsProcessor>) {
-#if __linux__
-    SYSCALL(unshare(CLONE_FILES));
-#endif
-    This->init();
   }
 
   Cluster& addDiskCluster() {

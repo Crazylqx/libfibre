@@ -44,11 +44,10 @@ public:
 
   // special constructor and start routine for bootstrapping event scope
   Cluster(EventScope& es, _friend<EventScope>, size_t p = 1) : Cluster(es, _friend<Cluster>(), p) {}
-  void startPoller(_friend<EventScope>) { for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start(); }
+  void startPolling(_friend<EventScope>) { for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start(); }
 
   EventScope& getEventScope() { return scope; }
   ClusterPoller& getPoller(size_t hint) { return pollVec[hint % pollCount]; }
-  size_t getPollerCount() { return pollCount; }
 
   void pause() {
     ringLock.acquire();
