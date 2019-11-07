@@ -23,7 +23,7 @@ The following students (in alphabetical order) have helped with various parts of
 
 ### License
 
-KOS is currently distributed under the GNU GPL license, although this could change in the future. See <tt>[LICENSE](LICENSE)</tt> for details.
+libfibre is currently distributed under the GNU GPL license, although this could change in the future. See <tt>[LICENSE](LICENSE)</tt> for details.
 
 ### Feedback / Questions
 
