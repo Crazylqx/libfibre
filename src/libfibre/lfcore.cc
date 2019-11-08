@@ -21,7 +21,7 @@
 #include <cxxabi.h>   // see _lfAbort
 
 // default EventScope object
-static EventScope* _lfEventScope = nullptr;    // EventScope.h
+static EventScope* _lfEventScope = nullptr; // EventScope.h
 
 // other global pointers
 InternalLock*    _lfDebugOutputLock = nullptr; // RuntimeDebug.h

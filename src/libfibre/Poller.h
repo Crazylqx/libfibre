@@ -140,11 +140,11 @@ public:
   }
 };
 
-class PollerThread : public BasePoller {
+class BaseThreadPoller : public BasePoller {
   pthread_t pollThread;
 
 protected:
-  PollerThread(EventScope& es, const char* n) : BasePoller(es, n) {}
+  BaseThreadPoller(EventScope& es, const char* n) : BasePoller(es, n) {}
   void start(void *(*loopSetup)(void*)) {
     SYSCALL(pthread_create(&pollThread, nullptr, loopSetup, this));
   }
@@ -153,7 +153,7 @@ protected:
   static inline void pollLoop(T& This);
 
 public:
-  ~PollerThread() {
+  ~BaseThreadPoller() {
     pollTerminate = true;
     wakeUp(); // use self-pipe trick to terminate poll loop
     SYSCALL(pthread_join(pollThread, nullptr));
@@ -161,7 +161,25 @@ public:
   pthread_t getSysID() { return pollThread; }
 };
 
-class MasterPoller : public PollerThread {
+class PollerFibre : public BasePoller {
+  Fibre* pollFibre;
+  inline void pollLoop();
+  static void pollLoopSetup(PollerFibre*);
+public:
+  PollerFibre(EventScope&, BaseProcessor&, bool bg = true);
+  ~PollerFibre();
+  void start();
+};
+
+class PollerThread : public BaseThreadPoller {
+  static void* pollLoopSetup(void*);
+public:
+  PollerThread(EventScope& es, BaseProcessor&) : BaseThreadPoller(es, "PollerThread") {}
+  void prePoll(_friend<BaseThreadPoller>) {}
+  void start() { BaseThreadPoller::start(pollLoopSetup); }
+};
+
+class MasterPoller : public BaseThreadPoller {
   int timerFD;
   static void* pollLoopSetup(void*);
 
@@ -172,8 +190,8 @@ public:
   static const int extraTimerFD = 0;
 #endif
 
-  MasterPoller(EventScope& es, unsigned long fd, _friend<EventScope>) : PollerThread(es, "MasterPoller") {
-    PollerThread::start(pollLoopSetup);
+  MasterPoller(EventScope& es, unsigned long fd, _friend<EventScope>) : BaseThreadPoller(es, "MasterPoller") {
+    BaseThreadPoller::start(pollLoopSetup);
 #if __FreeBSD__
     timerFD = fd;
 #else
@@ -186,7 +204,7 @@ public:
   ~MasterPoller() { SYSCALL(close(timerFD)); }
 #endif
 
-  inline void prePoll(_friend<PollerThread>);
+  inline void prePoll(_friend<BaseThreadPoller>);
 
   void setTimer(const Time& reltimeout) {
 #if __FreeBSD__
@@ -212,34 +230,5 @@ public:
 #endif
   }
 };
-
-class PollerFibre : public BasePoller {
-  Fibre* pollFibre;
-  inline void pollLoop();
-  static void pollLoopSetup(PollerFibre*);
-public:
-  PollerFibre(EventScope&, BaseProcessor&, bool bg = true);
-  ~PollerFibre();
-  void start();
-};
-
-#if TESTING_CLUSTER_POLLER_FIBRE
-
-class ClusterPoller : public PollerFibre {
-public:
-  ClusterPoller(EventScope& es, BaseProcessor& proc) : PollerFibre(es, proc) {}
-};
-
-#else
-
-class ClusterPoller : public PollerThread {
-  static void* pollLoopSetup(void*);
-public:
-  ClusterPoller(EventScope& es, BaseProcessor&) : PollerThread(es, "PollerThread") {}
-  void prePoll(_friend<PollerThread>) {}
-  void start() { PollerThread::start(pollLoopSetup); }
-};
-
-#endif
 
 #endif /* _Poller_h_ */

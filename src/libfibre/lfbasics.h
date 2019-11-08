@@ -34,14 +34,14 @@ public:
 class Cluster;
 class EventScope;
 class OsProcessor;
-class Scheduler;
 class StackContext;
 
-// 'noinline' is needed for TLS and then volatile is free anyway...
-// http://stackoverflow.com/questions/25673787/making-thread-local-variables-fully-volatile
-// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66631
+// 'noinline' is needed for TLS and then volatile is free anyway:
+//   http://stackoverflow.com/questions/25673787/making-thread-local-variables-fully-volatile
+//   https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66631
+// definitions and initialization are in lfcore.cc
 class Context {
-protected: // definitions and initialization are in OsProcessor.cc
+protected:
   static thread_local StackContext* volatile currStack;
   static thread_local OsProcessor*  volatile currProc;
   static thread_local Cluster*      volatile currCluster;
@@ -85,6 +85,6 @@ static const size_t defaultStackSize =  2 * pagesize<1>();
 #else
 static const size_t defaultStackSize = 16 * pagesize<1>();
 #endif
-static const size_t stackProtection = pagesize<1>();
+static const size_t stackProtection  =  1 * pagesize<1>();
 
 #endif /* _lfbasics_h_ */

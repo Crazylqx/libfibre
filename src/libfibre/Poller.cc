@@ -55,9 +55,9 @@ inline void BasePoller::notifyAll(int evcnt) {
 }
 
 template<typename T>
-inline void PollerThread::pollLoop(T& This) {
+inline void BaseThreadPoller::pollLoop(T& This) {
   while (!This.pollTerminate) {
-    This.prePoll(_friend<PollerThread>());
+    This.prePoll(_friend<BaseThreadPoller>());
     This.stats->blocks.count();
     int evcnt = This.template doPoll<true>();
     if (evcnt > 0) This.notifyAll(evcnt);
@@ -69,7 +69,7 @@ void* MasterPoller::pollLoopSetup(void* This) {
   return nullptr;
 }
 
-inline void MasterPoller::prePoll(_friend<PollerThread>) {
+inline void MasterPoller::prePoll(_friend<BaseThreadPoller>) {
   if (eventScope.tryblock<true>(timerFD)) {
 #if __linux__
     uint64_t count; // drain timerFD
@@ -127,9 +127,7 @@ void PollerFibre::start() {
   pollFibre->run(pollLoopSetup, this);
 }
 
-#if !TESTING_CLUSTER_POLLER_FIBRE
-void* ClusterPoller::pollLoopSetup(void* This) {
-  pollLoop(*reinterpret_cast<ClusterPoller*>(This));
+void* PollerThread::pollLoopSetup(void* This) {
+  pollLoop(*reinterpret_cast<PollerThread*>(This));
   return nullptr;
 }
-#endif

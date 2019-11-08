@@ -23,7 +23,12 @@
 class Cluster : public Scheduler {
   EventScope&   scope;
 
-  ClusterPoller* pollVec;
+#if TESTING_CLUSTER_POLLER_FIBRE
+  typedef PollerFibre PollerType;
+#else
+  typedef PollerThread PollerType;
+#endif
+  PollerType*    pollVec;
   size_t         pollCount;
 
   FibreSemaphore pauseSem;
@@ -32,22 +37,27 @@ class Cluster : public Scheduler {
   OsSemaphore    sleepSem;
   OsProcessor*   pauseProc;
 
-  Cluster(EventScope& es, _friend<Cluster>, size_t p = 1) : scope(es),
-    pollCount(p), sleepSem(1), pauseProc(nullptr) {
-      pollVec = (ClusterPoller*)new char[sizeof(ClusterPoller[pollCount])];
-      for (size_t p = 0; p < pollCount; p += 1) new (&pollVec[p]) ClusterPoller(es, stagingProc);
-    }
+  void start() {
+    for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start();
+  }
+
+  Cluster(EventScope& es, size_t p, _friend<Cluster>)
+    : scope(es), pollCount(p), sleepSem(1), pauseProc(nullptr) {
+    pollVec = (PollerType*)new char[sizeof(PollerType[pollCount])];
+    for (size_t p = 0; p < pollCount; p += 1) new (&pollVec[p]) PollerType(scope, stagingProc);
+  }
+
 public:
-  Cluster(EventScope& es, size_t p = 1) : Cluster(es, _friend<Cluster>(), p)
-    { for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start(); }
+  Cluster(EventScope& es, size_t p = 1) : Cluster(es, p, _friend<Cluster>()) { start(); }
   Cluster(size_t p = 1) : Cluster(CurrEventScope(), p) {}
 
   // special constructor and start routine for bootstrapping event scope
-  Cluster(EventScope& es, _friend<EventScope>, size_t p = 1) : Cluster(es, _friend<Cluster>(), p) {}
-  void startPolling(_friend<EventScope>) { for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start(); }
+  Cluster(EventScope& es, size_t p, _friend<EventScope>) : Cluster(es, p, _friend<Cluster>()) {}
+  void startPolling(_friend<EventScope>) { start(); }
 
   EventScope& getEventScope() { return scope; }
-  ClusterPoller& getPoller(size_t hint) { return pollVec[hint % pollCount]; }
+  PollerType& getPoller(size_t hint) { return pollVec[hint % pollCount]; }
+  size_t getPollerCount() { return pollCount; }
 
   void pause() {
     ringLock.acquire();

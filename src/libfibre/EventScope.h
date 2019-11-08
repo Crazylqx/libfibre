@@ -79,12 +79,12 @@ public:
   ConnectionStats* stats;
 
   EventScope(size_t p = 1, void* cd = nullptr) : diskCluster(nullptr), clientData(cd) {
-    mainCluster = new Cluster(*this, _friend<EventScope>(), p); // delayed master poller start
+    mainCluster = new Cluster(*this, p, _friend<EventScope>()); // delayed master poller start
     mainProcessor = new OsProcessor(*mainCluster, split, this, _friend<EventScope>());
     mainProcessor->waitUntilRunning(); // wait for new pthread to finish initialization
   }
   EventScope(_friend<_Bootstrapper> fb, size_t p = 1) : diskCluster(nullptr), clientData(nullptr) {
-    mainCluster = new Cluster(*this, _friend<EventScope>(), p); // delayed master poller start
+    mainCluster = new Cluster(*this, p, _friend<EventScope>()); // delayed master poller start
     mainProcessor = new OsProcessor(*mainCluster, fb);
     init(); // bootstrap event scope -> no unshare() necessary
   }

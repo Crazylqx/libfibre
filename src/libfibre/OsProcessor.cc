@@ -83,8 +83,7 @@ OsProcessor::OsProcessor(Cluster& cl, _friend<_Bootstrapper>) : BaseProcessor(cl
   idleStack = new Fibre(*this);
   idleStack->setup((ptr_t)idleLoopStartFibre, this);
   // main fibre takes over pthread stack - create fibre without stack
-  Fibre* mainFibre = new Fibre(*this, _friend<OsProcessor>());
-  Context::currStack = mainFibre;
+  Context::currStack = new Fibre(*this, _friend<OsProcessor>());
   scheduler.addProcessor(*this); // first processor -> should not block, but need currStack set for ringLock
 }
 
