@@ -17,8 +17,9 @@
 #ifndef _Fibre_h_
 #define _Fibre_h_ 1
 
-#include "libfibre/lfbasics.h" // make sure _Bootstrapper comes first
-#include "libfibre/Cluster.h"
+#include "runtime/BaseProcessor.h"
+#include "runtime/BlockingSync.h"
+#include "runtime-glue/RuntimeContext.h"
 
 #include <sys/mman.h>
 
@@ -27,12 +28,18 @@ extern "C" void __splitstack_getcontext(void *context[10]);
 extern "C" void __splitstack_setcontext(void *context[10]);
 extern "C" void *__splitstack_makecontext(size_t, void *context[10], size_t *);
 extern "C" void __splitstack_releasecontext(void *context[10]);
+static const size_t defaultStackSize =  2 * pagesize<1>();
+#else
+static const size_t defaultStackSize = 16 * pagesize<1>();
+static const size_t stackProtection  =  1 * pagesize<1>();
 #endif
 
 #if TESTING_ENABLE_DEBUGGING
 extern InternalLock*    _lfGlobalStackLock;
 extern GlobalStackList* _lfGlobalStackList;
 #endif
+
+class OsProcessor;
 
 class Fibre : public StackContext {
   FloatingPointFlags fp;        // FP context
@@ -91,8 +98,8 @@ class Fibre : public StackContext {
 
 public:
   // general constructor
-  Fibre(Cluster& cl = CurrCluster(), size_t sz = defaultStackSize, bool bg = false)
-  : StackContext(cl, bg), stackSize(stackAlloc(sz)) { initDebug(); }
+  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), size_t sz = defaultStackSize, bool bg = false)
+  : StackContext(sched, bg), stackSize(stackAlloc(sz)) { initDebug(); }
 
   // constructor with affinity to processor
   Fibre(BaseProcessor &sp, size_t sz = defaultStackSize)
@@ -100,10 +107,10 @@ public:
 
   // constructor to start fibre right away
   Fibre(funcvoid1_t func, ptr_t p1, bool bg = false)
-  : Fibre(CurrCluster(), defaultStackSize, bg) { run(func, p1); }
+  : Fibre(Context::CurrProcessor().getScheduler(), defaultStackSize, bg) { run(func, p1); }
 
   // constructor for idle loop or main loop (bootstrap) on existing pthread stack
-  Fibre(OsProcessor &sp, _friend<OsProcessor>)
+  Fibre(BaseProcessor &sp, _friend<OsProcessor>)
   : StackContext(sp), stackSize(0) { initDebug(); }
 
   //  explicit final notification for idle loop or main loop (bootstrap) on pthread stack
@@ -169,7 +176,7 @@ public:
 };
 
 static inline Fibre* CurrFibre() {
-  return (Fibre*)CurrStack();
+  return (Fibre*)Context::CurrStack();
 }
 
 #endif /* _Fibre_h_ */

@@ -142,7 +142,7 @@ void servaccept() {
     intptr_t fd = SYSCALLIO(lfAccept(servFD, nullptr, nullptr));
     __atomic_add_fetch(&acceptcount, 1, __ATOMIC_RELAXED);
     if (acceptcount == pausecount) {
-      CurrCluster().pause();
+      Context::CurrCluster().pause();
       std::cout << "world stopped" << std::endl;
 #if 0
       char c;
@@ -151,7 +151,7 @@ void servaccept() {
       sleep(2);
 #endif
       std::cout << "world resumes" << std::endl;
-      CurrCluster().resume();
+      Context::CurrCluster().resume();
     }
     f[n] = (new Fibre)->run(servconn, (void*)fd);
   }
@@ -165,7 +165,7 @@ void servaccept() {
 }
 
 static void servaccept2() {
-  CurrEventScope().registerFD<true,false,true,true>(servFD);
+  Context::CurrEventScope().registerFD<true,false,true,true>(servFD);
   new OsProcessor;
   servaccept();
 }
@@ -187,7 +187,7 @@ void servmain(sockaddr_in& addr) {
 
   {
     new OsProcessor[2];
-    Fibre a1(CurrCluster(), defaultStackSize, true);
+    Fibre a1(Context::CurrCluster(), defaultStackSize, true);
     a1.run(servaccept);
     if (numaccept == 2) {
       EventScope* es2 = new EventScope;

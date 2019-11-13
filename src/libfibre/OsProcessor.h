@@ -20,7 +20,6 @@
 #include "runtime/Benaphore.h"
 #include "runtime/BaseProcessor.h"
 #include "runtime/BlockingSync.h"
-#include "libfibre/Poller.h"
 
 typedef FifoSemaphore<InternalLock> FibreSemaphore;
 typedef Mutex<InternalLock>         FibreMutex;
@@ -28,7 +27,11 @@ typedef Condition<FibreMutex>       FibreCondition;
 typedef LockRW<InternalLock>        FibreLockRW;
 typedef Barrier<InternalLock>       FibreBarrier;
 
-class OsProcessor : public Context, public BaseProcessor {
+class _Bootstrapper;
+class Fibre;
+class PollerFibre;
+
+class OsProcessor : public BaseProcessor {
   pthread_t               sysThread;
   Fibre*                  initFibre;
   Fibre*                  maintenanceFibre;
@@ -56,7 +59,7 @@ public:
   void waitUntilRunning();
 
 #if TESTING_PROCESSOR_POLLER
-  BasePoller& getPoller() { RASSERT0(pollFibre); return *pollFibre; }
+  PollerFibre& getPoller() { RASSERT0(pollFibre); return *pollFibre; }
 #endif
 
   pthread_t getSysID() { return sysThread; }

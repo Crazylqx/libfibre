@@ -42,7 +42,7 @@ extern "C" int cfibre_cluster_destroy(cfibre_cluster_t* cluster) {
 }
 
 extern "C" cfibre_cluster_t cfibre_cluster_self() {
-  return &reinterpret_cast<_cfibre_cluster_t&>(CurrCluster());
+  return &reinterpret_cast<_cfibre_cluster_t&>(Context::CurrCluster());
 }
 
 extern "C" int cfibre_errno() {
@@ -54,12 +54,12 @@ extern "C" int* cfibre_errno_set() {
 }
 
 extern "C" int cfibre_pause() {
-  CurrCluster().pause();
+  Context::CurrCluster().pause();
   return 0;
 }
 
 extern "C" int cfibre_resume() {
-  CurrCluster().resume();
+  Context::CurrCluster().resume();
   return 0;
 }
 
@@ -74,7 +74,7 @@ extern "C" int cfibre_resume_cluster(cfibre_cluster_t* cluster) {
 }
 
 extern "C" int cfibre_sproc_prepare(cfibre_sproc_t* sproc) {
-  *sproc = (cfibre_sproc_t)&CurrCluster();
+  *sproc = (cfibre_sproc_t)&Context::CurrCluster();
   return 0;
 }
 
@@ -380,11 +380,11 @@ extern "C" ssize_t cfibre_read(int fildes, void *buf, size_t nbyte) {
 }
 
 extern "C" void cfibre_suspendFD(int fd) {
-  CurrEventScope().suspendFD(fd);
+  Context::CurrEventScope().suspendFD(fd);
 }
 
 extern "C" void cfibre_resumeFD(int fd) {
-  CurrEventScope().resumeFD(fd);
+  Context::CurrEventScope().resumeFD(fd);
 }
 
 extern "C" int cfibre_usleep(useconds_t usec) {

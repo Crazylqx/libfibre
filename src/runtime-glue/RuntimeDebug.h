@@ -17,7 +17,7 @@
 #ifndef _RuntimeDebug_h_
 #define _RuntimeDebug_h_ 1
 
-#include "libfibre/lfbasics.h"
+#include "runtime/ScopedLocks.h"
 #include "libfibre/OsLocks.h"
 
 #if __FreeBSD__

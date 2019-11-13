@@ -18,6 +18,7 @@
 #define _EventScope_h_ 1
 
 #include "libfibre/Fibre.h"
+#include "libfibre/Cluster.h"
 #include "libfibre/OsProcessor.h"
 
 #include <unistd.h>       // close
@@ -131,9 +132,9 @@ public:
     SyncFD& fdsync = fdSyncVector[fd];
     const size_t target = (Input ? BasePoller::Input : 0) | (Output ? BasePoller::Output : 0);
 #if TESTING_PROCESSOR_POLLER
-    BasePoller& cp = Cluster ? CurrCluster().getPoller(fd) : CurrProcessor().getPoller();
+    BasePoller& cp = Cluster ? Context::CurrCluster().getPoller(fd) : Context::CurrProcessor().getPoller();
 #else
-    BasePoller& cp = CurrCluster().getPoller(fd);
+    BasePoller& cp = Context::CurrCluster().getPoller(fd);
 #endif
 
 #if TESTING_LAZY_FD_REGISTRATION
@@ -238,7 +239,7 @@ public:
     // workaround - suspect: https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=129169 - or similar?
     return serrno == EAGAIN || (Input == false && serrno == ENOTCONN);
 #else // __linux__
-//    if (serrno == ECONNRESET) CurrEventScope().stats->resets.count();
+//    if (serrno == ECONNRESET) Context::CurrEventScope().stats->resets.count();
     return serrno == EAGAIN;
 #endif
   }
@@ -265,25 +266,25 @@ public:
 // input: yield before network read
 template<typename T, class... Args>
 T lfInput( T (*readfunc)(int, Args...), int fd, Args... a) {
-  return CurrEventScope().syncIO<true,true>(readfunc, fd, a...);
+  return Context::CurrEventScope().syncIO<true,true>(readfunc, fd, a...);
 }
 
 // output: no yield before write
 template<typename T, class... Args>
 T lfOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
-  return CurrEventScope().syncIO<false,false>(writefunc, fd, a...);
+  return Context::CurrEventScope().syncIO<false,false>(writefunc, fd, a...);
 }
 
 // direct I/O
 template<typename T, class... Args>
 T lfDirectIO( T (*diskfunc)(int, Args...), int fd, Args... a) {
-  return CurrEventScope().directIO(diskfunc, fd, a...);
+  return Context::CurrEventScope().directIO(diskfunc, fd, a...);
 }
 
 // socket creation: do not register SOCK_STREAM yet (cf. listen, connect) -> mandatory for FreeBSD!
 static inline int lfSocket(int domain, int type, int protocol) {
   int ret = socket(domain, type | SOCK_NONBLOCK, protocol);
-  if (ret >= 0) if (type != SOCK_STREAM) CurrEventScope().registerFD<true,true,true,false>(ret);
+  if (ret >= 0) if (type != SOCK_STREAM) Context::CurrEventScope().registerFD<true,true,true,false>(ret);
   return ret;
 }
 
@@ -298,7 +299,7 @@ static inline int lfBind(int fd, const sockaddr *addr, socklen_t addrlen) {
 static inline int lfListen(int fd, int backlog) {
   int ret = listen(fd, backlog);
   if (ret < 0) return ret;
-  CurrEventScope().registerFD<true,false,false,true>(fd);
+  Context::CurrEventScope().registerFD<true,false,false,true>(fd);
   return 0;
 }
 
@@ -306,18 +307,18 @@ static inline int lfListen(int fd, int backlog) {
 static inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
   int ret = accept4(fd, addr, addrlen, flags | SOCK_NONBLOCK);
   if (ret >= 0) {
-    CurrEventScope().stats->srvconn.count();
-    CurrEventScope().registerFD<true,true,true,false>(ret);
+    Context::CurrEventScope().stats->srvconn.count();
+    Context::CurrEventScope().registerFD<true,true,true,false>(ret);
   }
   return ret;
 }
 
 // accept: register new file descriptor for I/O events, no yield before accept
 static inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
-  int ret = CurrEventScope().syncIO<true,false>(accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK);
+  int ret = Context::CurrEventScope().syncIO<true,false>(accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK);
   if (ret >= 0) {
-    CurrEventScope().stats->srvconn.count();
-    CurrEventScope().registerFD<true,true,true,false>(ret);
+    Context::CurrEventScope().stats->srvconn.count();
+    Context::CurrEventScope().registerFD<true,true,true,false>(ret);
   }
   return ret;
 }
@@ -326,15 +327,15 @@ static inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags
 static inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
   int ret = connect(fd, addr, addrlen);
   if (ret >= 0) {
-    CurrEventScope().stats->cliconn.count();
-    CurrEventScope().registerFD<true,true,true,false>(fd);
+    Context::CurrEventScope().stats->cliconn.count();
+    Context::CurrEventScope().registerFD<true,true,true,false>(fd);
   } else if (_SysErrno() == EINPROGRESS) {
-    CurrEventScope().registerFD<true,true,false,false>(fd);
-    CurrEventScope().block<false>(fd);
+    Context::CurrEventScope().registerFD<true,true,false,false>(fd);
+    Context::CurrEventScope().block<false>(fd);
     socklen_t sz = sizeof(ret);
     SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &sz));
     RASSERT(ret == 0, ret);
-    CurrEventScope().stats->cliconn.count();
+    Context::CurrEventScope().stats->cliconn.count();
   }
   return ret;
 }
@@ -342,17 +343,17 @@ static inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
 // dup: duplicate file descriptor -> not necessarily a good idea (on Linux?) - think twice about it!
 static inline int lfDup(int fd) {
   int ret = dup(fd);
-  if (ret >= 0) CurrEventScope().registerFD<true,true,true,false>(ret);
+  if (ret >= 0) Context::CurrEventScope().registerFD<true,true,true,false>(ret);
   return ret;
 }
 
 static inline int lfClose(int fd) {
-  CurrEventScope().deregisterFD(fd);
+  Context::CurrEventScope().deregisterFD(fd);
   return close(fd);
 }
 
 static inline void lfRegister(int fd) {
-  CurrEventScope().registerFD<true,true,false,false>(fd);
+  Context::CurrEventScope().registerFD<true,true,false,false>(fd);
 }
 
 // TODO: lfShutdown: need to handle R/W separately

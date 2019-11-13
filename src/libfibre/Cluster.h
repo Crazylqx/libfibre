@@ -21,7 +21,7 @@
 #include "libfibre/Poller.h"
 
 class Cluster : public Scheduler {
-  EventScope&   scope;
+  EventScope&    scope;
 
 #if TESTING_CLUSTER_POLLER_FIBRE
   typedef PollerFibre PollerType;
@@ -35,7 +35,7 @@ class Cluster : public Scheduler {
   FibreSemaphore confirmSem;
   FibreSemaphore continueSem;
   OsSemaphore    sleepSem;
-  OsProcessor*   pauseProc;
+  BaseProcessor* pauseProc;
 
   void start() {
     for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start();
@@ -49,7 +49,7 @@ class Cluster : public Scheduler {
 
 public:
   Cluster(EventScope& es, size_t p = 1) : Cluster(es, p, _friend<Cluster>()) { start(); }
-  Cluster(size_t p = 1) : Cluster(CurrEventScope(), p) {}
+  Cluster(size_t p = 1) : Cluster(Context::CurrEventScope(), p) {}
 
   // special constructor and start routine for bootstrapping event scope
   Cluster(EventScope& es, size_t p, _friend<EventScope>) : Cluster(es, p, _friend<Cluster>()) {}
@@ -61,7 +61,7 @@ public:
 
   void pause() {
     ringLock.acquire();
-    pauseProc = &CurrProcessor();
+    pauseProc = &Context::CurrProcessor();
     sleepSem.P();
     for (size_t p = 0; p < ringCount; p += 1) pauseSem.V();
     for (size_t p = 0; p < ringCount; p += 1) confirmSem.P();
@@ -76,7 +76,7 @@ public:
     for (;;) {
       cl->pauseSem.P();
       cl->confirmSem.V();
-      if (cl->pauseProc != &CurrProcessor()) {
+      if (cl->pauseProc != &Context::CurrProcessor()) {
         cl->sleepSem.P();
         cl->sleepSem.V();
       }

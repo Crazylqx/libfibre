@@ -21,14 +21,24 @@
 #define __LIBFIBRE__ 1
 #endif
 
+// bootstrap object needs to come first
+#include <atomic>
+static class _Bootstrapper {
+  static std::atomic<int> counter;
+public:
+  _Bootstrapper();
+  ~_Bootstrapper();
+} _lfBootstrap;
+
+// EventScope.h pulls in everything else
 #include "libfibre/EventScope.h"
 
-typedef Fibre*               fibre_t;
-typedef FibreSemaphore       fibre_sem_t;
-typedef FibreMutex           fibre_mutex_t;
-typedef FibreCondition       fibre_cond_t;
-typedef FibreLockRW          fibre_rwlock_t;
-typedef FibreBarrier         fibre_barrier_t;
+typedef Fibre*         fibre_t;
+typedef FibreMutex     fibre_mutex_t;
+typedef FibreCondition fibre_cond_t;
+typedef FibreSemaphore fibre_sem_t;
+typedef FibreLockRW    fibre_rwlock_t;
+typedef FibreBarrier   fibre_barrier_t;
 
 struct fibre_attr_t {
   size_t stackSize;
@@ -39,7 +49,7 @@ struct fibre_attr_t {
     stackSize = defaultStackSize;
     detached = false;
     background = false;
-    cluster = &CurrCluster();
+    cluster = &Context::CurrCluster();
   }
 };
 

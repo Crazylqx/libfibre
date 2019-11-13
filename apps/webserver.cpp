@@ -38,13 +38,14 @@ using namespace std;
 typedef cpuset_t cpu_set_t;
 #endif
 
-#include "libfibre/Garage.h"
+#include "Garage.h"
 
 #ifndef VARIANT
 
 #define __LIBFIBRE__
 #include "libfibre/fibre.h"
-
+#define CurrProcessor Context::CurrProcessor
+#define CurrCluster Context::CurrCluster
 #else /* VARIANT */
 
 #ifndef SYSCALL
@@ -102,7 +103,7 @@ typedef Garage<FibreMutex,FibreCondition> FibreGarage;
 
 static FibreGarage& CurrGarage() {
 #if defined __LIBFIBRE__
-  return *reinterpret_cast<FibreGarage*>(CurrEventScope().getClientData());
+  return *reinterpret_cast<FibreGarage*>(Context::CurrEventScope().getClientData());
 #else
   static FibreGarage garage;
   return garage;
@@ -395,7 +396,7 @@ static void acceptor_loop(void* arg) {
 static void scopemain(void* arg) {
 #if defined __LIBFIBRE__
   FibreGarage garage;
-  CurrEventScope().setClientData(&garage);
+  Context::CurrEventScope().setClientData(&garage);
 #endif
 
 #if defined __LIBFIBRE__ || defined __U_CPLUSPLUS__
@@ -408,7 +409,7 @@ static void scopemain(void* arg) {
     cluster[c] = new Cluster;
   }
   OsProcessor** sproc = new OsProcessor*[threadCount];
-  sproc[0] = &CurrProcessor();
+  sproc[0] = &reinterpret_cast<OsProcessor&>(CurrProcessor());
   for (unsigned int t = 1; t < threadCount; t += 1) {
     sproc[t] = new OsProcessor(*cluster[t/clusterSize]);
   }

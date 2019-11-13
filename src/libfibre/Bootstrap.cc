@@ -14,41 +14,25 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
-#include "runtime/SpinLocks.h"
-#include "libfibre/EventScope.h"
+#include "libfibre/fibre.h"
 
-#include <execinfo.h> // see _lfAbort
 #include <cxxabi.h>   // see _lfAbort
+#include <execinfo.h> // see _lfAbort
+
+// other global objects
+InternalLock*                _lfDebugOutputLock = nullptr; // RuntimeDebug.h
+#if TESTING_ENABLE_DEBUGGING
+InternalLock*                _lfGlobalStackLock = nullptr; // StackContext.h
+GlobalStackList*             _lfGlobalStackList = nullptr; // StackContext.h
+#endif
+#if TESTING_ENABLE_STATISTICS
+IntrusiveQueue<StatsObject>* StatsObject::lst   = nullptr ; // Stats.h
+#endif
+
+// ******************** BOOTSTRAP *************************
 
 // default EventScope object
 static EventScope* _lfEventScope = nullptr; // EventScope.h
-
-// other global pointers
-InternalLock*    _lfDebugOutputLock = nullptr; // RuntimeDebug.h
-
-#if TESTING_ENABLE_DEBUGGING
-InternalLock*    _lfGlobalStackLock = nullptr; // StackContext.h
-GlobalStackList* _lfGlobalStackList = nullptr; // StackContext.h
-#endif
-
-#if TESTING_ENABLE_STATISTICS
-IntrusiveQueue<StatsObject>* StatsObject::lst = nullptr; // Stats.h
-#endif
-
-// ************** Context / lfbasics.h ********************
-
-thread_local StackContext* volatile Context::currStack   = nullptr;
-thread_local OsProcessor*  volatile Context::currProc    = nullptr;
-thread_local Cluster*      volatile Context::currCluster = nullptr;
-thread_local EventScope*   volatile Context::currScope   = nullptr;
-
-void Context::setCurrStack(StackContext& s, _friend<StackContext>) { currStack = &s; }
-StackContext* Context::CurrStack()      { return currStack; }
-OsProcessor*  Context::CurrProcessor()  { return currProc; }
-Cluster*      Context::CurrCluster()    { return currCluster; }
-EventScope*   Context::CurrEventScope() { return currScope; }
-
-// ******************** BOOTSTRAP *************************
 
 // bootstrap counter definition
 std::atomic<int> _Bootstrapper::counter(0);
@@ -63,8 +47,6 @@ static const char* DebugOptions[] = {
 };
 
 static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug options mismatch");
-
-//static char debugstring[1024] = "poll,sched";
 
 _Bootstrapper::_Bootstrapper() {
   if (++counter == 1) {
@@ -83,7 +65,8 @@ _Bootstrapper::_Bootstrapper() {
     size_t p = e ? atoi(e) : 1;
     RASSERT0(p > 0);
     _lfEventScope = new EventScope(_friend<_Bootstrapper>(), p);
-//    DBG::init(DebugOptions, debugstring, false);
+    char* d = getenv("FibreDebugString");
+    if (d) DBG::init(DebugOptions, d, false);
   }
 }
 
@@ -189,10 +172,10 @@ namespace Runtime {
       return ct;
     }
     void newTimeout(const Time& t) {
-      CurrEventScope().setTimer(t);
+      Context::CurrEventScope().setTimer(t);
     }
     TimerQueue& CurrTimerQueue() {
-      return CurrEventScope().getTimerQueue();
+      return Context::CurrEventScope().getTimerQueue();
     }
   }
 }

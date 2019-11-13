@@ -91,7 +91,7 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
 protected:
   // constructor/destructors can only be called by derived classes
   StackContext(BaseProcessor& proc, bool aff = false); // main constructor
-  StackContext(Scheduler&, bool bg = false);             // uses delegation
+  StackContext(Scheduler&, bool bg = false);           // uses delegation
   ~StackContext() {
     RASSERT(suspendState == Running, FmtHex(this), suspendState);
     RASSERT(resumeInfo == nullptr, FmtHex(this));
@@ -118,7 +118,7 @@ public:
     resumeInternal();
   }
 
-  // context switching - static -> apply to CurrStack()
+  // context switching - static -> apply to Context::CurrStack()
   static void idleYieldTo(StackContext& nextStack, _friend<BaseProcessor>);
   static bool yield();
   static bool yieldGlobal();

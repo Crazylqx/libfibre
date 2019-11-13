@@ -20,6 +20,7 @@
 #include "runtime/Debug.h"
 #include "runtime/Stats.h"
 #include "runtime/StackContext.h"
+#include "runtime-glue/RuntimeContext.h"
 #include "runtime-glue/RuntimeLock.h"
 #include "runtime-glue/RuntimeTimer.h"
 
@@ -88,7 +89,7 @@ protected:
 class TimeoutInfo : public virtual BaseSuspender, public BaseTimer {
 public:
   StackContext& stack;
-  TimeoutInfo(StackContext& stack = *CurrStack()) : stack(stack) {}
+  TimeoutInfo(StackContext& stack = *Context::CurrStack()) : stack(stack) {}
   void suspendRelative(const Time& timeout) {
     prepareSuspend(stack);
     prepareRelative(timeout);
@@ -115,12 +116,12 @@ protected:
   Lock& lock;
 public:
   BlockingInfo(Lock& l) : lock(l) {}
-  void suspend(StackContext& stack = *CurrStack()) {
+  void suspend(StackContext& stack = *Context::CurrStack()) {
     prepareSuspend(stack);
     lock.release();
     doSuspend(stack);
   }
-  void suspend(BlockedStackList& queue, StackContext& stack = *CurrStack()) {
+  void suspend(BlockedStackList& queue, StackContext& stack = *Context::CurrStack()) {
     prepareSuspend(stack);
     setupResumeRace(stack);
     queue.push_back(stack);
@@ -134,7 +135,7 @@ class TimeoutBlockingInfo : public BlockingInfo<Lock>, public TimeoutInfo {
   using BaseBI = BlockingInfo<Lock>;
   bool timedOut;
 public:
-  TimeoutBlockingInfo(Lock& l, StackContext& stack = *CurrStack()) : BaseBI(l), TimeoutInfo(stack), timedOut(false) {}
+  TimeoutBlockingInfo(Lock& l, StackContext& stack = *Context::CurrStack()) : BaseBI(l), TimeoutInfo(stack), timedOut(false) {}
   bool suspendAbsolute(BlockedStackList& queue, const Time& timeout, const Time& now) {
     prepareSuspend(stack);
     BaseBI::setupResumeRace(stack);
@@ -190,7 +191,7 @@ inline bool TimerQueue::checkExpiry(const Time& now, Time& newTime) {
 
 static inline void sleepStack(const Time& timeout) {
   TimeoutInfo ti;
-  DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(CurrStack()), " sleep ", timeout);
+  DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " sleep ", timeout);
   ti.suspendRelative(timeout);
 }
 
@@ -227,9 +228,9 @@ public:
   bool block(Lock& lock, bool wait) {
     if (wait) {
       BlockingInfo<Lock> bi(lock);
-      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(CurrStack()), " blocking on ", FmtHex(&queue));
+      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " blocking on ", FmtHex(&queue));
       bi.suspend(queue);
-      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(CurrStack()), " continuing on ", FmtHex(&queue));
+      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " continuing on ", FmtHex(&queue));
       return true;
     }
     lock.release();
@@ -241,9 +242,9 @@ public:
     Time now = Runtime::Timer::now();
     if (timeout > now) {
       TimeoutBlockingInfo<Lock> tbi(lock);
-      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(CurrStack()), " blocking on ", FmtHex(&queue), " timeout ", timeout);
+      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " blocking on ", FmtHex(&queue), " timeout ", timeout);
       bool ret = tbi.suspendAbsolute(queue, timeout, now);
-      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(CurrStack()), " continuing on ", FmtHex(&queue));
+      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " continuing on ", FmtHex(&queue));
       return ret;
     }
     lock.release();
@@ -336,7 +337,7 @@ class FifoMutex {
 protected:
   template<typename... Args>
   bool internalAcquire(const Args&... args) {
-    StackContext* cs = CurrStack();
+    StackContext* cs = Context::CurrStack();
     lock.acquire();
     if (!owner) {
       owner = cs;
@@ -361,7 +362,7 @@ public:
 
   void release() {
     ScopedLock<Lock> al(lock);
-    RASSERT(owner == CurrStack(), FmtHex(owner));
+    RASSERT(owner == Context::CurrStack(), FmtHex(owner));
     owner = bq.unblock();
   }
 };
@@ -375,7 +376,7 @@ class BargingMutex {
 protected:
   template<typename... Args>
   bool internalAcquire(const Args&... args) {
-    StackContext* cs = CurrStack();
+    StackContext* cs = Context::CurrStack();
     for (;;) {
       lock.acquire();
       if (!owner) break;
@@ -397,7 +398,7 @@ public:
 
   void release() {
     ScopedLock<Lock> al(lock);
-    RASSERT(owner == CurrStack(), FmtHex(owner));
+    RASSERT(owner == Context::CurrStack(), FmtHex(owner));
     owner = nullptr;
     bq.unblock();
   }
@@ -411,7 +412,7 @@ class SpinMutex {
 protected:
   template<typename... Args>
   bool internalAcquire(const Args&... args) {
-    StackContext* cs = CurrStack();
+    StackContext* cs = Context::CurrStack();
     if (OwnerLock && cs == owner) return true;
     RASSERT(cs != owner, FmtHex(cs), FmtHex(owner));
     size_t cnt = 0;
@@ -440,7 +441,7 @@ public:
   bool tryAcquire() { return acquire(false); }
 
   void release() {
-    RASSERT(owner == CurrStack(), FmtHex(owner));
+    RASSERT(owner == Context::CurrStack(), FmtHex(owner));
     __atomic_store_n(&owner, nullptr, __ATOMIC_RELAXED); // memory sync via sem.V()
     sem.V();
   }
@@ -603,7 +604,7 @@ public:
   bool wait(Lock& lock) {             // returns false, if detached
     if (state == Running) {
       BlockingInfo<Lock> bi(lock);
-      waiter = CurrStack();
+      waiter = Context::CurrStack();
       bi.suspend(*waiter);
       lock.acquire();                 // reacquire lock to check state
     }
