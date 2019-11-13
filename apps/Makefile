@@ -13,7 +13,7 @@ endif
 all: $(PROGS)
 
 ../src/libfibre.so:
-	$(MAKE) -C .. lib
+	+$(MAKE) -C ../src
 
 $(PROGS): %: %.cpp ../src/libfibre.so
 	$(CXX) $(CXXFLAGS) $< -o $@ -L../src $(LIBS) -Wl,-rpath=$(TOPDIR)/src
