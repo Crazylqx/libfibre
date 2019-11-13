@@ -63,7 +63,7 @@ static unsigned int threadCount = 2;
 static unsigned int duration = 10;
 static unsigned int fibreCount = 4;
 static unsigned int lockCount = 1;
-static unsigned int unlocked = 10000;
+static unsigned int work_unlocked = 10000;
 static unsigned int work_locked = 10000;
 
 static bool yieldFlag = false;
@@ -122,7 +122,7 @@ static bool opts(int argc, char** argv) {
     case 'f': fibreCount = atoi(optarg); break;
     case 'l': lockCount = atoi(optarg); break;
     case 't': threadCount = atoi(optarg); break;
-    case 'u': unlocked = atoi(optarg); break;
+    case 'u': work_unlocked = atoi(optarg); break;
     case 'w': work_locked = atoi(optarg); break;
     case 's': serialFlag = true; break;
     case 'y': yieldFlag = true; break;
@@ -266,14 +266,14 @@ static void worker(void* arg) {
   // run loop
   while (running) {
     // unlocked work
-    dowork(buffer, unlocked);
+    if (work_unlocked != (unsigned int)-1) dowork(buffer, work_unlocked);
     // locked work and counters
 #if TRY_YIELD_LOCK
     while (!locks[lck].mutex.tryAcquire()) Fibre::yield();
 #else
     locks[lck].mutex.acquire();
 #endif
-    dowork(buffer, work_locked);
+    if (work_locked != (unsigned int)-1) dowork(buffer, work_locked);
     workers[num].counter += 1;
     locks[lck].counter += 1;
     locks[lck].mutex.release();
@@ -313,6 +313,17 @@ int main(int argc, char** argv) {
   // parse command-line arguments
   if (!opts(argc, argv)) EXITMAIN;
 
+  // print configuration
+  cout << "threads: " << threadCount << " workers: " << fibreCount << " locks: " << lockCount;
+  if (affinityFlag) cout << " affinity";
+  if (serialFlag) cout << " serial";
+  if (yieldFlag) cout << " yield";
+  cout << endl;
+  cout << "duration: " << duration;
+  if (work_locked != (unsigned int)-1) cout << " locked work: " << work_locked;
+  if (work_unlocked != (unsigned int)-1) cout << " unlocked work: " << work_unlocked;
+  cout << endl;
+
   // set up random number generator
   srandom(time(nullptr));
 
@@ -322,7 +333,7 @@ int main(int argc, char** argv) {
     cout << "time overhead: " << timerOverhead << endl;
     unsigned int l = calibrateInterval(work_locked);
     cout << "WORK: -w " << l << endl;
-    unsigned int u = calibrateInterval(unlocked);
+    unsigned int u = calibrateInterval(work_unlocked);
     cout << "UNLOCKED work: -u " << u << endl;
     cout << endl;
     cout << "WARNING: these numbers are not necessarily very accurate.";
@@ -443,14 +454,6 @@ int main(int argc, char** argv) {
 #if defined MORDOR_MAIN
   poolScheduler->stop();
 #endif
-
-  // print configuration
-  cout << "threads: " << threadCount << " workers: " << fibreCount << " locks: " << lockCount;
-  if (affinityFlag) cout << " affinity";
-  if (serialFlag) cout << " serial";
-  if (yieldFlag) cout << " yield";
-  cout << endl;
-  cout << "duration: " << duration << " locked work: " << work_locked << " unlocked work: " << unlocked << endl;
 
   // collect and print work results
   unsigned long long wsum = 0;
