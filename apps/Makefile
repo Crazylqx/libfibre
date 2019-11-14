@@ -1,7 +1,8 @@
 include ../Makefile.config
 TOPDIR=$(realpath ..)
 SOURCES=$(wildcard *.cpp)
-PROGS=$(subst .cpp,,$(SOURCES))
+TARGETS=$(subst .cpp,,$(SOURCES))
+DEPENDS=$(subst .cpp,.d,$(SOURCES))
 
 CXXFLAGS+=-I. -I../src -I../src/libfibre
 
@@ -10,13 +11,16 @@ ifeq ($(shell uname),FreeBSD)
 LIBS+=-lpthread -lexecinfo # needed for backtrace_symbols()
 endif
 
-all: $(PROGS)
+.PHONY: all clean
+
+all: $(TARGETS)
 
 ../src/libfibre.so:
 	+$(MAKE) -C ../src
 
-$(PROGS): %: %.cpp ../src/libfibre.so
-	$(CXX) $(CXXFLAGS) $< -o $@ -L../src $(LIBS) -Wl,-rpath=$(TOPDIR)/src
+# also creates dependencies
+$(TARGETS): %: %.cpp ../src/libfibre.so
+	$(CXX) $(CXXFLAGS) -MMD $< -o $@ -L../src $(LIBS) -Wl,-rpath=$(TOPDIR)/src
 
 pordering: ordering.cpp
 	$(CXX) -pthread $< -o $@
@@ -96,18 +100,10 @@ fwebserver: webserver
 extra: athreadtest bthreadtest fthreadtest gthreadtest lthreadtest mthreadtest pthreadtest qthreadtest uthreadtest \
 	fwebserver gwebserver lwebserver pwebserver uwebserver pordering
 
-.PHONY: clean vclean dep depend
-
 clean:
-	rm -f $(PROGS) pordering
+	rm -f $(TARGETS) $(DEPENDS) pordering
 	rm -f athreadtest bthreadtest fthreadtest gthreadtest lthreadtest mthreadtest pthreadtest qthreadtest uthreadtest
 	rm -f fwebserver gwebserver lwebserver pwebserver uwebserver
 
-vclean: clean
-	rm -f Makefile.dep
-
-dep depend Makefile.dep:
-	$(CXX) -MM $(CXXFLAGS) $(SOURCES) > Makefile.dep
-
--include Makefile.dep
 -include Makefile.local # development/testing targets, not for release
+-include $(DEPENDS)

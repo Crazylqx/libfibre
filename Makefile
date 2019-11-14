@@ -11,7 +11,9 @@ NPROC=$(shell sysctl kern.smp.cpus|cut -c16- || echo 1)
 else
 NPROC=$(shell nproc || echo 1)
 endif
+ifeq ($(strip $(MAKEFLAGS)),)
 MAKEFLAGS=-j $(NPROC)
+endif
 
 .PHONY: lib apps extra
 
