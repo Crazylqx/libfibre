@@ -134,8 +134,9 @@ public:
     if (sg) return stagingProc;
 #endif
     RASSERT0(placeProc);
+    // ring insert is traversal-safe, so could use separate 'placeLock' here
     ScopedLock<RuntimeSchedulerLock> sl(ringLock);
-    placeProc = ProcessorRing::next(*placeProc); // ring insert/remove is traversal-safe
+    placeProc = ProcessorRing::next(*placeProc);
     return *placeProc;
 #endif
   }

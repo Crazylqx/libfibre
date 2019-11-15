@@ -24,7 +24,7 @@ class Cluster : public Scheduler {
   EventScope&    scope;
 
 #if TESTING_CLUSTER_POLLER_FIBRE
-  typedef PollerFibre PollerType;
+  typedef PollerFibre  PollerType;
 #else
   typedef PollerThread PollerType;
 #endif
@@ -32,17 +32,18 @@ class Cluster : public Scheduler {
   size_t         pollCount;
 
   FibreSemaphore pauseSem;
-  FibreSemaphore confirmSem;
-  FibreSemaphore continueSem;
+  OsSemaphore    confirmSem;
   OsSemaphore    sleepSem;
   BaseProcessor* pauseProc;
+
+  ClusterStats*  stats;
 
   void start() {
     for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start();
   }
 
-  Cluster(EventScope& es, size_t p, _friend<Cluster>)
-    : scope(es), pollCount(p), sleepSem(1), pauseProc(nullptr) {
+  Cluster(EventScope& es, size_t p, _friend<Cluster>) : scope(es), pollCount(p), pauseProc(nullptr) {
+    stats = new ClusterStats(this);
     pollVec = (PollerType*)new char[sizeof(PollerType[pollCount])];
     for (size_t p = 0; p < pollCount; p += 1) new (&pollVec[p]) PollerType(scope, stagingProc);
   }
@@ -61,27 +62,18 @@ public:
 
   void pause() {
     ringLock.acquire();
+    stats->procs.count(ringCount);
     pauseProc = &Context::CurrProcessor();
-    sleepSem.P();
     for (size_t p = 0; p < ringCount; p += 1) pauseSem.V();
-    for (size_t p = 0; p < ringCount; p += 1) confirmSem.P();
+    for (size_t p = 1; p < ringCount; p += 1) confirmSem.P();
   }
 
   void resume() {
-    sleepSem.V();
+    for (size_t p = 1; p < ringCount; p += 1) sleepSem.V();
     ringLock.release();
   }
 
-  static void maintenance(Cluster* cl) {
-    for (;;) {
-      cl->pauseSem.P();
-      cl->confirmSem.V();
-      if (cl->pauseProc != &Context::CurrProcessor()) {
-        cl->sleepSem.P();
-        cl->sleepSem.V();
-      }
-    }
-  }
+  static void maintenance(Cluster* cl);
 };
 
 #endif /* _Cluster_h_ */

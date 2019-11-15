@@ -21,6 +21,7 @@
 
 static ProcessorStats*   totalProcessorStats   = nullptr;
 static LoadManagerStats* totalLoadManagerStats = nullptr;
+static ClusterStats*     totalClusterStats     = nullptr;
 static TimerStats*       totalTimerStats       = nullptr;
 static ConnectionStats*  totalConnectionStats  = nullptr;
 static PollerStats*      totalPollerStats      = nullptr;
@@ -33,6 +34,7 @@ bool StatsObject::print(ostream& os) {
 void StatsObject::printAll(ostream& os) {
   totalProcessorStats   = new ProcessorStats  (0, "Processor (total)");
   totalLoadManagerStats = new LoadManagerStats(0, "LoadManager (total)");
+  totalClusterStats     = new ClusterStats    (0, "Cluster (total)");
   totalTimerStats       = new TimerStats      (0, "Timer (total)");
   totalConnectionStats  = new ConnectionStats (0, "Connections (total)");
   totalPollerStats      = new PollerStats     (0, "Poller (total)");
@@ -56,6 +58,14 @@ bool LoadManagerStats::print(ostream& os) {
   if (tasks == 0) return false;
   StatsObject::print(os);
   os << tasks << ' ' << blocks;
+  return true;
+}
+
+bool ClusterStats::print(ostream& os) {
+  if (totalClusterStats && this != totalClusterStats) totalClusterStats->aggregate(*this);
+  if (pauses == 0) return false;
+  StatsObject::print(os);
+  os << procs << ' ' << pauses << ' ' << sleeps;
   return true;
 }
 

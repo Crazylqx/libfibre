@@ -174,6 +174,19 @@ struct LoadManagerStats : public StatsObject {
   }
 };
 
+struct ClusterStats : public StatsObject {
+  Counter procs;
+  Counter pauses;
+  Counter sleeps;
+  ClusterStats(void* o, const char* n = "Cluster") : StatsObject(o, n) {}
+  bool print(ostream& os);
+  void aggregate(const ClusterStats& x) {
+    procs.aggregate(x.procs);
+    pauses.aggregate(x.pauses);
+    sleeps.aggregate(x.sleeps);
+  }
+};
+
 struct TimerStats : public StatsObject {
   Average events;
   TimerStats(void* o, const char* n = "Timer") : StatsObject(o, n) {}
