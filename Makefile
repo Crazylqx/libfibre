@@ -4,7 +4,6 @@ help:
 	@echo "$(MAKE) lib      build library"
 	@echo "$(MAKE) apps     build test programs"
 	@echo "$(MAKE) clean    clean everything"
-	@echo "$(MAKE) dep      build dependencies"
 
 ifeq ($(shell uname -s),FreeBSD)
 NPROC=$(shell sysctl kern.smp.cpus|cut -c16- || echo 1)
@@ -29,5 +28,15 @@ apps:
 
 extra: all
 	+nice -10 $(MAKE) -C apps $@
+
+clean: cleandoc
+	nice -10 $(MAKE) -C src clean
+	nice -10 $(MAKE) -C apps clean
+
+doc:
+	doxygen Doxyfile
+
+cleandoc:
+	rm -rf html latex
 
 -include Makefile.local # development/testing targets, not for release
