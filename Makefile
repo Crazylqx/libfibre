@@ -3,6 +3,7 @@ help:
 	@echo "$(MAKE) all      build library + test programs"
 	@echo "$(MAKE) lib      build library"
 	@echo "$(MAKE) apps     build test programs"
+	@echo "$(MAKE) doc      build documentation"
 	@echo "$(MAKE) clean    clean everything"
 
 ifeq ($(shell uname -s),FreeBSD)
@@ -14,7 +15,7 @@ ifeq ($(strip $(MAKEFLAGS)),)
 MAKEFLAGS=-j $(NPROC)
 endif
 
-.PHONY: lib apps extra
+.PHONY: lib apps extra doc
 
 .DEFAULT:
 	+nice -10 $(MAKE) -C src $@
@@ -29,14 +30,12 @@ apps:
 extra: all
 	+nice -10 $(MAKE) -C apps $@
 
-clean: cleandoc
-	nice -10 $(MAKE) -C src clean
-	nice -10 $(MAKE) -C apps clean
+vclean: cleandoc clean
 
 doc:
-	doxygen Doxyfile
+	+nice -10 $(MAKE) -C doc doc
 
 cleandoc:
-	rm -rf html latex
+	+nice -10 $(MAKE) -C doc clean
 
 -include Makefile.local # development/testing targets, not for release

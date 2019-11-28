@@ -7,19 +7,19 @@ Running `make` builds the fibre library in `src/libfibre.so` along with several 
 
 Both Linux/epoll and FreeBSD/kqueue are supported, but significantly more testing has been done for Linux/epoll.
 
-### Collaborators
-
-The runtime has originally been developed in close collaboration with Saman Barghi. All bugs are mine though. ;-)
-
 ### Contributors
 
-The following students (in alphabetical order) have helped with various parts of libfibre:
+The runtime has originally been developed in close collaboration with Saman Barghi.
+
+In addition, the following students (in alphabetical order) have helped with various parts of libfibre:
 
 - Qin An (FreeBSD/kqueue)
 - Bilal Akhtar (gdb extension)
 - Peng Chen (split stack support)
 - Wen Shi (gdb extension)
 - Shuangyi Tong (multiple event scopes)
+
+ All bugs are mine though. ;-)
 
 ### License
 
