@@ -17,6 +17,8 @@
 #ifndef _EventScope_h_
 #define _EventScope_h_ 1
 
+/** @file */
+
 #include "libfibre/Fibre.h"
 #include "libfibre/Cluster.h"
 #include "libfibre/OsProcessor.h"
@@ -85,13 +87,13 @@ class EventScope {
 public:
   ConnectionStats* stats;
 
-  EventScope(size_t p = 1, void* cd = nullptr) : diskCluster(nullptr), clientData(cd) {
-    mainCluster = new Cluster(*this, p, _friend<EventScope>()); // delayed master poller start
-    mainProcessor = new OsProcessor(*mainCluster, split, this, _friend<EventScope>());
-    mainProcessor->waitUntilRunning(); // wait for new pthread to finish initialization
+  /** Constructor. */
+  EventScope(size_t pollerCount = 1, void* cd = nullptr) : diskCluster(nullptr), clientData(cd) {
+    mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>()); // delayed master poller start
+    mainProcessor = new OsProcessor(*mainCluster, split, this, _friend<EventScope>()); // waits until phread running and split() called
   }
-  EventScope(_friend<_Bootstrapper> fb, size_t p = 1) : diskCluster(nullptr), clientData(nullptr) {
-    mainCluster = new Cluster(*this, p, _friend<EventScope>()); // delayed master poller start
+  EventScope(_friend<_Bootstrapper> fb, size_t pollerCount = 1) : diskCluster(nullptr), clientData(nullptr) {
+    mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>()); // delayed master poller start
     mainProcessor = new OsProcessor(*mainCluster, fb);
     init(); // bootstrap event scope -> no unshare() necessary
   }
@@ -102,12 +104,14 @@ public:
     delete[] fdSyncVector;
   }
 
+  /** Create disk cluster (if needed for application). */
   Cluster& addDiskCluster() {
     RASSERT0(!diskCluster);
     diskCluster = new Cluster;
     return *diskCluster;
   }
 
+  /** Obtain reference to main cluster - needed to bootstrap fibres in new event scope. */
   Cluster& getMainCluster() { return *mainCluster; }
 
   void setClientData(void* cd) { clientData = cd; }
@@ -269,58 +273,50 @@ public:
   }
 };
 
-// input: yield before network read
+/** @brief Generic input wrapper. User-level-block if file descriptor not ready for reading. */
 template<typename T, class... Args>
-T lfInput( T (*readfunc)(int, Args...), int fd, Args... a) {
-  return Context::CurrEventScope().syncIO<true,true>(readfunc, fd, a...);
+inline T lfInput( T (*readfunc)(int, Args...), int fd, Args... a) {
+  return Context::CurrEventScope().syncIO<true,true>(readfunc, fd, a...); // yield before read
 }
 
-// output: no yield before write
+/** @brief Generic output wrapper. User-level-block if file descriptor not ready for writing. */
 template<typename T, class... Args>
-T lfOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
-  return Context::CurrEventScope().syncIO<false,false>(writefunc, fd, a...);
+inline T lfOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
+  return Context::CurrEventScope().syncIO<false,false>(writefunc, fd, a...); // no yield before write
 }
 
-// direct I/O
+/** @brief Generic wrapper for I/O that cannot be polled. Fibre is migrated to disk cluster for execution. */
 template<typename T, class... Args>
-T lfDirectIO( T (*diskfunc)(int, Args...), int fd, Args... a) {
+inline T lfDirectIO( T (*diskfunc)(int, Args...), int fd, Args... a) {
   return Context::CurrEventScope().directIO(diskfunc, fd, a...);
 }
 
-// socket creation: do not register SOCK_STREAM yet (cf. listen, connect) -> mandatory for FreeBSD!
-static inline int lfSocket(int domain, int type, int protocol) {
+/** @brief Create new socket. */
+inline int lfSocket(int domain, int type, int protocol) {
   int ret = socket(domain, type | SOCK_NONBLOCK, protocol);
+  // do not register SOCK_STREAM yet (cf. listen, connect) -> mandatory for FreeBSD!
   if (ret >= 0) if (type != SOCK_STREAM) Context::CurrEventScope().registerFD<true,true,true,false>(ret);
   return ret;
 }
 
-// POSIX says that bind might fail with EINPROGRESS (but not on Linux/FreeBSD)
-static inline int lfBind(int fd, const sockaddr *addr, socklen_t addrlen) {
+/** @brief Bind socket to local name. */
+inline int lfBind(int fd, const sockaddr *addr, socklen_t addrlen) {
   int ret = bind(fd, addr, addrlen);
   if (ret < 0 && _SysErrno() != EINPROGRESS) return ret;
   return 0;
 }
 
-// register SOCK_STREAM server fd only after 'listen' system call (cf. socket/connect)
-static inline int lfListen(int fd, int backlog) {
+/** @brief Set up socket listen queue. */
+inline int lfListen(int fd, int backlog) {
   int ret = listen(fd, backlog);
   if (ret < 0) return ret;
+  // register SOCK_STREAM server fd only after 'listen' system call (cf. socket/connect)
   Context::CurrEventScope().registerFD<true,false,false,true>(fd);
   return 0;
 }
 
-// nonblocking accept for accept draining: register new file descriptor for I/O events
-static inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
-  int ret = accept4(fd, addr, addrlen, flags | SOCK_NONBLOCK);
-  if (ret >= 0) {
-    Context::CurrEventScope().stats->srvconn.count();
-    Context::CurrEventScope().registerFD<true,true,true,false>(ret);
-  }
-  return ret;
-}
-
-// accept: register new file descriptor for I/O events, no yield before accept
-static inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
+/** @brief Accept new connection. New file descriptor registered for I/O events. */
+inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
   int ret = Context::CurrEventScope().syncIO<true,false>(accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK);
   if (ret >= 0) {
     Context::CurrEventScope().stats->srvconn.count();
@@ -329,8 +325,18 @@ static inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags
   return ret;
 }
 
-// see man 3 connect for EINPROGRESS; register SOCK_STREAM fd now (cf. socket/listen)
-static inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
+/** @brief Nonblocking accept for listen queue draining. New file descriptor registered for I/O events. */
+inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
+  int ret = accept4(fd, addr, addrlen, flags | SOCK_NONBLOCK);
+  if (ret >= 0) {
+    Context::CurrEventScope().stats->srvconn.count();
+    Context::CurrEventScope().registerFD<true,true,true,false>(ret);
+  }
+  return ret;
+}
+
+/** @brief Create new connection. */
+inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
   int ret = connect(fd, addr, addrlen);
   if (ret >= 0) {
     Context::CurrEventScope().stats->cliconn.count();
@@ -346,22 +352,18 @@ static inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
   return ret;
 }
 
-// dup: duplicate file descriptor -> not necessarily a good idea (on Linux?) - think twice about it!
-static inline int lfDup(int fd) {
+// not necessarily a good idea (on Linux?)
+/** @brief Clone file descriptor. */
+inline int lfDup(int fd) {
   int ret = dup(fd);
   if (ret >= 0) Context::CurrEventScope().registerFD<true,true,true,false>(ret);
   return ret;
 }
 
-static inline int lfClose(int fd) {
+/** @brief Close file descriptor. */
+inline int lfClose(int fd) {
   Context::CurrEventScope().deregisterFD(fd);
   return close(fd);
 }
-
-static inline void lfRegister(int fd) {
-  Context::CurrEventScope().registerFD<true,true,false,false>(fd);
-}
-
-// TODO: lfShutdown: need to handle R/W separately
 
 #endif /* _EventScope_h_ */

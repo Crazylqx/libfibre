@@ -54,18 +54,20 @@ class Cluster : public Scheduler {
   }
 
 public:
-  /** @brief Create cluster */
-  Cluster(EventScope& es, size_t p = 1) : Cluster(es, p, _friend<Cluster>()) { start(); }
-  Cluster(size_t p = 1) : Cluster(Context::CurrEventScope(), p) {}
+  /** Constructor: create Cluster in current EventScope. */
+  Cluster(size_t pollerCount = 1) : Cluster(Context::CurrEventScope(), pollerCount) {}
+  /** Constructor: create Cluster in specfied EventScope. */
+  Cluster(EventScope& es, size_t pollerCount = 1) : Cluster(es, pollerCount, _friend<Cluster>()) { start(); }
 
   // special constructor and start routine for bootstrapping event scope
-  Cluster(EventScope& es, size_t p, _friend<EventScope>) : Cluster(es, p, _friend<Cluster>()) {}
+  Cluster(EventScope& es, size_t pollerCount, _friend<EventScope>) : Cluster(es, pollerCount, _friend<Cluster>()) {}
   void startPolling(_friend<EventScope>) { start(); }
 
   EventScope& getEventScope() { return scope; }
   PollerType& getPoller(size_t hint) { return pollVec[hint % pollCount]; }
   size_t getPollerCount() { return pollCount; }
 
+  /** Pause all OsProcessors (except caller). */
   void pause() {
     ringLock.acquire();
     stats->procs.count(ringCount);
@@ -74,6 +76,7 @@ public:
     for (size_t p = 1; p < ringCount; p += 1) confirmSem.P();
   }
 
+  /** Pause all OsProcessors. */
   void resume() {
     for (size_t p = 1; p < ringCount; p += 1) sleepSem.V();
     ringLock.release();

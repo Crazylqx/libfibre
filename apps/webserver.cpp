@@ -88,7 +88,6 @@ static unsigned int threadCount = 1;
 static bool affinityFlag = false;
 static bool groupAffinityFlag = false;
 static bool singleServerSocket = true;
-static bool eagerRegistration = false;
 
 // system configuration, if needed (set listen backlog to maximum value)
 static int maxBacklog = -1;
@@ -129,7 +128,7 @@ static void exitHandler(int sig) {
 // command-line option processing
 static void opts(int argc, char** argv) {
   for (;;) {
-    int option = getopt( argc, argv, "c:e:l:t:agmrh?" );
+    int option = getopt( argc, argv, "c:e:l:t:agmh?" );
     if ( option < 0 ) break;
     switch(option) {
     case 'c': clusterSize = atoi(optarg); break;
@@ -139,7 +138,6 @@ static void opts(int argc, char** argv) {
     case 'a': affinityFlag = true; break;
     case 'g': groupAffinityFlag = true; break;
     case 'm': singleServerSocket = false; break;
-    case 'r': eagerRegistration = true; break;
     case 'h':
     case '?':
       usage(argv[0]);
@@ -340,9 +338,6 @@ static void acceptor(void* arg) {
     uSocketAccept* connFD = new uSocketAccept(*servFD);
 #else
     uintptr_t connFD = lfAccept(servFD, nullptr, nullptr);
-#if defined __LIBFIBRE__
-    if (eagerRegistration) lfRegister(connFD);
-#endif
 #if __FreeBSD__
     int on = 1;
     SYSCALL(setsockopt(connFD, IPPROTO_TCP, TCP_NODELAY, (const void*)&on, sizeof(on)));
@@ -371,9 +366,6 @@ static void acceptor_loop(void* arg) {
     uSocketAccept* connFD = new uSocketAccept(*servFD);
 #else
     uintptr_t connFD = lfAccept(servFD, nullptr, nullptr);
-#if defined __LIBFIBRE__
-    if (eagerRegistration) lfRegister(connFD);
-#endif
 #if __FreeBSD__
     int on = 1;
     SYSCALL(setsockopt(connFD, IPPROTO_TCP, TCP_NODELAY, (const void*)&on, sizeof(on)));

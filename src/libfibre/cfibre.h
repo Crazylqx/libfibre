@@ -17,36 +17,30 @@
 #ifndef _cfibre_h_
 #define _cfibre_h_ 1
 
-/** @file */
+/**
+ @file
+ Additionally, all routines in fibre.h are available as corresponding 'cfibre' version.
+ */
 
-#include <unistd.h>     // useconds_t
 #include <time.h>       // struct timespec
+#include <unistd.h>     // useconds_t
 #include <sys/socket.h> // socket types
 #include <pthread.h>
 
-struct _cfibre_t;
-struct _cfibre_sem_t;
-struct _cfibre_mutex_t;
-struct _cfibre_cond_t;
-struct _cfibre_rwlock_t;
-struct _cfibre_barrier_t;
-struct _cfibre_sproc_t;
+typedef struct _cfibre_t*             cfibre_t;
+typedef struct _cfibre_sem_t*         cfibre_sem_t;
+typedef struct _cfibre_mutex_t*       cfibre_mutex_t;
+typedef struct _cfibre_cond_t*        cfibre_cond_t;
+typedef struct _cfibre_rwlock_t*      cfibre_rwlock_t;
+typedef struct _cfibre_barrier_t*     cfibre_barrier_t;
+typedef struct _cfibre_attr_t*        cfibre_attr_t;
+typedef struct _cfibre_mutexattr_t*   cfibre_mutexattr_t;
+typedef struct _cfibre_condattr_t*    cfibre_condattr_t;
+typedef struct _cfibre_rwlockattr_t*  cfibre_rwlockattr_t;
+typedef struct _cfibre_barrierattr_t* cfibre_barrierattr_t;
 
-typedef struct _cfibre_t*         cfibre_t;
-typedef struct _cfibre_sem_t*     cfibre_sem_t;
-typedef struct _cfibre_mutex_t*   cfibre_mutex_t;
-typedef struct _cfibre_cond_t*    cfibre_cond_t;
-typedef struct _cfibre_rwlock_t*  cfibre_rwlock_t;
-typedef struct _cfibre_barrier_t* cfibre_barrier_t;
-typedef struct _cfibre_cluster_t* cfibre_cluster_t;
-typedef struct _cfibre_sproc_t*   cfibre_sproc_t;
-
-typedef struct _cfibre_attr_t*    cfibre_attr_t;
-
-typedef int cfibre_mutexattr_t;
-typedef int cfibre_condattr_t;
-typedef int cfibre_rwlockattr_t;
-typedef int cfibre_barrierattr_t;
+typedef struct _cfibre_cluster_t*     cfibre_cluster_t;
+typedef struct _cfibre_sproc_t*       cfibre_sproc_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -68,9 +62,13 @@ int cfibre_pause_cluster(cfibre_cluster_t* cluster);
 /** @brief Resume processors in specified Cluster. */
 int cfibre_resume_cluster(cfibre_cluster_t* cluster);
 
+/** @brief Create Processor. */
 int cfibre_sproc_create(cfibre_sproc_t* sp, cfibre_cluster_t cluster);
+/** @brief Create Processor and run init routine `func(arg)` first. */
 int cfibre_sproc_create_init(cfibre_sproc_t* sp, cfibre_cluster_t cluster, void (*func)(void *), void *arg);
+/** @brief Destroy Processor */
 int cfibre_sproc_destroy(cfibre_sproc_t* sp);
+/** @brief Obtain processor's OS-level pthread ID */
 pthread_t cfibre_sproc_pthread(cfibre_sproc_t sp);
 
 /** @brief Read OS-level `errno` variable (special routine due to TLS). */
@@ -78,25 +76,15 @@ int cfibre_get_errno(void);
 /** @brief Write OS-level `errno` variable (special routine due to TLS). */
 void cfibre_set_errno(int);
 
-/** @brief See @ref fibre_attr_init */
 int cfibre_attr_init(cfibre_attr_t *attr);
-/** @brief See @ref fibre_attr_destroy */
 int cfibre_attr_destroy(cfibre_attr_t *attr);
-/** @brief See @ref fibre_attr_setstacksize */
 int cfibre_attr_setstacksize(cfibre_attr_t *attr, size_t stacksize);
-/** @brief See @ref fibre_attr_getstacksize */
 int cfibre_attr_getstacksize(const cfibre_attr_t *attr, size_t *stacksize);
-/** @brief See @ref fibre_attr_getstacksize */
 int cfibre_attr_setdetachstate(cfibre_attr_t *attr, int detachstate);
-/** @brief See @ref fibre_attr_getdetachstate */
 int cfibre_attr_getdetachstate(const cfibre_attr_t *attr, int *detachstate);
-/** @brief See @ref fibre_attr_setbackground */
 int cfibre_attr_setbackground(cfibre_attr_t *attr, int background);
-/** @brief See @ref fibre_attr_getbackground */
 int cfibre_attr_getbackground(const cfibre_attr_t *attr, int *background);
-/** @brief See @ref fibre_attr_setcluster */
 int cfibre_attr_setcluster(cfibre_attr_t *attr, cfibre_cluster_t cluster);
-/** @brief See @ref fibre_attr_getcluster */
 int cfibre_attr_getcluster(const cfibre_attr_t *attr, cfibre_cluster_t *cluster);
 
 int cfibre_create(cfibre_t *thread, const cfibre_attr_t *attr, void *(*start_routine) (void *), void *arg);
@@ -141,27 +129,47 @@ int cfibre_barrier_init(cfibre_barrier_t *restrict barrier, const cfibre_barrier
 int cfibre_barrier_destroy(cfibre_barrier_t *barrier);
 int cfibre_barrier_wait(cfibre_barrier_t *barrier);
 
+/** @brief Sleep fibre. (`usleep`). */
 int cfibre_usleep(useconds_t uses);
+/** @brief Sleep fibre. (`sleep`). */
 int cfibre_sleep(unsigned int secs);
 
+/** @brief Create socket. (`socket`). */
 int cfibre_socket(int domain, int type, int protocol);
+/** @brief Bind socket. (`bind`). */
 int cfibre_bind(int socket, const struct sockaddr *address, socklen_t address_len);
+/** @brief Set up socket listen queue. (`listen`). */
 int cfibre_listen(int socket, int backlog);
+/** @brief Accept new connection. (`accept`). */
 int cfibre_accept(int socket, struct sockaddr *restrict address, socklen_t *restrict address_len);
+/** @brief Accept new connection with flags. (`accept4`). */
 int cfibre_accept4(int socket, struct sockaddr *restrict address, socklen_t *restrict address_len, int flags);
+/** @brief Create new connection. (`connect`). */
 int cfibre_connect(int socket, const struct sockaddr *address, socklen_t address_len);
+/** @brief Clone file descriptor. (`dup`). */
 int cfibre_dup(int fildes);
+/** @brief Close file descriptor. (`close`). */
 int cfibre_close(int fildes);
+/** @brief Output via socket. (`send`). */
 ssize_t cfibre_send(int socket, const void *buffer, size_t length, int flags);
+/** @brief Output via socket. (`sendto`). */
 ssize_t cfibre_sendto(int socket, const void *message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len);
+/** @brief Output via socket. (`sendmsg`). */
 ssize_t cfibre_sendmsg(int socket, const struct msghdr *message, int flags);
+/** @brief Output via socket/file. (`write`). */
 ssize_t cfibre_write(int fildes, const void *buf, size_t nbyte);
+/** @brief Receive via socket. (`recv`). */
 ssize_t cfibre_recv(int socket, void *buffer, size_t length, int flags);
+/** @brief Receive via socket. (`recvfrom`). */
 ssize_t cfibre_recvfrom(int socket, void *restrict buffer, size_t length, int flags, struct sockaddr *restrict address, socklen_t *restrict address_len);
+/** @brief Receive via socket. (`recvmsg`). */
 ssize_t cfibre_recvmsg(int socket, struct msghdr *message, int flags);
+/** @brief Receive via socket/file. (`read`). */
 ssize_t cfibre_read(int fildes, void *buf, size_t nbyte);
 
+/** @brief temporarily halt event handling for FD */
 void cfibre_suspendFD(int fd);
+/** @brief resume event handling for FD */
 void cfibre_resumeFD(int fd);
 
 #ifdef __cplusplus

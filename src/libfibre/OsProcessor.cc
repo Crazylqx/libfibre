@@ -33,13 +33,6 @@ EventScope&    Context::CurrEventScope() { RASSERT0(currScope);   return *currSc
 
 void Context::setCurrStack(StackContext& s, _friend<StackContext>) { currStack = &s; }
 
-void OsProcessor::setupFakeContext(EventScope* es, _friend<BaseThreadPoller>) {
-  currStack = nullptr;
-  currProc = nullptr;
-  currCluster = nullptr;
-  currScope = es;
-}
-
 inline void OsProcessor::setupContext() {
   Cluster& cl = reinterpret_cast<Cluster&>(scheduler);
   currProc = this;
@@ -94,6 +87,9 @@ OsProcessor::OsProcessor(Cluster& cl, funcvoid1_t initFunc, ptr_t arg) : BasePro
 
 OsProcessor::OsProcessor(Cluster& cl, funcvoid1_t initFunc, ptr_t arg, _friend<EventScope>) : BaseProcessor(cl), initFibre(nullptr) {
   idleLoopCreatePthread(initFunc, arg); // create pthread running idleLoop
+  RASSERT0(initFibre);
+  delete initFibre;
+  initFibre = nullptr;
 }
 
 OsProcessor::OsProcessor(Cluster& cl, _friend<_Bootstrapper>) : BaseProcessor(cl), initFibre(nullptr) {
@@ -106,8 +102,9 @@ OsProcessor::OsProcessor(Cluster& cl, _friend<_Bootstrapper>) : BaseProcessor(cl
   scheduler.addProcessor(*this); // first processor -> should not block, but need currStack set for ringLock
 }
 
-void OsProcessor::waitUntilRunning() {
-  RASSERT0(initFibre);
-  delete initFibre;
-  initFibre = nullptr;
+void OsProcessor::setupFakeContext(EventScope* es, _friend<BaseThreadPoller>) {
+  currStack = nullptr;
+  currProc = nullptr;
+  currCluster = nullptr;
+  currScope = es;
 }

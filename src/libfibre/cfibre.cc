@@ -28,7 +28,11 @@ struct _cfibre_sproc_t   : public OsProcessor {
   _cfibre_sproc_t(Cluster& c, funcvoid1_t func = nullptr, ptr_t arg = nullptr) : OsProcessor(c, func, arg) {}
 };
 
-struct _cfibre_attr_t    : public fibre_attr_t {};
+struct _cfibre_attr_t        : public fibre_attr_t {};
+struct _cfibre_mutexattr_t   : public fibre_mutexattr_t {};
+struct _cfibre_condattr_t    : public fibre_condattr_t {};
+struct _cfibre_rwlockattr_t  : public fibre_rwlockattr_t {};
+struct _cfibre_barrierattr_t : public fibre_barrierattr_t {};
 
 extern "C" int cfibre_cluster_create(cfibre_cluster_t* cluster) {
   *cluster = new _cfibre_cluster_t;

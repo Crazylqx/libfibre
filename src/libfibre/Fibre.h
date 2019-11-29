@@ -17,6 +17,8 @@
 #ifndef _Fibre_h_
 #define _Fibre_h_ 1
 
+/** @file */
+
 #include "runtime/BaseProcessor.h"
 #include "runtime/BlockingSync.h"
 #include "runtime-glue/RuntimeContext.h"
@@ -41,9 +43,7 @@ extern GlobalStackList* _lfGlobalStackList;
 
 class OsProcessor;
 
-/**
- A Fibre object represents an independent execution context backed by a stack.
-*/
+/** A Fibre object represents an independent execution context backed by a stack. */
 class Fibre : public StackContext {
   FloatingPointFlags fp;        // FP context
   size_t stackSize;             // stack size
@@ -100,17 +100,17 @@ class Fibre : public StackContext {
   }
 
 public:
-  // general constructor
-  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), size_t sz = defaultStackSize, bool bg = false)
-  : StackContext(sched, bg), stackSize(stackAlloc(sz)) { initDebug(); }
+  /** Constructor. */
+  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), size_t size = defaultStackSize, bool background = false)
+  : StackContext(sched, background), stackSize(stackAlloc(size)) { initDebug(); }
 
-  // constructor with affinity to processor
-  Fibre(BaseProcessor &sp, size_t sz = defaultStackSize)
-  : StackContext(sp, true), stackSize(stackAlloc(sz)) { initDebug(); }
+  /** Constructor setting affinity to processor. */
+  Fibre(BaseProcessor &sp, size_t size = defaultStackSize)
+  : StackContext(sp, true), stackSize(stackAlloc(size)) { initDebug(); }
 
-  // constructor to start fibre right away
-  Fibre(funcvoid1_t func, ptr_t p1, bool bg = false)
-  : Fibre(Context::CurrProcessor().getScheduler(), defaultStackSize, bg) { run(func, p1); }
+  /** Constructor to immediately start fibre with `func(arg)`. */
+  Fibre(funcvoid1_t func, ptr_t arg, bool background = false)
+  : Fibre(Context::CurrProcessor().getScheduler(), defaultStackSize, background) { run(func, arg); }
 
   // constructor for idle loop or main loop (bootstrap) on existing pthread stack
   Fibre(BaseProcessor &sp, _friend<OsProcessor>)
@@ -121,9 +121,11 @@ public:
     done.post();
   }
 
-  // synchronize at object destruction
+  /** Destructor with synchronization. */
   ~Fibre() { join(); }
+  /** Explicit join. Called automatically by destructor. */
   void join() { done.wait(); }
+  /** Detach fibre (no waiting for join synchronization). */
   void detach() { done.detach(); }
 
   // callback from StackContext via Runtime after final context switch
@@ -133,33 +135,37 @@ public:
     done.post();
   }
 
-  // fibre start routines
-  Fibre* run(funcvoid0_t func) {
+  /** Start fibre. */
+  Fibre* run(void (*func)()) {
     return runInternal((ptr_t)func, nullptr, nullptr, nullptr);
   }
+  /** Start fibre. */
   template<typename T1>
   Fibre* run(void (*func)(T1*), T1* p1) {
     return runInternal((ptr_t)func, (ptr_t)p1, nullptr, nullptr);
   }
+  /** Start fibre. */
   template<typename T1, typename T2>
   Fibre* run(void (*func)(T1*, T2*), T1* p1, T2* p2) {
     return runInternal((ptr_t)func, (ptr_t)p1, (ptr_t)p2, nullptr);
   }
+  /** Start fibre. */
   template<typename T1, typename T2, typename T3>
   Fibre* run(void (*func)(T1*, T2*, T3*), T1* p1, T2* p2, T3* p3) {
     return runInternal((ptr_t)func, (ptr_t)p1, (ptr_t)p2, (ptr_t)p3);
   }
-
+  /** Start fibre with pthread-type run function. */
   template<typename T1>
   Fibre* run(void* (*func)(T1*), T1* p1) {
     return runInternal((ptr_t)func, (ptr_t)p1, nullptr, nullptr);
   }
 
-  // sleep interface
+  /** Sleep. */
   static void usleep(uint64_t usecs) {
     sleepStack(Time::fromUS(usecs));
   }
 
+  /** Sleep. */
   static void sleep(uint64_t secs) {
     sleepStack(Time(secs, 0));
   }
@@ -172,13 +178,13 @@ public:
     __splitstack_setcontext(next.splitStackContext);
 #endif
   }
-
   void activate(_friend<StackContext>) {
     fp.restore();
   }
 };
 
-static inline Fibre* CurrFibre() {
+/** @brief Obtain pointer to current Fibre object. */
+inline Fibre* CurrFibre() {
   return (Fibre*)Context::CurrStack();
 }
 

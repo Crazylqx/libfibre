@@ -5,6 +5,8 @@ libfibre is an M:N user-threading runtime without preemption, thus the term <i>f
 
 Running `make` builds the fibre library in `src/libfibre.so` along with several example/test programs: `test1`, `ordering`, `threadtest`, `echotest`, and `webserver` in the subdirectory `apps`.
 
+Running `make doc` builds documentation in `doc/html/index.html`.
+
 Both Linux/epoll and FreeBSD/kqueue are supported, but significantly more testing has been done for Linux/epoll.
 
 ### Contributors

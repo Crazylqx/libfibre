@@ -51,9 +51,11 @@ class OsProcessor : public BaseProcessor {
   static ptr_t idleLoopStartPthread(OsProcessor* This);
 
 public:
-  // regular constructors: create pthread and use for idle loop
+  /** Constructor: create OsProcessor in current Cluster. */
   OsProcessor(funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
+  /** Constructor: create OsProcessor in specified Cluster. */
   OsProcessor(Cluster& cluster, funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
+
   // dedicated constructor for event scope: pthread executes initFunc before idle
   OsProcessor(Cluster& cluster, funcvoid1_t initFunc, ptr_t arg, _friend<EventScope>);
   // dedicated constructor for bootstrap: pthread becomes mainFibre
@@ -63,7 +65,6 @@ public:
   static void setupFakeContext(EventScope* es, _friend<BaseThreadPoller>);
 
   ~OsProcessor() { RABORT("Cannot delete OsProcessor"); }
-  void waitUntilRunning();
 
 #if TESTING_PROCESSOR_POLLER
   PollerFibre& getPoller() { RASSERT0(pollFibre); return *pollFibre; }
