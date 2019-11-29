@@ -17,6 +17,8 @@
 #ifndef _fibre_h_
 #define _fibre_h_ 1
 
+/** @file */
+
 #ifndef __LIBFIBRE__
 #define __LIBFIBRE__ 1
 #endif
@@ -64,56 +66,90 @@ typedef void fibre_barrierattr_t;
 #define restrict
 #endif
 
-static inline int fibre_attr_init(fibre_attr_t *attr) {
+
+/**
+ @brief Initialize attributes for fibre creation (`pthread_attr_init`).
+ */
+inline int fibre_attr_init(fibre_attr_t *attr) {
   attr->init();
   return 0;
 }
 
-static inline int fibre_attr_destroy(fibre_attr_t *attr) {
+/**
+ @brief Destroy attributes for fibre creation. (`pthread_attr_destroy`).
+ */
+inline int fibre_attr_destroy(fibre_attr_t *attr) {
   return 0;
 }
 
-static inline int fibre_attr_setstacksize(fibre_attr_t *attr, size_t stacksize) {
+/**
+ @brief Set stack size for fibre creation. (`pthread_attr_setstacksize`).
+ */
+inline int fibre_attr_setstacksize(fibre_attr_t *attr, size_t stacksize) {
   attr->stackSize = stacksize;
   return 0;
 }
 
-static inline int fibre_attr_getstacksize(const fibre_attr_t *attr, size_t *stacksize) {
+/**
+ @brief Get stack size for fibre creation. (`pthread_attr_getstacksize`).
+ */
+inline int fibre_attr_getstacksize(const fibre_attr_t *attr, size_t *stacksize) {
   *stacksize = attr->stackSize;
   return 0;
 }
 
-static inline int fibre_attr_setdetachstate(fibre_attr_t *attr, int detachstate) {
+/**
+ @brief Set detach attribute for fibre creation. (`pthread_attr_setdetachstate`)
+ */
+inline int fibre_attr_setdetachstate(fibre_attr_t *attr, int detachstate) {
   attr->detached = detachstate;
   return 0;
 }
 
-static inline int fibre_attr_getdetachstate(const fibre_attr_t *attr, int *detachstate) {
+/**
+ @brief Get detach attribute for fibre creation. (`pthread_attr_getdetachstate`)
+ */
+inline int fibre_attr_getdetachstate(const fibre_attr_t *attr, int *detachstate) {
   *detachstate = attr->detached;
   return 0;
 }
 
-static inline int fibre_attr_setbackground(fibre_attr_t *attr, int background) {
+/**
+ @brief Set background attribute for fibre creation.
+ */
+inline int fibre_attr_setbackground(fibre_attr_t *attr, int background) {
   attr->background = background;
   return 0;
 }
 
-static inline int fibre_attr_getbackground(const fibre_attr_t *attr, int *background) {
+/**
+ @brief Get background attribute for fibre creation.
+ */
+inline int fibre_attr_getbackground(const fibre_attr_t *attr, int *background) {
   *background = attr->background;
   return 0;
 }
 
-static inline int fibre_attr_setcluster(fibre_attr_t *attr, Cluster* cluster) {
+/**
+ @brief Set cluster attribute for fibre creation.
+ */
+inline int fibre_attr_setcluster(fibre_attr_t *attr, Cluster *cluster) {
   attr->cluster = cluster;
   return 0;
 }
 
-static inline int fibre_attr_getcluster(const fibre_attr_t *attr, Cluster* *cluster) {
+/**
+ @brief Get cluster attribute for fibre creation.
+ */
+inline int fibre_attr_getcluster(const fibre_attr_t *attr, Cluster **cluster) {
   *cluster = attr->cluster;
   return 0;
 }
 
-static inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *(*start_routine) (void *), void *arg) {
+/**
+ @brief Create and start fibre. (`pthread_create`)
+ */
+inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *(*start_routine) (void *), void *arg) {
   Fibre* f;
   if (!attr) {
     f = new Fibre;
@@ -125,171 +161,313 @@ static inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *
   return 0;
 }
 
-static inline int fibre_join(fibre_t thread, void **retval) {
+/**
+ @brief Wait for fibre to complete execution and retrieve return value. (`pthread_join`)
+ */
+inline int fibre_join(fibre_t thread, void **retval) {
   RASSERT0(retval == nullptr);
   delete thread;
   return 0;
 }
 
-static inline fibre_t fibre_self(void) {
+/**
+ @brief Obtain fibre ID of currently running fibre. (`pthread_self`)
+ */
+inline fibre_t fibre_self(void) {
   return CurrFibre();
 }
 
-static inline int fibre_yield(void) {
+/**
+ @brief Voluntarily yield execution. (`pthread_yield`)
+ */
+inline int fibre_yield(void) {
   Fibre::yield();
   return 0;
 }
 
-static inline int fibre_migrate(Cluster* c) {
-  RASSERT0(c);
-  Fibre::migrateNow(*c);
+/**
+ @brief Migrate fibre to a different cluster.
+ */
+inline int fibre_migrate(Cluster *cluster) {
+  RASSERT0(cluster);
+  Fibre::migrateNow(*cluster);
   return 0;
 }
 
-static inline int fibre_sem_destroy(fibre_sem_t *sem) {
-  sem->reset();
-  return 0;
-}
-
-static inline int fibre_sem_init(fibre_sem_t *sem, int pshared, unsigned int value) {
+/**
+ @brief Initialize semaphore object. (`sem_init`)
+ */
+inline int fibre_sem_init(fibre_sem_t *sem, int pshared, unsigned int value) {
   RASSERT0(pshared == 0);
   sem->reset(value);
   return 0;
 }
 
-static inline int fibre_sem_wait(fibre_sem_t *sem) {
+/**
+ @brief Destroy semaphore object. (`sem_destroy`)
+ */
+inline int fibre_sem_destroy(fibre_sem_t *sem) {
+  sem->reset();
+  return 0;
+}
+
+/**
+ @brief Perform P operation. (`sem_wait`)
+ */
+inline int fibre_sem_wait(fibre_sem_t *sem) {
   sem->P();
   return 0;
 }
 
-static inline int fibre_sem_trywait(fibre_sem_t *sem) {
+/**
+ @brief Perform non-blocking P attempt. (`sem_trywait`)
+ */
+inline int fibre_sem_trywait(fibre_sem_t *sem) {
   return sem->tryP() ? 0 : EAGAIN;
 }
 
-static inline int fibre_sem_timedwait(fibre_sem_t *sem, const struct timespec *abs_timeout) {
+/**
+ @brief Perform P attempt with timeout. (`sem_timedwait`)
+ */
+inline int fibre_sem_timedwait(fibre_sem_t *sem, const struct timespec *abs_timeout) {
   return sem->P(*abs_timeout) ? 0 : ETIMEDOUT;
 }
 
-static inline int fibre_sem_post(fibre_sem_t *sem) {
+/**
+ @brief Perform V operation. (`sem_post`)
+ */
+inline int fibre_sem_post(fibre_sem_t *sem) {
   sem->V();
   return 0;
 }
 
-static inline int fibre_sem_getvalue(fibre_sem_t *sem, int *sval) {
+/**
+ @brief Read current semaphore value. Not synchronized. (`sem_getvalue`)
+ */
+inline int fibre_sem_getvalue(fibre_sem_t *sem, int *sval) {
   *sval = sem->getValue();
   return 0;
 }
 
-static inline int fibre_mutex_destroy(fibre_mutex_t *mutex) {
-  return 0;
-}
-
-static inline int fibre_mutex_init(fibre_mutex_t *restrict mutex, const fibre_mutexattr_t *restrict attr) {
+/**
+ @brief Initialize mutex lock. (`pthread_mutex_init`)
+ */
+inline int fibre_mutex_init(fibre_mutex_t *restrict mutex, const fibre_mutexattr_t *restrict attr) {
   RASSERT0(attr == nullptr);
   return 0;
 }
 
-static inline int fibre_mutex_lock(fibre_mutex_t *mutex) {
+/**
+ @brief Destroy mutex lock. (`pthread_mutex_destroy`)
+ */
+inline int fibre_mutex_destroy(fibre_mutex_t *mutex) {
+  return 0;
+}
+
+/**
+ @brief Acquire mutex lock. Block, if necessary. (`pthread_mutex_lock`)
+ */
+inline int fibre_mutex_lock(fibre_mutex_t *mutex) {
   mutex->acquire();
   return 0;
 }
 
-static inline int fibre_mutex_trylock(fibre_mutex_t *mutex) {
+/**
+ @brief Perform non-blocking attempt to acquire mutex lock. (`pthread_mutex_trylock`)
+ */
+inline int fibre_mutex_trylock(fibre_mutex_t *mutex) {
   return mutex->tryAcquire() ? 0 : EBUSY;
 }
 
-static inline int fibre_mutex_timedlock(fibre_mutex_t *restrict mutex, const struct timespec *restrict abstime) {
+/**
+ @brief Perform attempt to acquire mutex lock with timeout. (`pthread_mutex_timedlock`)
+ */
+inline int fibre_mutex_timedlock(fibre_mutex_t *restrict mutex, const struct timespec *restrict abstime) {
   return mutex->acquire(*abstime) ? 0 : ETIMEDOUT;
 }
 
-static inline int fibre_mutex_unlock(fibre_mutex_t *mutex) {
+/**
+ @brief Release mutex lock. Block, if necessary. (`pthread_mutex_unlock`)
+ */
+inline int fibre_mutex_unlock(fibre_mutex_t *mutex) {
   mutex->release();
   return 0;
 }
 
-static inline int fibre_cond_destroy(fibre_cond_t *cond) {
-  return 0;
-}
-
-static inline int fibre_cond_init(fibre_cond_t *restrict cond, const fibre_condattr_t *restrict attr) {
+/**
+ @brief Initialize condition variable. (`pthread_cond_init`)
+ */
+inline int fibre_cond_init(fibre_cond_t *restrict cond, const fibre_condattr_t *restrict attr) {
   RASSERT0(attr == nullptr);
   return 0;
 }
 
-static inline int fibre_cond_wait(fibre_cond_t *restrict cond, fibre_mutex_t *restrict mutex) {
+/**
+ @brief Destroy condition variable. (`pthread_cond_init`)
+ */
+inline int fibre_cond_destroy(fibre_cond_t *cond) {
+  return 0;
+}
+
+/**
+ @brief Wait on condition variable. (`pthread_cond_wait`)
+ */
+inline int fibre_cond_wait(fibre_cond_t *restrict cond, fibre_mutex_t *restrict mutex) {
   cond->wait(*mutex);
   mutex->acquire();
   return 0;
 }
 
-static inline int fibre_cond_timedwait(fibre_cond_t *restrict cond, fibre_mutex_t *restrict mutex, const struct timespec *restrict abstime) {
+/**
+ @brief Perform wait attempt on condition variable with timeout. (`pthread_cond_timedwait`)
+ */
+inline int fibre_cond_timedwait(fibre_cond_t *restrict cond, fibre_mutex_t *restrict mutex, const struct timespec *restrict abstime) {
   int retcode = cond->wait(*mutex, *abstime) ? 0 : ETIMEDOUT;
   mutex->acquire();
   return retcode;
 }
 
-static inline int fibre_cond_signal(fibre_cond_t *cond) {
+/**
+ @brief Signal one waiting fibre on condition variable. (`pthread_cond_signal`)
+ */
+inline int fibre_cond_signal(fibre_cond_t *cond) {
   cond->signal();
   return 0;
 }
 
-static inline int fibre_cond_broadcast(fibre_cond_t *cond) {
+/**
+ @brief Signal all waiting fibres on condition variable. (`pthread_cond_broadcast`)
+ */
+inline int fibre_cond_broadcast(fibre_cond_t *cond) {
   cond->signal<true>();
   return 0;
 }
 
-static inline int fibre_rwlock_destroy(fibre_rwlock_t *rwlock) {
-  return 0;
-}
-
-static inline int fibre_rwlock_init(fibre_rwlock_t *restrict rwlock, const fibre_rwlockattr_t *restrict attr) {
+/**
+ @brief Initialize rw-lock. (`pthread_rwlock_init`)
+ */
+inline int fibre_rwlock_init(fibre_rwlock_t *restrict rwlock, const fibre_rwlockattr_t *restrict attr) {
   RASSERT0(attr == nullptr);
   return 0;
 }
 
-static inline int fibre_rwlock_tryrdlock(fibre_rwlock_t *rwlock){
-  return rwlock->tryAcquireRead() ? 0 : EBUSY;
+/**
+ @brief Destroy rw-lock. (`pthread_rwlock_init`)
+ */
+inline int fibre_rwlock_destroy(fibre_rwlock_t *rwlock) {
+  return 0;
 }
 
-static inline int fibre_rwlock_rdlock(fibre_rwlock_t *rwlock){
+/**
+ @brief Acquire reader side of rw-lock. Block, if necessary. (`pthread_rwlock_rdlock`)
+ */
+inline int fibre_rwlock_rdlock(fibre_rwlock_t *rwlock){
   rwlock->acquireRead();
   return 0;
 }
 
-static inline int fibre_rwlock_timedrdlock(fibre_rwlock_t *restrict rwlock, const struct timespec *restrict abstime){
+/**
+ @brief Perform non-blocking attempt to acquire reader side of rw-lock. (`pthread_rwlock_tryrdlock`)
+ */
+inline int fibre_rwlock_tryrdlock(fibre_rwlock_t *rwlock){
+  return rwlock->tryAcquireRead() ? 0 : EBUSY;
+}
+
+/**
+ @brief Perform attempt to acquire reader side of rw-lock with timeout. (`pthread_rwlock_timedrdlock`)
+ */
+inline int fibre_rwlock_timedrdlock(fibre_rwlock_t *restrict rwlock, const struct timespec *restrict abstime){
   return rwlock->acquireRead(*abstime) ? 0 : ETIMEDOUT;
 }
 
-static inline int fibre_rwlock_trywrlock(fibre_rwlock_t *rwlock){
-  return rwlock->tryAcquireWrite() ? 0 : EBUSY;
-}
-
-static inline int fibre_rwlock_wrlock(fibre_rwlock_t *rwlock){
+/**
+ @brief Acquire writer side of rw-lock. Block, if necessary. (`pthread_rwlock_wrlock`)
+ */
+inline int fibre_rwlock_wrlock(fibre_rwlock_t *rwlock){
   rwlock->acquireWrite();
   return 0;
 }
 
-static inline int fibre_rwlock_timedwrlock(fibre_rwlock_t *restrict rwlock, const struct timespec *restrict abstime){
+/**
+ @brief Perform non-blocking attempt to acquire writer side of rw-lock. (`pthread_rwlock_trywrlock`)
+ */
+inline int fibre_rwlock_trywrlock(fibre_rwlock_t *rwlock){
+  return rwlock->tryAcquireWrite() ? 0 : EBUSY;
+}
+
+/**
+ @brief Perform attempt to acquire writer side of rw-lock with timeout. (`pthread_rwlock_timedwrlock`)
+ */
+inline int fibre_rwlock_timedwrlock(fibre_rwlock_t *restrict rwlock, const struct timespec *restrict abstime){
   return rwlock->acquireWrite(*abstime) ? 0 : ETIMEDOUT;
 }
 
-static inline int fibre_rwlock_unlock(fibre_rwlock_t *rwlock){
+/**
+ @brief Release rw-lock. (`pthread_rwlock_unlock`)
+ */
+inline int fibre_rwlock_unlock(fibre_rwlock_t *rwlock){
   rwlock->release();
   return 0;
 }
 
-static inline int fibre_barrier_destroy(fibre_barrier_t *barrier) {
-  return 0;
-}
-
-static inline int fibre_barrier_init(fibre_barrier_t *restrict barrier, const fibre_barrierattr_t *restrict attr, unsigned count) {
+/**
+ @brief Initialize barrier. (`pthread_barrier_init`)
+ */
+inline int fibre_barrier_init(fibre_barrier_t *restrict barrier, const fibre_barrierattr_t *restrict attr, unsigned count) {
   RASSERT0(attr == nullptr);
   barrier->reset(count);
   return 0;
 }
 
-static inline int fibre_barrier_wait(fibre_barrier_t *barrier) {
+/**
+ @brief Destroy barrier. (`pthread_barrier_destroy`)
+ */
+inline int fibre_barrier_destroy(fibre_barrier_t *barrier) {
+  return 0;
+}
+
+/**
+ @brief Wait on barrier. Block, if necessary. (`pthread_barrier_wait`)
+ */
+inline int fibre_barrier_wait(fibre_barrier_t *barrier) {
   return barrier->wait() ? PTHREAD_BARRIER_SERIAL_THREAD : 0;
 }
 
 #endif /* _fibre_h_ */
+
+/**
+
+@mainpage
+
+The fibre runtime system provides M:N user-level threading.  A <i>fibre</i>
+is an independent execution context backed by a stack.  A <i>processor</i>
+represents an OS-level thread, typically implemented as `pthread`.  Multiple
+fibres are transparently executed in the scheduling scope of a
+<i>cluster</i> using one or multiple processors.  Fibres are cooperatively
+scheduled and do not preempt each other.  In other words, a fibre occupies a
+processor until the fibre is blocked or yields execution.
+
+The fibre runtime system supports blocking synchronization using mutex,
+condition, semaphore, rwlock, and barrier.  In addition, I/O wrapper
+routines automatically block a fibre, if the I/O system call would otherwise
+block the underlying OS-level thread.  This is facilitated via <i>poller</i>
+fibres and/or threads that perform I/O event monitoring on behalf of
+application fibres in the scope of a cluster.  Multiple clusters can be used
+to structure the scheduling and I/O handling of fibres and processors within
+an <i>event scope</i>.  More than one event scope can be created to take
+advantage of partitioned kernel file descriptor tables (on Linux, see `man 2
+clone`).
+
+In source code, the fibre runtime library declarations are included via
+either fibre.h (for C++) or cfibre.h (for C).  The runtime provides three
+roughly equivalent APIs:
+
+- C++ class-based API (Fibre, OsProcessor, Cluster, EventScope)
+- C++ functional API similar to the POSIX Threads API (fibre.h)
+  - C wrapper for the same (cfibre.h)
+
+Before the execution of the regular `main()` routine, the runtime system
+automatically creates one of each default objects: Fibre, Processor,
+Cluster, EventScope.
+
+*/

@@ -31,6 +31,9 @@ class _Bootstrapper;
 class Fibre;
 class PollerFibre;
 
+/**
+ An OsProcessor object represents an OS-level execution thread (pthread).
+*/
 class OsProcessor : public BaseProcessor {
   pthread_t               sysThread;
   Fibre*                  initFibre;

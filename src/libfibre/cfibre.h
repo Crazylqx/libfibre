@@ -17,6 +17,8 @@
 #ifndef _cfibre_h_
 #define _cfibre_h_ 1
 
+/** @file */
+
 #include <unistd.h>     // useconds_t
 #include <time.h>       // struct timespec
 #include <sys/socket.h> // socket types
@@ -50,34 +52,51 @@ typedef int cfibre_barrierattr_t;
 extern "C" {
 #endif
 
+/** @brief Create Cluster */
 int cfibre_cluster_create(cfibre_cluster_t* cluster);
+/** @brief Destroy Cluster */
 int cfibre_cluster_destroy(cfibre_cluster_t* cluster);
+/** @brief Obtain Cluster ID */
 cfibre_cluster_t cfibre_cluster_self(void);
 
-int cfibre_errno(void);
-int* cfibre_errno_set(void);
-
+/** @brief Pause (all but current) processors in current Cluster. */
 int cfibre_pause(void);
+/** @brief Resume processors in current Cluster. */
 int cfibre_resume(void);
+/** @brief Pause (all but current) processors in specified Cluster. */
 int cfibre_pause_cluster(cfibre_cluster_t* cluster);
+/** @brief Resume processors in specified Cluster. */
 int cfibre_resume_cluster(cfibre_cluster_t* cluster);
 
-int cfibre_sproc_prepare(cfibre_sproc_t* sp);
-int cfibre_sproc_prepare_cluster(cfibre_sproc_t* sp, cfibre_cluster_t cluster);
-int cfibre_sproc_create(cfibre_sproc_t* sp);
-int cfibre_sproc_create_init(cfibre_sproc_t* sp, void (*func)(void *), void *arg);
+int cfibre_sproc_create(cfibre_sproc_t* sp, cfibre_cluster_t cluster);
+int cfibre_sproc_create_init(cfibre_sproc_t* sp, cfibre_cluster_t cluster, void (*func)(void *), void *arg);
 int cfibre_sproc_destroy(cfibre_sproc_t* sp);
 pthread_t cfibre_sproc_pthread(cfibre_sproc_t sp);
 
+/** @brief Read OS-level `errno` variable (special routine due to TLS). */
+int cfibre_get_errno(void);
+/** @brief Write OS-level `errno` variable (special routine due to TLS). */
+void cfibre_set_errno(int);
+
+/** @brief See @ref fibre_attr_init */
 int cfibre_attr_init(cfibre_attr_t *attr);
+/** @brief See @ref fibre_attr_destroy */
 int cfibre_attr_destroy(cfibre_attr_t *attr);
+/** @brief See @ref fibre_attr_setstacksize */
 int cfibre_attr_setstacksize(cfibre_attr_t *attr, size_t stacksize);
+/** @brief See @ref fibre_attr_getstacksize */
 int cfibre_attr_getstacksize(const cfibre_attr_t *attr, size_t *stacksize);
+/** @brief See @ref fibre_attr_getstacksize */
 int cfibre_attr_setdetachstate(cfibre_attr_t *attr, int detachstate);
+/** @brief See @ref fibre_attr_getdetachstate */
 int cfibre_attr_getdetachstate(const cfibre_attr_t *attr, int *detachstate);
+/** @brief See @ref fibre_attr_setbackground */
 int cfibre_attr_setbackground(cfibre_attr_t *attr, int background);
+/** @brief See @ref fibre_attr_getbackground */
 int cfibre_attr_getbackground(const cfibre_attr_t *attr, int *background);
+/** @brief See @ref fibre_attr_setcluster */
 int cfibre_attr_setcluster(cfibre_attr_t *attr, cfibre_cluster_t cluster);
+/** @brief See @ref fibre_attr_getcluster */
 int cfibre_attr_getcluster(const cfibre_attr_t *attr, cfibre_cluster_t *cluster);
 
 int cfibre_create(cfibre_t *thread, const cfibre_attr_t *attr, void *(*start_routine) (void *), void *arg);
@@ -86,30 +105,30 @@ cfibre_t cfibre_self(void);
 int cfibre_yield(void);
 int cfibre_migrate(cfibre_cluster_t cluster);
 
-int cfibre_sem_destroy(cfibre_sem_t *sem);
 int cfibre_sem_init(cfibre_sem_t *sem, int pshared, unsigned int value);
+int cfibre_sem_destroy(cfibre_sem_t *sem);
 int cfibre_sem_wait(cfibre_sem_t *sem);
 int cfibre_sem_trywait(cfibre_sem_t *sem);
 int cfibre_sem_timedwait(cfibre_sem_t *sem, const struct timespec *abs_timeout);
 int cfibre_sem_post(cfibre_sem_t *sem);
 int cfibre_sem_getvalue(cfibre_sem_t *sem, int *sval);
 
-int cfibre_mutex_destroy(cfibre_mutex_t *mutex);
 int cfibre_mutex_init(cfibre_mutex_t *restrict mutex, const cfibre_mutexattr_t *restrict attr);
+int cfibre_mutex_destroy(cfibre_mutex_t *mutex);
 int cfibre_mutex_lock(cfibre_mutex_t *mutex);
 int cfibre_mutex_trylock(cfibre_mutex_t *mutex);
 int cfibre_mutex_timedlock(cfibre_mutex_t *restrict mutex, const struct timespec *restrict abstime);
 int cfibre_mutex_unlock(cfibre_mutex_t *mutex);
 
-int cfibre_cond_destroy(cfibre_cond_t *cond);
 int cfibre_cond_init(cfibre_cond_t *restrict cond, const cfibre_condattr_t *restrict attr);
+int cfibre_cond_destroy(cfibre_cond_t *cond);
 int cfibre_cond_wait(cfibre_cond_t *restrict cond, cfibre_mutex_t *restrict mutex);
 int cfibre_cond_timedwait(cfibre_cond_t *restrict cond, cfibre_mutex_t *restrict mutex, const struct timespec *restrict abstime);
 int cfibre_cond_signal(cfibre_cond_t *cond);
 int cfibre_cond_broadcast(cfibre_cond_t *cond);
 
-int cfibre_rwlock_destroy(cfibre_rwlock_t *rwlock);
 int cfibre_rwlock_init(cfibre_rwlock_t *restrict rwlock, const cfibre_rwlockattr_t *restrict attr);
+int cfibre_rwlock_destroy(cfibre_rwlock_t *rwlock);
 int cfibre_rwlock_rdlock(cfibre_rwlock_t *rwlock);
 int cfibre_rwlock_tryrdlock(cfibre_rwlock_t *rwlock);
 int cfibre_rwlock_timedrdlock(cfibre_rwlock_t *restrict rwlock, const struct timespec *restrict abstime);
@@ -118,8 +137,8 @@ int cfibre_rwlock_trywrlock(cfibre_rwlock_t *rwlock);
 int cfibre_rwlock_timedwrlock(cfibre_rwlock_t *restrict rwlock, const struct timespec *restrict abstime);
 int cfibre_rwlock_unlock(cfibre_rwlock_t *rwlock);
 
-int cfibre_barrier_destroy(cfibre_barrier_t *barrier);
 int cfibre_barrier_init(cfibre_barrier_t *restrict barrier, const cfibre_barrierattr_t *restrict attr, unsigned count);
+int cfibre_barrier_destroy(cfibre_barrier_t *barrier);
 int cfibre_barrier_wait(cfibre_barrier_t *barrier);
 
 int cfibre_usleep(useconds_t uses);

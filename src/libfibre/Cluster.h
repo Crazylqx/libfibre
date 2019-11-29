@@ -20,6 +20,11 @@
 #include "runtime/Scheduler.h"
 #include "libfibre/Poller.h"
 
+/**
+A Cluster object provides a scheduling scope and uses processors (pthreads)
+to execute fibres.  It also manages I/O pollers and provides a
+stop-the-world pause mechanism.
+*/
 class Cluster : public Scheduler {
   EventScope&    scope;
 
@@ -49,6 +54,7 @@ class Cluster : public Scheduler {
   }
 
 public:
+  /** @brief Create cluster */
   Cluster(EventScope& es, size_t p = 1) : Cluster(es, p, _friend<Cluster>()) { start(); }
   Cluster(size_t p = 1) : Cluster(Context::CurrEventScope(), p) {}
 

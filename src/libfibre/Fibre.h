@@ -41,6 +41,9 @@ extern GlobalStackList* _lfGlobalStackList;
 
 class OsProcessor;
 
+/**
+ A Fibre object represents an independent execution context backed by a stack.
+*/
 class Fibre : public StackContext {
   FloatingPointFlags fp;        // FP context
   size_t stackSize;             // stack size

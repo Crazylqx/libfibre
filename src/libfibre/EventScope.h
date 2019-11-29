@@ -29,6 +29,12 @@
 // A vector for FDs works well here in principle, because POSIX guarantees lowest-numbered FDs:
 // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
 // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
+
+/**
+ An EventScope object holds a set of Clusters and provides a common I/O
+ scope.  Multiple EventScope objects can be used to take advantage of
+ partitioned kernel file descriptor tables on Linux.
+*/
 class EventScope {
   typedef FifoSemaphore<InternalLock,true> SyncSem;
   struct SyncFD {

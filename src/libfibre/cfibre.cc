@@ -45,14 +45,6 @@ extern "C" cfibre_cluster_t cfibre_cluster_self() {
   return &reinterpret_cast<_cfibre_cluster_t&>(Context::CurrCluster());
 }
 
-extern "C" int cfibre_errno() {
-  return _SysErrno();
-}
-
-extern "C" int* cfibre_errno_set() {
-  return &_SysErrnoSet();
-}
-
 extern "C" int cfibre_pause() {
   Context::CurrCluster().pause();
   return 0;
@@ -73,23 +65,15 @@ extern "C" int cfibre_resume_cluster(cfibre_cluster_t* cluster) {
   return 0;
 }
 
-extern "C" int cfibre_sproc_prepare(cfibre_sproc_t* sproc) {
-  *sproc = (cfibre_sproc_t)&Context::CurrCluster();
+extern "C" int cfibre_sproc_create(cfibre_sproc_t* sproc, cfibre_cluster_t cluster) {
+  if (cluster == nullptr) cfibre_cluster_self();
+  *sproc = new _cfibre_sproc_t(*cluster);
   return 0;
 }
 
-extern "C" int cfibre_sproc_prepare_cluster(cfibre_sproc_t* sproc, cfibre_cluster_t cluster) {
-  *sproc = (cfibre_sproc_t)cluster;
-  return 0;
-}
-
-extern "C" int cfibre_sproc_create(cfibre_sproc_t* sproc) {
-  *sproc = new _cfibre_sproc_t(*(Cluster*)(*sproc));
-  return 0;
-}
-
-extern "C" int cfibre_sproc_create_init(cfibre_sproc_t* sproc, void (*func)(void *), void *arg) {
-  *sproc = new _cfibre_sproc_t(*(Cluster*)(*sproc), func, arg);
+extern "C" int cfibre_sproc_create_init(cfibre_sproc_t* sproc, cfibre_cluster_t cluster, void (*func)(void *), void *arg) {
+  if (cluster == nullptr) cfibre_cluster_self();
+  *sproc = new _cfibre_sproc_t(*cluster, func, arg);
   return 0;
 }
 
@@ -113,6 +97,14 @@ extern "C" int cfibre_attr_destroy(cfibre_attr_t *attr) {
   delete *attr;
   *attr = nullptr;
   return ret;
+}
+
+extern "C" int cfibre_get_errno() {
+  return _SysErrno();
+}
+
+extern "C" void cfibre_set_errno(int e) {
+  _SysErrnoSet() = e;
 }
 
 extern "C" int cfibre_attr_setstacksize(cfibre_attr_t *attr, size_t stacksize) {
@@ -171,16 +163,16 @@ extern "C" int cfibre_migrate(cfibre_cluster_t cluster) {
   return fibre_migrate(cluster);
 }
 
+extern "C" int cfibre_sem_init(cfibre_sem_t *sem, int pshared, unsigned int value) {
+  *sem = (cfibre_sem_t)new fibre_sem_t;
+  return fibre_sem_init(*sem, pshared, value);
+}
+
 extern "C" int cfibre_sem_destroy(cfibre_sem_t *sem) {
   int ret = fibre_sem_destroy(*sem);
   delete *sem;
   *sem = nullptr;
   return ret;
-}
-
-extern "C" int cfibre_sem_init(cfibre_sem_t *sem, int pshared, unsigned int value) {
-  *sem = (cfibre_sem_t)new fibre_sem_t;
-  return fibre_sem_init(*sem, pshared, value);
 }
 
 extern "C" int cfibre_sem_wait(cfibre_sem_t *sem) {
@@ -203,16 +195,16 @@ extern "C" int cfibre_sem_getvalue(cfibre_sem_t *sem, int *sval) {
   return fibre_sem_getvalue(*sem, sval);
 }
 
+extern "C" int cfibre_mutex_init(cfibre_mutex_t *restrict mutex, const cfibre_mutexattr_t *restrict attr) {
+  *mutex = (cfibre_mutex_t)new fibre_mutex_t;
+  return fibre_mutex_init(*mutex, (fibre_mutexattr_t*)attr);
+}
+
 extern "C" int cfibre_mutex_destroy(cfibre_mutex_t *mutex) {
   int ret = fibre_mutex_destroy(*mutex);
   delete *mutex;
   *mutex = nullptr;
   return ret;
-}
-
-extern "C" int cfibre_mutex_init(cfibre_mutex_t *restrict mutex, const cfibre_mutexattr_t *restrict attr) {
-  *mutex = (cfibre_mutex_t)new fibre_mutex_t;
-  return fibre_mutex_init(*mutex, (fibre_mutexattr_t*)attr);
 }
 
 extern "C" int cfibre_mutex_lock(cfibre_mutex_t *mutex) {
@@ -231,16 +223,16 @@ extern "C" int cfibre_mutex_unlock(cfibre_mutex_t *mutex) {
   return fibre_mutex_unlock(*mutex);
 }
 
+extern "C" int cfibre_cond_init(cfibre_cond_t *restrict cond, const cfibre_condattr_t *restrict attr) {
+  *cond = (cfibre_cond_t)new fibre_cond_t;
+  return fibre_cond_init(*cond, (fibre_condattr_t*)attr);
+}
+
 extern "C" int cfibre_cond_destroy(cfibre_cond_t *cond) {
   int ret = fibre_cond_destroy(*cond);
   delete *cond;
   *cond = nullptr;
   return ret;
-}
-
-extern "C" int cfibre_cond_init(cfibre_cond_t *restrict cond, const cfibre_condattr_t *restrict attr) {
-  *cond = (cfibre_cond_t)new fibre_cond_t;
-  return fibre_cond_init(*cond, (fibre_condattr_t*)attr);
 }
 
 extern "C" int cfibre_cond_wait(cfibre_cond_t *restrict cond, cfibre_mutex_t *restrict mutex) {
@@ -259,16 +251,16 @@ extern "C" int cfibre_cond_broadcast(cfibre_cond_t *cond) {
   return fibre_cond_broadcast(*cond);
 }
 
+extern "C" int cfibre_rwlock_init(cfibre_rwlock_t *restrict rwlock, const cfibre_rwlockattr_t *restrict attr) {
+  *rwlock = (cfibre_rwlock_t)new fibre_rwlock_t;
+  return fibre_rwlock_init(*rwlock, (fibre_rwlockattr_t*)attr);
+}
+
 extern "C" int cfibre_rwlock_destroy(cfibre_rwlock_t *rwlock) {
   int ret = fibre_rwlock_destroy(*rwlock);
   delete *rwlock;
   *rwlock = nullptr;
   return ret;
-}
-
-extern "C" int cfibre_rwlock_init(cfibre_rwlock_t *restrict rwlock, const cfibre_rwlockattr_t *restrict attr) {
-  *rwlock = (cfibre_rwlock_t)new fibre_rwlock_t;
-  return fibre_rwlock_init(*rwlock, (fibre_rwlockattr_t*)attr);
 }
 
 extern "C" int cfibre_rwlock_rdlock(cfibre_rwlock_t *rwlock) {
@@ -299,16 +291,16 @@ extern "C" int cfibre_rwlock_unlock(cfibre_rwlock_t *rwlock) {
   return fibre_rwlock_unlock(*rwlock);
 }
 
+extern "C" int cfibre_barrier_init(cfibre_barrier_t *restrict barrier, const cfibre_barrierattr_t *restrict attr, unsigned count) {
+  *barrier = (cfibre_barrier_t)new fibre_barrier_t;
+  return fibre_barrier_init(*barrier, (fibre_barrierattr_t*)attr, count);
+}
+
 extern "C" int cfibre_barrier_destroy(cfibre_barrier_t *barrier) {
   int ret = fibre_barrier_destroy(*barrier);
   delete *barrier;
   *barrier = nullptr;
   return ret;
-}
-
-extern "C" int cfibre_barrier_init(cfibre_barrier_t *restrict barrier, const cfibre_barrierattr_t *restrict attr, unsigned count) {
-  *barrier = (cfibre_barrier_t)new fibre_barrier_t;
-  return fibre_barrier_init(*barrier, (fibre_barrierattr_t*)attr, count);
 }
 
 extern "C" int cfibre_barrier_wait(cfibre_barrier_t *barrier) {
