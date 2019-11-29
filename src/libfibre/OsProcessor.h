@@ -28,6 +28,7 @@ typedef LockRW<InternalLock>        FibreLockRW;
 typedef Barrier<InternalLock>       FibreBarrier;
 
 class _Bootstrapper;
+class BaseThreadPoller;
 class Fibre;
 class PollerFibre;
 
@@ -57,6 +58,9 @@ public:
   OsProcessor(Cluster& cluster, funcvoid1_t initFunc, ptr_t arg, _friend<EventScope>);
   // dedicated constructor for bootstrap: pthread becomes mainFibre
   OsProcessor(Cluster& cluster, _friend<_Bootstrapper>);
+
+  // fake context for poller pthread, needed 'currScope' for timer handling
+  static void setupFakeContext(EventScope* es, _friend<BaseThreadPoller>);
 
   ~OsProcessor() { RABORT("Cannot delete OsProcessor"); }
   void waitUntilRunning();

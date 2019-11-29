@@ -33,6 +33,13 @@ EventScope&    Context::CurrEventScope() { RASSERT0(currScope);   return *currSc
 
 void Context::setCurrStack(StackContext& s, _friend<StackContext>) { currStack = &s; }
 
+void OsProcessor::setupFakeContext(EventScope* es, _friend<BaseThreadPoller>) {
+  currStack = nullptr;
+  currProc = nullptr;
+  currCluster = nullptr;
+  currScope = es;
+}
+
 inline void OsProcessor::setupContext() {
   Cluster& cl = reinterpret_cast<Cluster&>(scheduler);
   currProc = this;
