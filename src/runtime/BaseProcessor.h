@@ -17,6 +17,7 @@
 #ifndef _BaseProcessor_h_
 #define _BaseProcessor_h_ 1
 
+#include "runtime/Benaphore.h"
 #include "runtime/Debug.h"
 #include "runtime/Stats.h"
 #include "runtime/StackContext.h"

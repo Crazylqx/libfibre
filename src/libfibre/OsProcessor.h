@@ -62,7 +62,7 @@ public:
   OsProcessor(Cluster& cluster, _friend<_Bootstrapper>);
 
   // fake context for poller pthread, needed 'currScope' for timer handling
-  static void setupFakeContext(EventScope* es, _friend<BaseThreadPoller>);
+  static void setupFakeContext(StackContext* sc, EventScope* es, _friend<BaseThreadPoller>);
 
   ~OsProcessor() { RABORT("Cannot delete OsProcessor"); }
 

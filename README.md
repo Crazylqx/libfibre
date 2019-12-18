@@ -1,9 +1,9 @@
 libfibre
 ========
 
-libfibre is an M:N user-threading runtime without preemption, thus the term <i>fibre</i>.
+libfibre is an M:N user-level threading runtime without preemption, thus the term <i>fibre</i>.
 
-Running `make` builds the fibre library in `src/libfibre.so` along with several example/test programs: `test1`, `ordering`, `threadtest`, `echotest`, and `webserver` in the subdirectory `apps`.
+Running `make all` builds the fibre library in `src/libfibre.so` along with several example/test programs: `test1`, `ordering`, `threadtest`, `echotest`, and `webserver` in the subdirectory `apps`.
 
 Running `make doc` builds documentation in `doc/html/index.html`.
 

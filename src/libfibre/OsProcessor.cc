@@ -102,8 +102,8 @@ OsProcessor::OsProcessor(Cluster& cl, _friend<_Bootstrapper>) : BaseProcessor(cl
   scheduler.addProcessor(*this); // first processor -> should not block, but need currStack set for ringLock
 }
 
-void OsProcessor::setupFakeContext(EventScope* es, _friend<BaseThreadPoller>) {
-  currStack = nullptr;
+void OsProcessor::setupFakeContext(StackContext* sc, EventScope* es, _friend<BaseThreadPoller>) {
+  currStack = sc;
   currProc = nullptr;
   currCluster = nullptr;
   currScope = es;

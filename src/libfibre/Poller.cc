@@ -56,7 +56,7 @@ inline void BasePoller::notifyAll(int evcnt) {
 
 template<typename T>
 inline void BaseThreadPoller::pollLoop(T& This) {
-  OsProcessor::setupFakeContext(&This.eventScope, _friend<BaseThreadPoller>());
+  OsProcessor::setupFakeContext((StackContext*)&This, &This.eventScope, _friend<BaseThreadPoller>());
   while (!This.pollTerminate) {
     This.prePoll(_friend<BaseThreadPoller>());
     This.stats->blocks.count();
