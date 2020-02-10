@@ -19,8 +19,7 @@
 #include "runtime-glue/RuntimeStack.h"
 
 StackContext::StackContext(BaseProcessor& proc, bool aff)
-: stackPointer(0), processor(&proc), priority(DefPriority), affinity(aff),
-  suspendState(Running), resumeInfo(nullptr) {
+: stackPointer(0), processor(&proc), priority(DefPriority), affinity(aff), runState(1), resumeInfo(nullptr) {
 #if TESTING_SHARED_READYQUEUE
   affinity = true;
 #endif
@@ -71,12 +70,8 @@ void StackContext::postMigrate(StackContext* prevStack) {
 // if resumption already triggered -> resume right away
 void StackContext::postSuspend(StackContext* prevStack) {
   CHECK_PREEMPTION(0);
-  SuspendState prevState = Prepared;
-  bool suspended = __atomic_compare_exchange_n( &prevStack->suspendState, &prevState, Suspended, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED );
-  if (!suspended) {
-    RASSERT(prevState == Running, FmtHex(prevStack), prevState);
-    prevStack->resumeInternal();
-  }
+  // check if previous stack is already resumed?
+  if (__atomic_sub_fetch( &prevStack->runState, 1, __ATOMIC_RELAXED ) > 0) prevStack->resumeInternal();
 }
 
 // destroy stack

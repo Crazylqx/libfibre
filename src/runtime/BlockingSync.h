@@ -76,8 +76,7 @@ public:
 
 class BaseSuspender {
 protected:
-  void prepareSuspend(StackContext& cs) {
-    cs.prepareSuspend(_friend<BaseSuspender>());
+  void prepareSuspend() {
     RuntimeDisablePreemption();
   }
   void doSuspend(StackContext& cs) {
@@ -91,7 +90,7 @@ public:
   StackContext& stack;
   TimeoutInfo(StackContext& stack = *Context::CurrStack()) : stack(stack) {}
   void suspendRelative(const Time& timeout) {
-    prepareSuspend(stack);
+    prepareSuspend();
     prepareRelative(timeout);
     doSuspend(stack);
   }
@@ -117,13 +116,13 @@ protected:
 public:
   BlockingInfo(Lock& l) : lock(l) {}
   void suspend(StackContext& stack = *Context::CurrStack()) {
-    prepareSuspend(stack);
+    prepareSuspend();
     lock.release();
     doSuspend(stack);
   }
   void suspend(BlockedStackList& queue, StackContext& stack = *Context::CurrStack()) {
-    prepareSuspend(stack);
     setupResumeRace(stack);
+    prepareSuspend();
     queue.push_back(stack);
     lock.release();
     doSuspend(stack);
@@ -137,8 +136,8 @@ class TimeoutBlockingInfo : public BlockingInfo<Lock>, public TimeoutInfo {
 public:
   TimeoutBlockingInfo(Lock& l, StackContext& stack = *Context::CurrStack()) : BaseBI(l), TimeoutInfo(stack), timedOut(false) {}
   bool suspendAbsolute(BlockedStackList& queue, const Time& timeout, const Time& now) {
-    prepareSuspend(stack);
     BaseBI::setupResumeRace(stack);
+    prepareSuspend();
     queue.push_back(stack);
     BaseTimer::prepareAbsolute(timeout, now);
     BaseBI::lock.release();

@@ -66,9 +66,8 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
   size_t         priority;     // scheduling priority
   bool           affinity;     // affinity prohibits re-staging
 
-  enum SuspendState { Running, Prepared, Suspended };
-  SuspendState volatile suspendState;
-  ResumeInfo*  volatile resumeInfo;  // race: unblock vs. timeout
+  size_t      volatile runState;   // runState == 0 => parked
+  ResumeInfo* volatile resumeInfo; // race: unblock vs. timeout
 
   StackContext(const StackContext&) = delete;
   const StackContext& operator=(const StackContext&) = delete;
@@ -93,7 +92,7 @@ protected:
   StackContext(BaseProcessor& proc, bool aff = false); // main constructor
   StackContext(Scheduler&, bool bg = false);           // uses delegation
   ~StackContext() {
-    RASSERT(suspendState == Running, FmtHex(this), suspendState);
+    RASSERT(runState == 1, FmtHex(this), runState);
     RASSERT(resumeInfo == nullptr, FmtHex(this));
   }
 
@@ -131,28 +130,19 @@ public:
     size_t spin = SpinStart;
     while (spin <= SpinEnd) {
       for (size_t i = 0; i < spin; i += 1) Pause();
-      if (suspendState == Running) return;
+      if (runState) return; // resumed already? skip suspend
       spin += spin;
     }
     suspendInternal();
   }
 
-  // Running -> Prepared; Prepared -> Suspended is attempted in postSuspend()
-  void prepareSuspend(_friend<BaseSuspender>) {
-    RASSERT(suspendState == Running, FmtHex(this), suspendState);
-    __atomic_store_n( &suspendState, Prepared, __ATOMIC_RELAXED );
-  }
-
-  // Prepared/Suspended -> Running; resume stack, if necessary
+  // if suspended (runState == 0), resume
   void resume() {
-    SuspendState prevState = __atomic_exchange_n( &suspendState, Running, __ATOMIC_RELAXED );
-    RASSERT(prevState != Running, FmtHex(this), prevState);
-    if (prevState == Suspended) resumeInternal();
+    if (__atomic_fetch_add( &runState, 1, __ATOMIC_RELAXED ) == 0) resumeInternal();
   }
 
   // set ResumeInfo to facilitate later resume race
   void setupResumeRace(ResumeInfo& ri, _friend<ResumeInfo>) {
-    RASSERT(suspendState == Prepared, FmtHex(this), suspendState);
     __atomic_store_n( &resumeInfo, &ri, __ATOMIC_RELAXED );
   }
 

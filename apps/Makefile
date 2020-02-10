@@ -71,7 +71,7 @@ mthreadtest: threadtest.cpp include/mordor.h
 
 gwebserver: webserver.go
 #	go get -u github.com/valyala/fasthttp
-# go get -u github.com/valyala/fasthttp/reuseport
+#	go get -u github.com/valyala/fasthttp/reuseport
 #	go build -gcflags='-l=4' -o $@ $<
 	go build -o $@ $<
 

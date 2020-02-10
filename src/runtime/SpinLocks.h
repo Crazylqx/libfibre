@@ -129,6 +129,10 @@ private:
 public:
   MCSLock() : tail(nullptr) {}
   bool test() const { return tail != nullptr; }
+  bool tryAcquire(Node& n) {
+    n.next = nullptr;
+    return ((tail == nullptr) && _CAS(&tail, (Node*)nullptr, &n,__ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+  }
   void acquire(Node& n) {
     n.next = nullptr;
     Node* prev = __atomic_exchange_n(&tail, &n, __ATOMIC_SEQ_CST);
