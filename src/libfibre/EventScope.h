@@ -130,6 +130,16 @@ public:
     if (timerQueue.checkExpiry(currTime, newTime)) setTimer(newTime);
   }
 
+  template<bool Cluster>
+  BasePoller* CP(int fd) {
+#if TESTING_PROCESSOR_POLLER
+    BasePoller& cp = Cluster ? Context::CurrCluster().getPoller(fd) : Context::CurrProcessor().getPoller();
+#else
+    BasePoller& cp = Context::CurrCluster().getPoller(fd);
+#endif
+    return &cp;
+  }
+
   template<bool Input, bool Output, bool Lazy, bool Cluster>
   void registerFD(int fd) {
     static_assert(Input || Output, "must set Input or Output in registerFD()");
@@ -141,11 +151,6 @@ public:
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
     const size_t target = (Input ? BasePoller::Input : 0) | (Output ? BasePoller::Output : 0);
-#if TESTING_PROCESSOR_POLLER
-    BasePoller& cp = Cluster ? Context::CurrCluster().getPoller(fd) : Context::CurrProcessor().getPoller();
-#else
-    BasePoller& cp = Context::CurrCluster().getPoller(fd);
-#endif
 
 #if TESTING_LAZY_FD_REGISTRATION
 #if __FreeBSD__ // can atomically check flags and set poller
@@ -153,22 +158,22 @@ public:
     if ((prev & target) == target) return;
     const bool change = false;
     BasePoller* pp = nullptr;
-    __atomic_compare_exchange_n(&fdsync.poller, &pp, &cp, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+    __atomic_compare_exchange_n(&fdsync.poller, &pp, CP<Cluster>(fd), false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
 #else // Linux: serialize concurrent registrations - EPOLL_CTL_ADD vs. _MOD
-    if ((fdsync.status & target) == target) return;   // outside of lock: faster, but double regs possible...
+    if ((fdsync.status & target) == target) return;      // outside of lock: faster, but double regs possible...
     ScopedLock<FibreMutex> sl(fdsync.regLock);
     fdsync.status |= target;
-    bool change = fdsync.poller;                      // already registered for polling?
-    if (!fdsync.poller) fdsync.poller = &cp;          // else set poller
+    bool change = fdsync.poller;                         // already registered for polling?
+    if (!fdsync.poller) fdsync.poller = CP<Cluster>(fd); // else set poller
 #endif
 #else // TESTING_LAZY_FD_REGISTRATION
     RASSERT0(!fdsync.poller);
     fdsync.status |= target;
     const bool change = false;
-    fdsync.poller = &cp;
+    fdsync.poller = CP<Cluster>(fd);
 #endif
 
-    fdsync.poller->setupFD(fd, fdsync.status, change); // add or modify poll settings
+    fdsync.poller->setupFD(fd, fdsync.status, change);    // add or modify poll settings
   }
 
   void deregisterFD(int fd) {
@@ -243,7 +248,7 @@ public:
   }
 
   template<bool Input>
-  static inline bool NBtest() {
+  static inline bool TestEAGAIN() {
     int serrno = _SysErrno();
 #if __FreeBSD__
     // workaround - suspect: https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=129169 - or similar?
@@ -257,10 +262,9 @@ public:
   template<bool Input, bool Yield, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    T ret;
     if (Yield) Fibre::yield();
-    ret = iofunc(fd, a...);
-    if (ret >= 0 || !NBtest<Input>()) return ret;
+    T ret = iofunc(fd, a...);
+    if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
 #if TESTING_LAZY_FD_REGISTRATION
     registerFD<Input,!Input,false,false>(fd);
 #endif
@@ -268,7 +272,7 @@ public:
     for (;;) {
       sem.P();
       ret = iofunc(fd, a...);
-      if (ret >= 0 || !NBtest<Input>()) return ret;
+      if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
     }
   }
 };
@@ -342,7 +346,7 @@ inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
     Context::CurrEventScope().stats->cliconn.count();
     Context::CurrEventScope().registerFD<true,true,true,false>(fd);
   } else if (_SysErrno() == EINPROGRESS) {
-    Context::CurrEventScope().registerFD<true,true,false,false>(fd);
+    Context::CurrEventScope().registerFD<false,true,false,false>(fd);
     Context::CurrEventScope().block<false>(fd);
     socklen_t sz = sizeof(ret);
     SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &sz));

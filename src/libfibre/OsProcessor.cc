@@ -21,29 +21,31 @@
 
 #include <limits.h>       // PTHREAD_STACK_MIN
 
+namespace Context {
 static thread_local StackContext*  volatile currStack   = nullptr;
 static thread_local BaseProcessor* volatile currProc    = nullptr;
 static thread_local Cluster*       volatile currCluster = nullptr;
 static thread_local EventScope*    volatile currScope   = nullptr;
 
-StackContext*  Context::CurrStack()      { RASSERT0(currStack);   return  currStack; }
-BaseProcessor& Context::CurrProcessor()  { RASSERT0(currProc);    return *currProc; }
-Cluster&       Context::CurrCluster()    { RASSERT0(currCluster); return *currCluster; }
-EventScope&    Context::CurrEventScope() { RASSERT0(currScope);   return *currScope; }
+StackContext*  CurrStack()      { RASSERT0(currStack);   return  currStack; }
+BaseProcessor& CurrProcessor()  { RASSERT0(currProc);    return *currProc; }
+Cluster&       CurrCluster()    { RASSERT0(currCluster); return *currCluster; }
+EventScope&    CurrEventScope() { RASSERT0(currScope);   return *currScope; }
 
-void Context::setCurrStack(StackContext& s, _friend<StackContext>) { currStack = &s; }
+void setCurrStack(StackContext& s, _friend<StackContext>) { currStack = &s; }
+}
 
 inline void OsProcessor::setupContext() {
   Cluster& cl = reinterpret_cast<Cluster&>(scheduler);
-  currProc = this;
-  currCluster = &cl;
-  currScope = &cl.getEventScope();
+  Context::currProc = this;
+  Context::currCluster = &cl;
+  Context::currScope = &cl.getEventScope();
   handoverStack = nullptr;
   maintenanceFibre = new Fibre(*this);
   maintenanceFibre->setPriority(TopPriority);
   maintenanceFibre->run(Cluster::maintenance, &cl);
 #if TESTING_PROCESSOR_POLLER
-  pollFibre = new PollerFibre(*currScope, *this, false);
+  pollFibre = new PollerFibre(*Context::currScope, *this, false);
   pollFibre->start();
 #endif
 }
@@ -71,7 +73,7 @@ inline void OsProcessor::idleLoopCreatePthread(funcvoid1_t initFunc, ptr_t arg) 
 ptr_t OsProcessor::idleLoopStartPthread(OsProcessor* This) {
   This->setupContext();
   // idle loop takes over pthread stack - create fibre without stack
-  currStack = This->idleStack = new Fibre(*This, _friend<OsProcessor>());
+  Context::currStack = This->idleStack = new Fibre(*This, _friend<OsProcessor>());
   if (This->initFibre) This->yieldDirect(*This->initFibre);
   This->idleLoop();
   reinterpret_cast<Fibre*>(This->idleStack)->endDirect(_friend<OsProcessor>());
@@ -98,13 +100,13 @@ OsProcessor::OsProcessor(Cluster& cl, _friend<_Bootstrapper>) : BaseProcessor(cl
   idleStack = new Fibre(*this);
   idleStack->setup((ptr_t)idleLoopStartFibre, this);
   // main fibre takes over pthread stack - create fibre without stack
-  currStack = new Fibre(*this, _friend<OsProcessor>());
+  Context::currStack = new Fibre(*this, _friend<OsProcessor>());
   scheduler.addProcessor(*this); // first processor -> should not block, but need currStack set for ringLock
 }
 
 void OsProcessor::setupFakeContext(StackContext* sc, EventScope* es, _friend<BaseThreadPoller>) {
-  currStack = sc;
-  currProc = nullptr;
-  currCluster = nullptr;
-  currScope = es;
+  Context::currStack = sc;
+  Context::currProc = nullptr;
+  Context::currCluster = nullptr;
+  Context::currScope = es;
 }

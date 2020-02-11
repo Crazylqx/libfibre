@@ -165,7 +165,7 @@ void servaccept() {
 }
 
 static void servaccept2() {
-  Context::CurrEventScope().registerFD<true,false,true,true>(servFD);
+  Context::CurrEventScope().registerFD<true,false,false,true>(servFD);
   new OsProcessor[2];
   servaccept();
 }
