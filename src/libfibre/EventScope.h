@@ -176,13 +176,14 @@ public:
     fdsync.poller->setupFD(fd, fdsync.status, change);    // add or modify poll settings
   }
 
+  template<bool RemoveFromPollSet = false>
   void deregisterFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
 #if TESTING_LAZY_FD_REGISTRATION && __linux__
     ScopedLock<FibreMutex> sl(fdsync.regLock);
 #endif
-//    if (fdsync.poller) fdsync.poller->resetFD(fd);
+    if (RemoveFromPollSet && fdsync.poller) fdsync.poller->resetFD(fd);
     fdsync.poller = nullptr;
     fdsync.status = 0;
     RASSERT0(fdsync.RD.empty());
@@ -348,6 +349,11 @@ inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
   } else if (_SysErrno() == EINPROGRESS) {
     Context::CurrEventScope().registerFD<false,true,false,false>(fd);
     Context::CurrEventScope().block<false>(fd);
+#if TESTING_LAZY_FD_REGISTRATION
+    Context::CurrEventScope().deregisterFD<true>(fd); // revert to lazy registration
+#else
+    Context::CurrEventScope().registerFD<true,false,false,false>(fd); // upgrade to R/W registration
+#endif
     socklen_t sz = sizeof(ret);
     SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &sz));
     RASSERT(ret == 0, ret);
