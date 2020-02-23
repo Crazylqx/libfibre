@@ -79,8 +79,8 @@ protected:
 #else // __linux__ below
     uint64_t val = 1;
     val = SYSCALL_EQ(write(waker, &val, sizeof(val)), sizeof(val));
-#endif
     DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD, " via ", waker);
+#endif
   }
 
 public:
