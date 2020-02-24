@@ -43,8 +43,8 @@ class EventScope {
     SyncSem RD;
     SyncSem WR;
 #if TESTING_LAZY_FD_REGISTRATION
-    FibreMutex regLock;
-    size_t status;
+    FibreMutex lock;
+    size_t     status;
     SyncFD() : status(0) {}
 #endif
   } *fdSyncVector;
@@ -142,7 +142,7 @@ public:
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
     if ((fdsync.status & target) == target) return; // outside of lock: faster, but double regs possible...
-    ScopedLock<FibreMutex> sl(fdsync.regLock);
+    ScopedLock<FibreMutex> sl(fdsync.lock);
     bool change = fdsync.status;                    // already registered for polling?
     fdsync.status |= target;
 #endif
@@ -167,7 +167,7 @@ public:
     RASSERT0(fdsync.RD.empty());
     RASSERT0(fdsync.WR.empty());
 #if TESTING_LAZY_FD_REGISTRATION
-    ScopedLock<FibreMutex> sl(fdsync.regLock);
+    ScopedLock<FibreMutex> sl(fdsync.lock);
     fdsync.status = 0;
 #endif
     if (RemoveFromPollSet) {                        // only called from lfConnect
@@ -259,12 +259,12 @@ public:
 #if TESTING_LAZY_FD_REGISTRATION
     registerFD<Input,!Input,false,false>(fd);
 #endif
-    Fibre::yield();
     SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
+    sem.P_yield();
     for (;;) {
-      sem.P();
       ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) break;
+      sem.P();
     }
     sem.V();
     return ret;

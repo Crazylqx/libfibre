@@ -224,7 +224,7 @@ public:
     while (!empty()) Pause();     // wait for timed out events to disappear
   }
   template<typename Lock>
-  bool block(Lock& lock, bool wait) {
+  bool block(Lock& lock, bool wait = true) {
     if (wait) {
       BlockingInfo<Lock> bi(lock);
       DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " blocking on ", FmtHex(&queue));
@@ -250,9 +250,6 @@ public:
     return false;
   }
 
-  template<typename Lock>
-  bool block(Lock& lock) { return block(lock, true); }
-
   template<bool Enqueue = true>
   StackContext* unblock() {       // not concurrency-safe; better hold lock
     for (StackContext* s = queue.front(); s != queue.edge(); s = BlockedStackList::next(*s)) {
@@ -276,12 +273,13 @@ protected:
   ssize_t counter;
   BQ bq;
 
-  template<typename... Args>
+  template<bool Yield = false, typename... Args>
   bool internalP(const Args&... args) {
     // need baton passing: counter unchanged, if blocking fails (timeout)
     if (counter < 1) return bq.block(lock, args...);
     counter -= 1;
     lock.release();
+    if (Yield) StackContext::yield();
     return true;
   }
 
@@ -307,7 +305,12 @@ public:
   bool P_unlock(Lock2& l) {
     lock.acquire();
     l.release();
-    return internalP(true);
+    return internalP();
+  }
+
+  bool P_yield() {
+    lock.acquire();
+    return internalP<true>();
   }
 
   void P_fake(size_t c = 1) {
@@ -561,7 +564,7 @@ public:
       lock.release();
       return true;
     } else {
-      bq.block(lock, true);
+      bq.block(lock);
       return false;
     }
   }
@@ -574,7 +577,7 @@ class Condition {
 public:
   bool empty() { return bq.empty(); }
   void reset(Lock& lock) { bq.reset(lock); }
-  bool wait(Lock& lock) { return bq.block(lock, true); }
+  bool wait(Lock& lock) { return bq.block(lock); }
   bool wait(Lock& lock, const Time& timeout) { return bq.block(lock, timeout); }
   template<bool Broadcast = false>
   void signal() { while (bq.unblock() && Broadcast); }
