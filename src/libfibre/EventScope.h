@@ -38,7 +38,7 @@
  partitioned kernel file descriptor tables on Linux.
 */
 class EventScope {
-  typedef FifoSemaphore<InternalLock,true> SyncSem;
+  typedef Semaphore<InternalLock,true> SyncSem;
   struct SyncFD {
     SyncSem RD;
     SyncSem WR;

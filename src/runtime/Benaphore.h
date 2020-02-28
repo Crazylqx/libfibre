@@ -44,9 +44,20 @@ public:
     return (c >= 1) && __atomic_compare_exchange_n(&counter, &c, c-1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
   }
 
+  template<typename Lock2>
+  bool P_unlock(Lock2& l) {
+    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) {
+      l.release();
+      sem.P();
+    }
+    return true;
+  }
+
   void V() {
     if (__atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 1) sem.V();
   }
+
+  void release() { return V(); }
 };
 
 #endif /* _Benaphore_h_ */

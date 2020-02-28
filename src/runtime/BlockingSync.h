@@ -267,26 +267,26 @@ public:
 };
 
 template<typename Lock, bool Binary = false, typename BQ = BlockingQueue>
-class FifoSemaphore {
+class Semaphore {
 protected:
   Lock lock;
   ssize_t counter;
   BQ bq;
 
-  template<bool Yield = false, typename... Args>
-  bool internalP(const Args&... args) {
-    // need baton passing: counter unchanged, if blocking fails (timeout)
+  template<typename... Args>
+  bool internalP(bool yield, const Args&... args) {
+    // baton passing: counter unchanged, if blocking fails (timeout)
     if (counter < 1) return bq.block(lock, args...);
     counter -= 1;
     lock.release();
-    if (Yield) StackContext::yield();
+    if (yield) StackContext::yield();
     return true;
   }
 
 public:
-  explicit FifoSemaphore(ssize_t c = 0) : counter(c) {}
+  explicit Semaphore(ssize_t c = 0) : counter(c) {}
   // baton passing requires serialization at destruction
-  ~FifoSemaphore() { ScopedLock<Lock> sl(lock); }
+  ~Semaphore() { ScopedLock<Lock> sl(lock); }
   bool empty() { return bq.empty(); }
   bool open() { return counter >= 1; }
   ssize_t getValue() { return counter; }
@@ -298,19 +298,19 @@ public:
   }
 
   template<typename... Args>
-  bool P(const Args&... args) { lock.acquire(); return internalP(args...); }
+  bool P(const Args&... args) { lock.acquire(); return internalP(false, args...); }
   bool tryP() { return P(false); }
 
   template<typename Lock2>
   bool P_unlock(Lock2& l) {
     lock.acquire();
     l.release();
-    return internalP();
+    return internalP(false);
   }
 
   bool P_yield() {
     lock.acquire();
-    return internalP<true>();
+    return internalP(true);
   }
 
   void P_fake(size_t c = 1) {
@@ -328,10 +328,12 @@ public:
     else counter += 1;
     return nullptr;
   }
+
+  void release() { return V(); }
 };
 
-template<typename Lock, bool OwnerLock = false, typename BQ = BlockingQueue>
-class FifoMutex {
+template<typename Lock, bool Fifo = true, bool OwnerLock = false, typename BQ = BlockingQueue>
+class SimpleMutex {
   Lock lock;
   StackContext* owner;
   BQ bq;
@@ -340,50 +342,13 @@ protected:
   template<typename... Args>
   bool internalAcquire(const Args&... args) {
     StackContext* cs = Context::CurrStack();
-    lock.acquire();
-    if (!owner) {
-      owner = cs;
-    } else if (owner == cs) {
-      RASSERT(OwnerLock, FmtHex(owner));
-    } else {
-      return bq.block(lock, args...);
-    }
-    lock.release();
-    return true;
-  }
-
-public:
-  FifoMutex() : owner(nullptr) {}
-  // baton passing requires serialization at destruction
-  ~FifoMutex() { ScopedLock<Lock> sl(lock); }
-  bool test() const { return owner != nullptr; }
-
-  template<typename... Args>
-  bool acquire(const Args&... args) { return internalAcquire(args...); }
-  bool tryAcquire() { return acquire(false); }
-
-  void release() {
-    ScopedLock<Lock> al(lock);
-    RASSERT(owner == Context::CurrStack(), FmtHex(owner));
-    owner = bq.unblock();
-  }
-};
-
-template<typename Lock, bool OwnerLock = false, typename BQ = BlockingQueue>
-class BargingMutex {
-  Lock lock;
-  StackContext* owner;
-  BQ bq;
-
-protected:
-  template<typename... Args>
-  bool internalAcquire(const Args&... args) {
-    StackContext* cs = Context::CurrStack();
+    if (OwnerLock && cs == owner) return true;
+    RASSERT(cs != owner, FmtHex(cs), FmtHex(owner));
     for (;;) {
       lock.acquire();
       if (!owner) break;
-      if (owner == cs) { RASSERT(OwnerLock, FmtHex(owner)); break; }
-      if (!bq.block(lock, args...)) return false;
+      if (!bq.block(lock, args...)) return false; // timeout
+      if (Fifo) return true; // owner set via baton passing
     }
     owner = cs;
     lock.release();
@@ -391,7 +356,9 @@ protected:
   }
 
 public:
-  BargingMutex() : owner(nullptr) {}
+  SimpleMutex() : owner(nullptr) {}
+  // baton passing requires serialization at destruction
+  ~SimpleMutex() { if (!Fifo) return; ScopedLock<Lock> sl(lock); }
   bool test() const { return owner != nullptr; }
 
   template<typename... Args>
@@ -401,8 +368,12 @@ public:
   void release() {
     ScopedLock<Lock> al(lock);
     RASSERT(owner == Context::CurrStack(), FmtHex(owner));
-    owner = nullptr;
-    bq.unblock();
+    if (Fifo) {
+      owner = bq.unblock();
+    } else {
+      owner = nullptr;
+      bq.unblock();
+    }
   }
 };
 
@@ -471,13 +442,13 @@ public:
 
 template<typename Lock>
 #if TESTING_MUTEX_FIFO
-class Mutex : public FifoMutex<Lock> {};
+class Mutex : public SimpleMutex<Lock> {};
 #elif TESTING_MUTEX_BARGING
-class Mutex : public BargingMutex<Lock> {};
+class Mutex : public SimpleMutex<Lock, false> {};
 #elif TESTING_MUTEX_SPIN
-class Mutex : public SpinMutex<FifoSemaphore<Lock, true>, false, 4, 1024, 16> {};
+class Mutex : public SpinMutex<Semaphore<Lock, true>, false, 4, 1024, 16> {};
 #else
-class Mutex : public SpinMutex<FifoSemaphore<Lock, true>, false, 0, 0, 0> {};
+class Mutex : public SpinMutex<Semaphore<Lock, true>, false, 0, 0, 0> {};
 #endif
 
 // simple blocking RW lock: release alternates; new readers block when writer waits -> no starvation

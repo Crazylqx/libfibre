@@ -21,11 +21,11 @@
 #include "runtime/BaseProcessor.h"
 #include "runtime/BlockingSync.h"
 
-typedef FifoSemaphore<InternalLock> FibreSemaphore;
-typedef Mutex<InternalLock>         FibreMutex;
-typedef Condition<FibreMutex>       FibreCondition;
-typedef LockRW<InternalLock>        FibreLockRW;
-typedef Barrier<InternalLock>       FibreBarrier;
+typedef Semaphore<InternalLock> FibreSemaphore;
+typedef Mutex<InternalLock>     FibreMutex;
+typedef Condition<FibreMutex>   FibreCondition;
+typedef LockRW<InternalLock>    FibreLockRW;
+typedef Barrier<InternalLock>   FibreBarrier;
 
 class _Bootstrapper;
 class BaseThreadPoller;
