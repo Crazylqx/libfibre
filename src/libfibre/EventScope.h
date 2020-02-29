@@ -38,7 +38,10 @@
  partitioned kernel file descriptor tables on Linux.
 */
 class EventScope {
-  typedef Semaphore<InternalLock,true> SyncSem;
+  struct SyncSem {
+    FibreMutex                   mtx;
+    Semaphore<InternalLock,true> sem;
+  };
   struct SyncFD {
     SyncSem RD;
     SyncSem WR;
@@ -130,20 +133,20 @@ public:
   }
 
   template<bool Input, bool Output, bool Lazy, bool Cluster>
-  void registerFD(int fd) {
+  bool registerFD(int fd) {
     static_assert(Input || Output, "must set Input or Output in registerFD()");
     const size_t target = (Input ? BasePoller::Input : 0) | (Output ? BasePoller::Output : 0);
 
 #if TESTING_LAZY_FD_REGISTRATION
-    if (Lazy) return;
+    if (Lazy) return false;
 #endif
 
 #if TESTING_LAZY_FD_REGISTRATION
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
-    if ((fdsync.status & target) == target) return; // outside of lock: faster, but double regs possible...
+    if ((fdsync.status & target) == target) return false; // outside of lock: faster, but double regs possible...
     ScopedLock<FibreMutex> sl(fdsync.lock);
-    bool change = fdsync.status;                    // already registered for polling?
+    bool change = fdsync.status;                          // already registered for polling?
     fdsync.status |= target;
 #endif
 
@@ -154,18 +157,19 @@ public:
 #endif
 
 #if TESTING_LAZY_FD_REGISTRATION
-    cp.setupFD(fd, fdsync.status, change);          // add or modify poll settings
+    cp.setupFD(fd, fdsync.status, change);                // add or modify poll settings
 #else
     cp.setupFD(fd, target, false);
 #endif
+    return true;
   }
 
   template<bool RemoveFromPollSet = false>
   void deregisterFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
-    RASSERT0(fdsync.RD.empty());
-    RASSERT0(fdsync.WR.empty());
+    RASSERT0(fdsync.RD.sem.empty());
+    RASSERT0(fdsync.WR.sem.empty());
 #if TESTING_LAZY_FD_REGISTRATION
     ScopedLock<FibreMutex> sl(fdsync.lock);
     fdsync.status = 0;
@@ -188,45 +192,47 @@ public:
   void blockPollFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     masterPoller->setupPollFD(fd, true);  // reset using ONESHOT to reduce polling
-    fdSyncVector[fd].RD.P();
+    ScopedLock<FibreMutex> sl(fdSyncVector[fd].RD.mtx);
+    fdSyncVector[fd].RD.sem.P();
   }
 
   void unblockPollFD(int fd, _friend<PollerFibre>) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].RD.V();
+    fdSyncVector[fd].RD.sem.V();
   }
 
   void suspendFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].RD.P_fake();
-    fdSyncVector[fd].WR.P_fake();
+    fdSyncVector[fd].RD.sem.P_fake();
+    fdSyncVector[fd].WR.sem.P_fake();
   }
 
   void resumeFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].RD.V();
-    fdSyncVector[fd].WR.V();
+    fdSyncVector[fd].RD.sem.V();
+    fdSyncVector[fd].WR.sem.V();
   }
 
   template<bool Input>
   void block(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    sem.P();
+    SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
+    ScopedLock<FibreMutex> sl(sync.mtx);
+    sync.sem.P();
   }
 
   template<bool Input>
   bool tryblock(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    return sem.tryP();
+    SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
+    return sync.sem.tryP();
   }
 
   template<bool Input, bool Enqueue = true>
   StackContext* unblock(int fd, _friend<BasePoller>) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    return sem.V<Enqueue>();
+    SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
+    return sync.sem.V<Enqueue>();
   }
 
   template<typename T, class... Args>
@@ -257,16 +263,19 @@ public:
     T ret = iofunc(fd, a...);
     if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
 #if TESTING_LAZY_FD_REGISTRATION
-    registerFD<Input,!Input,false,false>(fd);
+    if (registerFD<Input,!Input,false,false>(fd)) {
+      Fibre::yield();
+      T ret = iofunc(fd, a...);
+      if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
+    }
 #endif
-    SyncSem& sem = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    sem.P_yield();
+    SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
+    ScopedLock<FibreMutex> sl(sync.mtx);
     for (;;) {
+      sync.sem.P();
       ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) break;
-      sem.P();
     }
-    sem.V();
     return ret;
   }
 };
