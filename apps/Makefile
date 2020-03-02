@@ -26,7 +26,7 @@ pordering: ordering.cpp
 	$(CXX) -pthread $< -o $@
 
 gthreadtest: threadtest.go
-	/usr/bin/go build -o $@ $<
+	go build -o $@ $<
 
 pthreadtest: threadtest.cpp include/pthreads.h
 	$(CXX) -Iinclude -DVARIANT=\"pthreads.h\" $(CXXFLAGS) -DPTHREADS $< -o $@ -lrt
