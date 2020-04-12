@@ -49,14 +49,13 @@ typedef cpuset_t cpu_set_t;
 
 #endif /* VARIANT */
 
-// simulate yield-based busy-locking as in qthreads, boost
-#define TRY_YIELD_LOCK 0
+#if defined MORDOR_MAIN || defined BOOST_VERSION || defined QTHREAD_VERSION || defined ARACHNE_H_ || defined _FIBER_FIBER_H_
+#define HASTRYLOCK 0
+#else
+#define HASTRYLOCK 1
+#endif
 
-#if defined MORDOR_MAIN || BOOST_VERSION || QTHREAD_VERSION
-#if TRY_YIELD_LOCK
-#error TRY_YIELD_LOCK not supported with boost, mordor, or qthread
-#endif
-#endif
+#include "runtime/Platform.h"
 
 // configuration default settings
 static unsigned int threadCount = 2;
@@ -72,6 +71,7 @@ static bool affinityFlag = false;
 static bool calibration = false;
 
 static bool yieldExperiment = false;
+static char lockType = 'B';
 
 // worker descriptor
 struct Worker {
@@ -109,13 +109,13 @@ static void alarmHandler(int) {
 
 // help message
 static void usage(const char* prog) {
-  cerr << "usage: " << prog << " -d <duration (secs)> -f <total fibres> -l <locks> -t <system threads> -u <unlocked work> -w <locked work> -s -y -a -c" << endl;
+  cerr << "usage: " << prog << " -d <duration (secs)> -f <total fibres> -l <locks> -t <system threads> -u <unlocked work> -w <locked work> -s -y -a -c -Y -L <lock type>" << endl;
 }
 
 // command-line option processing
 static bool opts(int argc, char** argv) {
   for (;;) {
-    int option = getopt( argc, argv, "d:f:l:t:u:w:syacYh?" );
+    int option = getopt( argc, argv, "d:f:l:t:u:w:syacYL:h?" );
     if ( option < 0 ) break;
     switch(option) {
     case 'd': duration = atoi(optarg); break;
@@ -129,6 +129,7 @@ static bool opts(int argc, char** argv) {
     case 'a': affinityFlag = true; break;
     case 'c': calibration = true; break;
     case 'Y': yieldExperiment = true; break;
+    case 'L': lockType = optarg[0]; break;
     case 'h':
     case '?':
       usage(argv[0]);
@@ -147,6 +148,16 @@ static bool opts(int argc, char** argv) {
   if (duration == 0 || fibreCount == 0 || lockCount == 0 || threadCount == 0) {
     cerr << "none of -d, -f, -l, -t can be zero" << endl;
     usage(argv[0]);
+    return false;
+  }
+  if (lockType >= 'a') lockType -= 32;
+  switch (lockType) {
+#if HASTRYLOCK
+    case 'Y':
+    case 'S':
+#endif
+    case 'B': break;
+    default: cerr << "lock type " << lockType << " not supported" << endl;
     return false;
   }
 #if defined MORDOR_MAIN
@@ -268,11 +279,17 @@ static void worker(void* arg) {
     // unlocked work
     if (work_unlocked != (unsigned int)-1) dowork(buffer, work_unlocked);
     // locked work and counters
-#if TRY_YIELD_LOCK
-    while (!locks[lck].mutex.tryAcquire()) Fibre::yield();
-#else
-    locks[lck].mutex.acquire();
+    switch (lockType) {
+      // regular blocking lock
+      case 'B': locks[lck].mutex.acquire(); break;
+#if HASTRYLOCK
+      // plain spin lock
+      case 'S': while (!locks[lck].mutex.tryAcquire()) Pause(); break;
+      // yield-based busy-locking (as in qthreads, boost)
+      case 'Y': while (!locks[lck].mutex.tryAcquire()) Fibre::yield(); break;
 #endif
+      default: cerr << "internal error: lock type" << endl; abort();
+    }
     if (work_locked != (unsigned int)-1) dowork(buffer, work_locked);
     workers[num].counter += 1;
     locks[lck].counter += 1;
@@ -347,7 +364,7 @@ int main(int argc, char** argv) {
   poolScheduler = new WorkerPool(threadCount);
 #elif defined BOOST_VERSION
   boost_init(threadCount);
-#elif defined __LIBFIBRE__ || __U_CPLUSPLUS__
+#elif defined __LIBFIBRE__ || defined __U_CPLUSPLUS__
   OsProcessor* proc = new OsProcessor[threadCount - 1];
 #elif defined QTHREAD_VERSION
   setenv("QTHREAD_STACK_SIZE", "65536", 1);
