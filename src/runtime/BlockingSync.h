@@ -382,25 +382,36 @@ class SpinMutex {
   StackContext* owner;
   Semaphore sem;
 
+  template<typename... Args>
+  bool tryOnly(const Args&... args) { return false; }
+
+  template<typename... Args>
+  bool tryOnly(bool wait) { return !wait; }
+
+  bool tryLock(StackContext* cs) {
+    StackContext* exp = nullptr;
+    return __atomic_compare_exchange_n(&owner, &exp, cs, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+  }
+
 protected:
   template<typename... Args>
   bool internalAcquire(const Args&... args) {
     StackContext* cs = Context::CurrStack();
     if (OwnerLock && cs == owner) return true;
     RASSERT(cs != owner, FmtHex(cs), FmtHex(owner));
+    if (tryOnly(args...)) return tryLock(cs);
     size_t cnt = 0;
     size_t spin = SpinStart;
     for (;;) {
-      StackContext* exp = nullptr;
-      if (__atomic_compare_exchange_n(&owner, &exp, cs, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) return true;
+      if (tryLock(cs)) return true;
       if (cnt < SpinCount) {
         for (size_t i = 0; i < spin; i += 1) Pause();
-        if (spin <= SpinEnd) spin += spin;
+        if (spin < SpinEnd) spin += spin;
         else cnt += 1;
       } else {
-        if (!sem.P(args...)) return false;
         cnt = 0;
         spin = SpinStart;
+        if (!sem.P(args...)) return false;
       }
     }
   }
