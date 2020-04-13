@@ -28,9 +28,9 @@ class Scheduler;
 class ReadyQueue {
   RuntimeLock readyLock;
 #if TESTING_LOCKED_READYQUEUE
-  StackQueue<ReadyQueueLink> queue[NumPriority];
+  FlexStackQueue queue[NumPriority];
 #else
-  StackMPSC<ReadyQueueLink> queue[NumPriority];
+  FlexStackMPSC queue[NumPriority];
 #endif
 
   ReadyQueue(const ReadyQueue&) = delete;            // no copy

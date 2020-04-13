@@ -120,7 +120,7 @@ public:
     lock.release();
     doSuspend(stack);
   }
-  void suspend(BlockedStackList& queue, StackContext& stack = *Context::CurrStack()) {
+  void suspend(FlexStackList& queue, StackContext& stack = *Context::CurrStack()) {
     setupResumeRace(stack);
     prepareSuspend();
     queue.push_back(stack);
@@ -135,7 +135,7 @@ class TimeoutBlockingInfo : public BlockingInfo<Lock>, public TimeoutInfo {
   bool timedOut;
 public:
   TimeoutBlockingInfo(Lock& l, StackContext& stack = *Context::CurrStack()) : BaseBI(l), TimeoutInfo(stack), timedOut(false) {}
-  bool suspendAbsolute(BlockedStackList& queue, const Time& timeout, const Time& now) {
+  bool suspendAbsolute(FlexStackList& queue, const Time& timeout, const Time& now) {
     BaseBI::setupResumeRace(stack);
     prepareSuspend();
     queue.push_back(stack);
@@ -150,7 +150,7 @@ public:
   virtual void fireTimer() {
     timedOut = true;
     BaseBI::lock.acquire();
-    BlockedStackList::remove(stack);
+    FlexStackList::remove(stack);
     BaseBI::lock.release();
     TimeoutInfo::fireTimer();
   }
@@ -195,7 +195,7 @@ static inline void sleepStack(const Time& timeout) {
 }
 
 class BlockingQueue {
-  BlockedStackList queue;
+  FlexStackList queue;
 
   BlockingQueue(const BlockingQueue&) = delete;            // no copy
   BlockingQueue& operator=(const BlockingQueue&) = delete; // no assignment
@@ -211,10 +211,10 @@ public:
     StackContext* s = queue.front();
     while (s != queue.edge()) {
       ResumeInfo* ri = s->raceResume();
-      StackContext* ns = BlockedStackList::next(*s);
+      StackContext* ns = FlexStackList::next(*s);
       if (ri) {
         ri->cancelTimer();
-        BlockedStackList::remove(*s);
+        FlexStackList::remove(*s);
         DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(s), " clear/resume from ", FmtHex(&queue));
         s->resume();
       }
@@ -252,11 +252,11 @@ public:
 
   template<bool Enqueue = true>
   StackContext* unblock() {       // not concurrency-safe; better hold lock
-    for (StackContext* s = queue.front(); s != queue.edge(); s = BlockedStackList::next(*s)) {
+    for (StackContext* s = queue.front(); s != queue.edge(); s = FlexStackList::next(*s)) {
       ResumeInfo* ri = s->raceResume();
       if (ri) {
         ri->cancelTimer();
-        BlockedStackList::remove(*s);
+        FlexStackList::remove(*s);
         DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(s), " resume from ", FmtHex(&queue));
         if (Enqueue) s->resume();
         return s;
@@ -332,8 +332,8 @@ public:
   void release() { return V(); }
 };
 
-template<typename Lock, bool Fifo = true, bool OwnerLock = false, typename BQ = BlockingQueue>
-class SimpleMutex {
+template<typename Lock, bool OwnerLock, bool Fifo, typename BQ = BlockingQueue>
+class LockedMutex {
   Lock lock;
   StackContext* owner;
   BQ bq;
@@ -356,9 +356,9 @@ protected:
   }
 
 public:
-  SimpleMutex() : owner(nullptr) {}
+  LockedMutex() : owner(nullptr) {}
   // baton passing requires serialization at destruction
-  ~SimpleMutex() { if (!Fifo) return; ScopedLock<Lock> sl(lock); }
+  ~LockedMutex() { if (!Fifo) return; ScopedLock<Lock> sl(lock); }
   bool test() const { return owner != nullptr; }
 
   template<typename... Args>
@@ -451,15 +451,15 @@ public:
   }
 };
 
-template<typename Lock>
+template<typename Lock, bool OwnerLock = false>
 #if TESTING_MUTEX_FIFO
-class Mutex : public SimpleMutex<Lock> {};
+class Mutex : public LockedMutex<Lock, OwnerLock, true> {};
 #elif TESTING_MUTEX_BARGING
-class Mutex : public SimpleMutex<Lock, false> {};
+class Mutex : public LockedMutex<Lock, OwnerLock,  false> {};
 #elif TESTING_MUTEX_SPIN
-class Mutex : public SpinMutex<Semaphore<Lock, true>, false, 4, 1024, 16> {};
+class Mutex : public SpinMutex<Semaphore<Lock, true>, OwnerLock, 4, 1024, 16> {};
 #else
-class Mutex : public SpinMutex<Semaphore<Lock, true>, false, 0, 0, 0> {};
+class Mutex : public SpinMutex<Semaphore<Lock, true>, OwnerLock, 0, 0, 0> {};
 #endif
 
 // simple blocking RW lock: release alternates; new readers block when writer waits -> no starvation

@@ -25,7 +25,7 @@ class LoadManager {
   volatile ssize_t stackCounter;
   RuntimeLock procLock;
   ProcessorList waitingProcs;
-  BlockedStackList waitingStacks;
+  FlexStackList waitingStacks;
 
   LoadManagerStats* stats;
 

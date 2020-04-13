@@ -74,11 +74,14 @@ protected:
 
 template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveStack {
   static_assert(NUM < CNT, "NUM >= CNT");
-public:
-  typedef LT Link;
 
-private:
   T* head;
+
+  static void     clear(T& elem) {
+#if TESTING_ENABLE_ASSERTIONS
+    elem.link[NUM].next = nullptr;
+#endif
+  }
 
 public:
   IntrusiveStack() : head(nullptr) {}
@@ -90,12 +93,6 @@ public:
   static T*       next(      T& elem) { return elem.link[NUM].next; }
   static const T* next(const T& elem) { return elem.link[NUM].next; }
   static bool     test(const T& elem) { return elem.link[NUM].next; }
-
-  static void     clear(T& elem) {
-#if TESTING_ENABLE_ASSERTIONS
-    elem.link[NUM].next = nullptr;
-#endif
-  }
 
   void push(T& first, T& last) {
     RASSERT(!test(last), FmtHex(&first));
@@ -138,12 +135,15 @@ public:
 
 template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveQueue {
   static_assert(NUM < CNT, "NUM >= CNT");
-public:
-  typedef LT Link;
 
-private:
   T* head;
   T* tail;
+
+  static void     clear(T& elem) {
+#if TESTING_ENABLE_ASSERTIONS
+    elem.link[NUM].next = nullptr;
+#endif
+  }
 
 public:
   IntrusiveQueue() : head(nullptr), tail(nullptr) {}
@@ -160,12 +160,6 @@ public:
   static T*       next(      T& elem) { return elem.link[NUM].next; }
   static const T* next(const T& elem) { return elem.link[NUM].next; }
   static bool     test(const T& elem) { return elem.link[NUM].next; }
-
-  static void     clear(T& elem) {
-#if TESTING_ENABLE_ASSERTIONS
-    elem.link[NUM].next = nullptr;
-#endif
-  }
 
   void push(T& first, T& last) {
     RASSERT(!test(last), FmtHex(&first));
@@ -255,16 +249,7 @@ template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveRing {
     prev.link[NUM].next = &first;
   }
 
-public:
-  typedef LT Link;
-
-public:
-  static T*       next(      T& elem) { return elem.link[NUM].next; }
-  static const T* next(const T& elem) { return elem.link[NUM].next; }
-  static T*       prev(      T& elem) { return elem.link[NUM].prev; }
-  static const T* prev(const T& elem) { return elem.link[NUM].prev; }
-  static bool     test(const T& elem) { return elem.link[NUM].next && elem.link[NUM].prev; }
-
+protected:
   static void clear(T& first, T& last) {
 #if TESTING_ENABLE_ASSERTIONS
     first.link[NUM].prev = last.link[NUM].next = nullptr;
@@ -274,6 +259,15 @@ public:
   static void clear(T& elem) {
     clear(elem, elem);
   }
+
+public:
+  typedef LT Link;
+
+  static T*       next(      T& elem) { return elem.link[NUM].next; }
+  static const T* next(const T& elem) { return elem.link[NUM].next; }
+  static T*       prev(      T& elem) { return elem.link[NUM].prev; }
+  static const T* prev(const T& elem) { return elem.link[NUM].prev; }
+  static bool     test(const T& elem) { return elem.link[NUM].next && elem.link[NUM].prev; }
 
   static void close(T& first, T& last) {
     first.link[NUM].prev = &last;
@@ -345,18 +339,15 @@ public:
   }
 };
 
-// NOTE WELL: This design using '_anchorlink' and and downcasting to 'anchor'
+// NOTE WELL: This design using 'anchorLink' and and downcasting to 'anchor'
 // only works, if Link is the first class that T inherits from.
 template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveList : public IntrusiveRing<T,NUM,CNT,LT> {
-public:
-  typedef LT Link;
 
-private:
-  Link _anchorlink;
+  LT anchorLink;
   T* anchor;
 
 public:
-  IntrusiveList() : anchor(static_cast<T*>(&_anchorlink)) {
+  IntrusiveList() : anchor(static_cast<T*>(&anchorLink)) {
     anchor->link[NUM].next = anchor->link[NUM].prev = anchor;
   }
 
@@ -412,24 +403,23 @@ public:
 };
 
 // https://doi.org/10.1109/CCGRID.2006.31, similar to MCS lock
+// note that modifications to 'head' need to be integratd with basic MCS operations in this particular way
 // the Nemesis queue might stall the consumer of the last element, if a producer waits before setting 'prev->vnext'
 template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveQueueNemesis {
   static_assert(NUM < CNT, "NUM >= CNT");
-public:
-  typedef LT Link;
 
-private:
   T* volatile head;
   T* tail;
-
-public:
-  IntrusiveQueueNemesis(): head(nullptr), tail(nullptr) {}
 
   static void clear(T& elem) {
 #if TESTING_ENABLE_ASSERTIONS
     elem.link[NUM].vnext = nullptr;
 #endif
   }
+
+public:
+  IntrusiveQueueNemesis(): head(nullptr), tail(nullptr) {}
+  bool empty() const { return tail == nullptr; }
 
   bool push(T& first, T& last) {
 #if !TESTING_ENABLE_ASSERTIONS
@@ -469,11 +459,11 @@ public:
     return element;
   }
 
-  void transferAllFrom(IntrusiveQueue<T,NUM,CNT,LT>& eq) {
-    if (eq.empty()) return;
+  bool transferAllFrom(IntrusiveQueue<T,NUM,CNT,LT>& eq) {
+    if (eq.empty()) return false;
     T* first = eq.front();
     T* last = eq.popAll();
-    push(*first, *last);
+    return push(*first, *last);
   }
 };
 
@@ -482,49 +472,46 @@ public:
 // http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue
 // https://github.com/samanbarghi/MPSCQ/blob/master/src/MPSCQueue.h
 //
-// NOTE WELL: This design using '_anchorlink' and and downcasting to 'anchor'
+// NOTE WELL: This design using 'anchorLink' and and downcasting to 'anchor'
 // only works, if Link is the first class that T inherits from.
 template<typename T, size_t NUM, size_t CNT, typename LT, bool Blocking> class IntrusiveQueueStub {
   static_assert(NUM < CNT, "NUM >= CNT");
-public:
-  typedef LT Link;
 
-private:
-  Link _anchorlink;
-  T*   stub;
-  T*   head;
-  T*   tail;
-
-  // peek/pop operate in chunks of elements and re-append stub after each chunk
-  // after re-appending stub, tail points to stub, if no further insertions -> empty!
-  bool checkStub() {
-    if (head == stub) {                                  // if current front chunk is empty
-      if (Blocking) {                                    // BLOCKING:
-        Link* expected = stub;                           //   check if tail also points at stub -> empty?
-        Link* xchg = (Link*)(uintptr_t(expected) | 1);   //   if yes, mark queue empty
-        bool empty = __atomic_compare_exchange_n((Link**)&tail, &expected, xchg, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
-        if (empty) return false;                         //   queue is empty and is marked now
-        if (uintptr_t(expected) & 1) return false;       //   queue is empty and was marked before
-      } else {                                           // NONBLOCKING:
-        if (tail == stub) return false;                  //   check if tail also points at stub -> empty?
-      }
-      while (!stub->link[NUM].vnext) Pause();            // producer in push()
-      head = stub->link[NUM].vnext;                      // remove stub
-      push(*stub);                                       // re-append stub at end
-    }
-    return true;
-  }
-
-public:
-  IntrusiveQueueStub() : stub(static_cast<T*>(&_anchorlink)) {
-    head = tail = stub->link[NUM].vnext = stub->link[NUM].prev = stub;
-    if (Blocking) tail = (T*)(uintptr_t(tail) | 1);      // mark queue empty
-  }
+  LT anchorLink;
+  T* stub;
+  T* head;
+  T* tail;
 
   static void clear(T& elem) {
 #if TESTING_ENABLE_ASSERTIONS
     elem.link[NUM].vnext = nullptr;
 #endif
+  }
+
+  // peek/pop operate in chunks of elements and re-append stub after each chunk
+  // after re-appending stub, tail points to stub, if no further insertions -> empty!
+  bool checkStub() {
+    if (head == stub) {                             // if current front chunk is empty
+      if (Blocking) {                               // BLOCKING:
+        LT* expected = stub;                        //   check if tail also points at stub -> empty?
+        LT* xchg = (LT*)(uintptr_t(expected) | 1);  //   if yes, mark queue empty
+        bool empty = __atomic_compare_exchange_n((LT**)&tail, &expected, xchg, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+        if (empty) return false;                    //   queue is empty and is marked now
+        if (uintptr_t(expected) & 1) return false;  //   queue is empty and was marked before
+      } else {                                      // NONBLOCKING:
+        if (tail == stub) return false;             //   check if tail also points at stub -> empty?
+      }
+      while (!stub->link[NUM].vnext) Pause();       // producer in push()
+      head = stub->link[NUM].vnext;                 // remove stub
+      push(*stub);                                  // re-append stub at end
+    }
+    return true;
+  }
+
+public:
+  IntrusiveQueueStub() : stub(static_cast<T*>(&anchorLink)) {
+    head = tail = stub->link[NUM].vnext = stub->link[NUM].prev = stub;
+    if (Blocking) tail = (T*)(uintptr_t(tail) | 1);      // mark queue empty
   }
 
   bool push(T& first, T& last) {

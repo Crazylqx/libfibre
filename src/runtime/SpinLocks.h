@@ -115,6 +115,7 @@ public:
   }
 } __caligned;
 
+// https://doi.org/10.1145/103727.103729
 // pro: no cache contention -> scalability
 // con: storage node, lock bouncing -> use cohorting?
 // tested acquire/release memory ordering -> failure?

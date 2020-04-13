@@ -46,6 +46,7 @@ typedef cpuset_t cpu_set_t;
 #endif /* SYSCALL */
 
 #include VARIANT
+#include "runtime/Platform.h"
 
 #endif /* VARIANT */
 
@@ -54,8 +55,6 @@ typedef cpuset_t cpu_set_t;
 #else
 #define HASTRYLOCK 1
 #endif
-
-#include "runtime/Platform.h"
 
 // configuration default settings
 static unsigned int threadCount = 2;

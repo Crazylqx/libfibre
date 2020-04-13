@@ -34,9 +34,9 @@ class KernelProcessor;
 class Scheduler;
 
 #if TESTING_ENABLE_DEBUGGING
-static const size_t StackLinkCount = 3;
-#else
 static const size_t StackLinkCount = 2;
+#else
+static const size_t StackLinkCount = 1;
 #endif
 
 template <size_t NUM> class StackList :
@@ -53,7 +53,9 @@ public IntrusiveQueueStub<StackContext,NUM,StackLinkCount,DoubleLink<StackContex
 #endif
 
 static const size_t ReadyQueueLink = 0;
-typedef StackList<ReadyQueueLink> BlockedStackList;
+typedef StackList<ReadyQueueLink> FlexStackList;
+typedef StackQueue<ReadyQueueLink> FlexStackQueue;
+typedef StackMPSC<ReadyQueueLink> FlexStackMPSC;
 
 #if TESTING_ENABLE_DEBUGGING
 static const size_t DebugListLink = 1;
