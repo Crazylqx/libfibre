@@ -23,16 +23,21 @@ struct _cfibre_mutex_t   : public fibre_mutex_t {};
 struct _cfibre_cond_t    : public fibre_cond_t {};
 struct _cfibre_rwlock_t  : public fibre_rwlock_t {};
 struct _cfibre_barrier_t : public fibre_barrier_t {};
-struct _cfibre_cluster_t : public Cluster {};
-struct _cfibre_sproc_t   : public OsProcessor {
-  _cfibre_sproc_t(Cluster& c, funcvoid1_t func = nullptr, ptr_t arg = nullptr) : OsProcessor(c, func, arg) {}
-};
+struct _cfast_mutex_t    : public fast_mutex_t {};
+struct _cfast_cond_t    : public fast_cond_t {};
 
 struct _cfibre_attr_t        : public fibre_attr_t {};
 struct _cfibre_mutexattr_t   : public fibre_mutexattr_t {};
 struct _cfibre_condattr_t    : public fibre_condattr_t {};
 struct _cfibre_rwlockattr_t  : public fibre_rwlockattr_t {};
 struct _cfibre_barrierattr_t : public fibre_barrierattr_t {};
+struct _cfast_mutexattr_t    : public fast_mutexattr_t {};
+struct _cfast_condattr_t    : public fast_condattr_t {};
+
+struct _cfibre_cluster_t : public Cluster {};
+struct _cfibre_sproc_t   : public OsProcessor {
+  _cfibre_sproc_t(Cluster& c, funcvoid1_t func = nullptr, ptr_t arg = nullptr) : OsProcessor(c, func, arg) {}
+};
 
 extern "C" int cfibre_cluster_create(cfibre_cluster_t* cluster) {
   *cluster = new _cfibre_cluster_t;
@@ -309,6 +314,58 @@ extern "C" int cfibre_barrier_destroy(cfibre_barrier_t *barrier) {
 
 extern "C" int cfibre_barrier_wait(cfibre_barrier_t *barrier) {
   return fibre_barrier_wait(*barrier);
+}
+
+extern "C" int cfast_mutex_init(cfast_mutex_t *restrict mutex, const cfast_mutexattr_t *restrict attr) {
+  *mutex = (cfast_mutex_t)new fast_mutex_t;
+  return fast_mutex_init(*mutex, (fast_mutexattr_t*)attr);
+}
+
+extern "C" int cfast_mutex_destroy(cfast_mutex_t *mutex) {
+  int ret = fast_mutex_destroy(*mutex);
+  delete *mutex;
+  *mutex = nullptr;
+  return ret;
+}
+
+extern "C" int cfast_mutex_lock(cfast_mutex_t *mutex) {
+  return fast_mutex_lock(*mutex);
+}
+
+extern "C" int cfast_mutex_trylock(cfast_mutex_t *mutex) {
+  return fast_mutex_trylock(*mutex);
+}
+
+extern "C" int cfast_mutex_unlock(cfast_mutex_t *mutex) {
+  return fast_mutex_unlock(*mutex);
+}
+
+extern "C" int cfast_cond_init(cfast_cond_t *restrict cond, const cfast_condattr_t *restrict attr) {
+  *cond = (cfast_cond_t)new fast_cond_t;
+  return fast_cond_init(*cond, (fast_condattr_t*)attr);
+}
+
+extern "C" int cfast_cond_destroy(cfast_cond_t *cond) {
+  int ret = fast_cond_destroy(*cond);
+  delete *cond;
+  *cond = nullptr;
+  return ret;
+}
+
+extern "C" int cfast_cond_wait(cfast_cond_t *restrict cond, cfast_mutex_t *restrict mutex) {
+  return fast_cond_wait(*cond, *mutex);
+}
+
+extern "C" int cfast_cond_timedwait(cfast_cond_t *restrict cond, cfast_mutex_t *restrict mutex, const struct timespec *restrict abstime) {
+  return fast_cond_timedwait(*cond, *mutex, abstime);
+}
+
+extern "C" int cfast_cond_signal(cfast_cond_t *cond) {
+  return fast_cond_signal(*cond);
+}
+
+extern "C" int cfast_cond_broadcast(cfast_cond_t *cond) {
+  return fast_cond_broadcast(*cond);
 }
 
 extern "C" int cfibre_socket(int domain, int type, int protocol) {

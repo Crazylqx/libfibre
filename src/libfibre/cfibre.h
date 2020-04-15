@@ -39,6 +39,11 @@ typedef struct _cfibre_condattr_t*    cfibre_condattr_t;
 typedef struct _cfibre_rwlockattr_t*  cfibre_rwlockattr_t;
 typedef struct _cfibre_barrierattr_t* cfibre_barrierattr_t;
 
+typedef struct _cfast_mutex_t*        cfast_mutex_t;
+typedef struct _cfast_cond_t*         cfast_cond_t;
+typedef struct _cfast_mutexattr_t*    cfast_mutexattr_t;
+typedef struct _cfast_condattr_t*     cfast_condattr_t;
+
 typedef struct _cfibre_cluster_t*     cfibre_cluster_t;
 typedef struct _cfibre_sproc_t*       cfibre_sproc_t;
 
@@ -129,10 +134,18 @@ int cfibre_barrier_init(cfibre_barrier_t *restrict barrier, const cfibre_barrier
 int cfibre_barrier_destroy(cfibre_barrier_t *barrier);
 int cfibre_barrier_wait(cfibre_barrier_t *barrier);
 
-/** @brief Sleep fibre. (`usleep`). */
-int cfibre_usleep(useconds_t uses);
-/** @brief Sleep fibre. (`sleep`). */
-int cfibre_sleep(unsigned int secs);
+int cfast_mutex_init(cfast_mutex_t *restrict mutex, const cfast_mutexattr_t *restrict attr);
+int cfast_mutex_destroy(cfast_mutex_t *mutex);
+int cfast_mutex_lock(cfast_mutex_t *mutex);
+int cfast_mutex_trylock(cfast_mutex_t *mutex);
+int cfast_mutex_unlock(cfast_mutex_t *mutex);
+
+int cfast_cond_init(cfast_cond_t *restrict cond, const cfast_condattr_t *restrict attr);
+int cfast_cond_destroy(cfast_cond_t *cond);
+int cfast_cond_wait(cfast_cond_t *restrict cond, cfast_mutex_t *restrict mutex);
+int cfast_cond_timedwait(cfast_cond_t *restrict cond, cfast_mutex_t *restrict mutex, const struct timespec *restrict abstime);
+int cfast_cond_signal(cfast_cond_t *cond);
+int cfast_cond_broadcast(cfast_cond_t *cond);
 
 /** @brief Create socket. (`socket`). */
 int cfibre_socket(int domain, int type, int protocol);
@@ -171,6 +184,11 @@ ssize_t cfibre_read(int fildes, void *buf, size_t nbyte);
 void cfibre_suspendFD(int fd);
 /** @brief resume event handling for FD */
 void cfibre_resumeFD(int fd);
+
+/** @brief Sleep fibre. (`usleep`). */
+int cfibre_usleep(useconds_t uses);
+/** @brief Sleep fibre. (`sleep`). */
+int cfibre_sleep(unsigned int secs);
 
 #ifdef __cplusplus
 }

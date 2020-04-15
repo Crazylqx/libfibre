@@ -332,6 +332,29 @@ public:
   void release() { return V(); }
 };
 
+class FastMutex : public BaseSuspender {
+  BlockStackMCS queue;
+public:
+  bool acquire() {
+    StackContext* cs = Context::CurrStack();
+    if (!queue.push(*cs)) {
+      prepareSuspend();
+      doSuspend(*cs);
+    }
+    return true;
+  }
+  bool tryAcquire() {
+    StackContext* cs = Context::CurrStack();
+    return queue.tryPushEmpty(*cs);
+  }
+  void release() {
+    StackContext* cs = Context::CurrStack();
+    StackContext* next = queue.next(*cs);
+    BlockStackMCS::clear(*cs);
+    if (next) next->resume();
+  }
+};
+
 template<typename Lock, bool OwnerLock, bool Fifo, typename BQ = BlockingQueue>
 class LockedMutex {
   Lock lock;

@@ -34,9 +34,9 @@ class KernelProcessor;
 class Scheduler;
 
 #if TESTING_ENABLE_DEBUGGING
-static const size_t StackLinkCount = 2;
+static const size_t StackLinkCount = 3;
 #else
-static const size_t StackLinkCount = 1;
+static const size_t StackLinkCount = 2;
 #endif
 
 template <size_t NUM> class StackList :
@@ -45,6 +45,9 @@ public IntrusiveList<StackContext,NUM,StackLinkCount,DoubleLink<StackContext,Sta
 template <size_t NUM> class StackQueue :
 public IntrusiveQueue<StackContext,NUM,StackLinkCount,DoubleLink<StackContext,StackLinkCount>> {};
 
+template <size_t NUM> class StackMCS :
+public IntrusiveQueueMCS<StackContext,NUM,StackLinkCount,DoubleLink<StackContext,StackLinkCount>> {};
+
 template <size_t NUM> class StackMPSC :
 #if TESTING_NEMESIS_READYQUEUE
 public IntrusiveQueueNemesis<StackContext,NUM,StackLinkCount,DoubleLink<StackContext,StackLinkCount>> {};
@@ -52,13 +55,16 @@ public IntrusiveQueueNemesis<StackContext,NUM,StackLinkCount,DoubleLink<StackCon
 public IntrusiveQueueStub<StackContext,NUM,StackLinkCount,DoubleLink<StackContext,StackLinkCount>> {};
 #endif
 
-static const size_t ReadyQueueLink = 0;
-typedef StackList<ReadyQueueLink> FlexStackList;
-typedef StackQueue<ReadyQueueLink> FlexStackQueue;
-typedef StackMPSC<ReadyQueueLink> FlexStackMPSC;
+static const size_t FlexQueueLink = 0;
+typedef StackList<FlexQueueLink> FlexStackList;
+typedef StackQueue<FlexQueueLink> FlexStackQueue;
+typedef StackMPSC<FlexQueueLink> FlexStackMPSC;
+
+static const size_t BlockQueueLink = 1;
+typedef StackMCS<BlockQueueLink> BlockStackMCS;
 
 #if TESTING_ENABLE_DEBUGGING
-static const size_t DebugListLink = 1;
+static const size_t DebugListLink = 2;
 typedef StackList<DebugListLink> GlobalStackList;
 #endif
 

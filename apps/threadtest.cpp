@@ -36,6 +36,7 @@ typedef cpuset_t cpu_set_t;
 
 #define __LIBFIBRE__
 #include "libfibre/fibre.h"
+//#define FibreMutex FastMutex
 
 #else /* VARIANT */
 
