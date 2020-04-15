@@ -26,12 +26,14 @@ template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> cla
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> class IntrusiveQueue;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=DoubleLink<T,CNT>> class IntrusiveRing;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=DoubleLink<T,CNT>> class IntrusiveList;
+template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> class IntrusiveQueueMCS;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> class IntrusiveQueueNemesis;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>,bool Blocking=false> class IntrusiveQueueStub;
 
 template<typename T,size_t CNT> class SingleLink {
   template<typename,size_t,size_t,typename> friend class IntrusiveStack;
   template<typename,size_t,size_t,typename> friend class IntrusiveQueue;
+  template<typename,size_t,size_t,typename> friend class IntrusiveMCS;
   template<typename,size_t,size_t,typename> friend class IntrusiveQueueNemesis;
   template<typename,size_t,size_t,typename,bool> friend class IntrusiveQueueStub;
   friend class BlockingLock;
@@ -54,6 +56,7 @@ template<typename T,size_t CNT> class DoubleLink {
   template<typename,size_t,size_t,typename> friend class IntrusiveQueue;
   template<typename,size_t,size_t,typename> friend class IntrusiveRing;
   template<typename,size_t,size_t,typename> friend class IntrusiveList;
+  template<typename,size_t,size_t,typename> friend class IntrusiveQueueMCS;
   template<typename,size_t,size_t,typename> friend class IntrusiveQueueNemesis;
   template<typename,size_t,size_t,typename,bool> friend class IntrusiveQueueStub;
   friend class BlockingLock;
@@ -402,14 +405,18 @@ public:
   }
 };
 
-// https://doi.org/10.1109/CCGRID.2006.31, similar to MCS lock
-// note that modifications to 'head' need to be integratd with basic MCS operations in this particular way
-// the Nemesis queue might stall the consumer of the last element, if a producer waits before setting 'prev->vnext'
-template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveQueueNemesis {
+// https://doi.org/10.1145/103727.103729
+// the MCS queue can be used to construct an MCS lock or the Nemesis queue
+// next() might stall, if the queue contains one element and the producer of a second elements waits before setting 'prev->vnext'
+template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveQueueMCS {
   static_assert(NUM < CNT, "NUM >= CNT");
 
-  T* volatile head;
+protected:
   T* tail;
+
+public:
+  IntrusiveQueueMCS() : tail(nullptr) {}
+  bool empty() const { return tail == nullptr; }
 
   static void clear(T& elem) {
 #if TESTING_ENABLE_ASSERTIONS
@@ -417,22 +424,61 @@ template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveQueueNe
 #endif
   }
 
-public:
-  IntrusiveQueueNemesis(): head(nullptr), tail(nullptr) {}
-  bool empty() const { return tail == nullptr; }
+  bool tryPushEmpty(T& first, T& last) {
+    if (!empty()) return false;
+#if !TESTING_ENABLE_ASSERTIONS
+    last.link[NUM].vnext = nullptr;
+#endif
+    T* expected = nullptr;
+    return  __atomic_compare_exchange_n(&tail, &expected, &last, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+  }
+
+  bool tryPushEmpty(T& elem) { return tryPushEmpty(elem, elem); }
 
   bool push(T& first, T& last) {
 #if !TESTING_ENABLE_ASSERTIONS
     last.link[NUM].vnext = nullptr;
 #endif
-    // make sure previous write to 'vnext' and following write to 'head' are not reordered with this update
+    // make sure writes to 'vnext' are not reordered with this update
     T* prev = __atomic_exchange_n(&tail, &last, __ATOMIC_SEQ_CST); // swing tail to last of new element(s)
-    if (prev) {
-      prev->link[NUM].vnext = &first;
-      return false;
-    } else {
+    if (!prev) return true;
+    prev->link[NUM].vnext = &first;
+    return false;
+  }
+
+  bool push(T& elem) { return push(elem, elem); }
+
+  T* next(T& elem) {
+    T* expected = &elem;
+    if (__atomic_compare_exchange_n(&tail, &expected, nullptr, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return nullptr;
+    while (!elem.link[NUM].vnext) Pause();         // producer in push()
+    return elem.link[NUM].vnext;
+  }
+
+  bool transferAllFrom(IntrusiveQueue<T,NUM,CNT,LT>& eq) {
+    if (eq.empty()) return false;
+    T* first = eq.front();
+    T* last = eq.popAll();
+    return push(*first, *last);
+  }
+};
+
+// https://doi.org/10.1109/CCGRID.2006.31, similar to MCS lock
+// note that modifications to 'head' need to be integratd with basic MCS operations in this particular way
+// pop() inherits the potential stall from MCS queue's next() (see base class above)
+template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveQueueNemesis : public IntrusiveQueueMCS<T,NUM,CNT,LT> {
+
+  T* volatile head;
+
+public:
+  IntrusiveQueueNemesis() : head(nullptr) {}
+
+  bool push(T& first, T& last) {
+    if (IntrusiveQueueMCS<T,NUM,CNT,LT>::push(first, last)) {
       head = &first;
       return true;
+    } else {
+      return false;
     }
   }
 
@@ -443,27 +489,16 @@ public:
   template<bool Peeked = false>
   T* pop() {
     if (!head) return nullptr;
-    T* element = head;                                   // head will be returned
-    if (element->link[NUM].vnext) {
-      head = element->link[NUM].vnext;
+    T* elem = head;                                 // return head;
+    if (elem->link[NUM].vnext) {
+      head = elem->link[NUM].vnext;
     } else {
-      head = nullptr;
-      T* expected = element;
-      // make sure previous write to 'head' and following write to 'vnext' are not reordered with this update
-      if (!__atomic_compare_exchange_n(&tail, &expected, nullptr, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
-        while (!element->link[NUM].vnext) Pause();       // producer in push()
-        head = element->link[NUM].vnext;                 // set new head
-      }
+      head = nullptr; // head must be set to nullptr first, before potential modification of tail
+      T* next = IntrusiveQueueMCS<T,NUM,CNT,LT>::next(*elem);
+      if (next) head = next;
     }
-    clear(*element);
-    return element;
-  }
-
-  bool transferAllFrom(IntrusiveQueue<T,NUM,CNT,LT>& eq) {
-    if (eq.empty()) return false;
-    T* first = eq.front();
-    T* last = eq.popAll();
-    return push(*first, *last);
+    IntrusiveQueueMCS<T,NUM,CNT,LT>::clear(*elem);
+    return elem;
   }
 };
 
