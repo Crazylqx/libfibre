@@ -24,7 +24,7 @@ struct _cfibre_cond_t    : public fibre_cond_t {};
 struct _cfibre_rwlock_t  : public fibre_rwlock_t {};
 struct _cfibre_barrier_t : public fibre_barrier_t {};
 struct _cfast_mutex_t    : public fast_mutex_t {};
-struct _cfast_cond_t    : public fast_cond_t {};
+struct _cfast_cond_t     : public fast_cond_t {};
 
 struct _cfibre_attr_t        : public fibre_attr_t {};
 struct _cfibre_mutexattr_t   : public fibre_mutexattr_t {};
@@ -32,7 +32,7 @@ struct _cfibre_condattr_t    : public fibre_condattr_t {};
 struct _cfibre_rwlockattr_t  : public fibre_rwlockattr_t {};
 struct _cfibre_barrierattr_t : public fibre_barrierattr_t {};
 struct _cfast_mutexattr_t    : public fast_mutexattr_t {};
-struct _cfast_condattr_t    : public fast_condattr_t {};
+struct _cfast_condattr_t     : public fast_condattr_t {};
 
 struct _cfibre_cluster_t : public Cluster {};
 struct _cfibre_sproc_t   : public OsProcessor {

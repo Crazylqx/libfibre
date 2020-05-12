@@ -102,14 +102,11 @@ void BaseProcessor::idleLoop() {
   }
 }
 
-void BaseProcessor::enqueueResume(StackContext& s, _friend<StackContext>) {
 #if TESTING_LOADBALANCING
-  if (!scheduler.addReadyStack(s)) enqueueDirect(s);
-#else
-  enqueueDirect(s);
-  readyCount.V();
-#endif
+bool BaseProcessor::addReadyStack(StackContext& s) {
+  return scheduler.addReadyStack(s);
 }
+#endif
 
 StackContext& BaseProcessor::scheduleFull(_friend<StackContext>) {
 #if TESTING_LOADBALANCING

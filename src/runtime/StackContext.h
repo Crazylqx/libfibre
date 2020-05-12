@@ -81,19 +81,21 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
   const StackContext& operator=(const StackContext&) = delete;
 
   // central stack switching routine
-  enum SwitchCode { Idle = 'I', Yield = 'Y', Migrate = 'M', Suspend = 'S', Terminate = 'T' };
+  enum SwitchCode { Idle = 'I', Yield = 'Y', Resume = 'R', Suspend = 'S', Terminate = 'T' };
   template<SwitchCode> inline void switchStack(StackContext& nextStack);
 
   // these routines are called immediately after the stack switch
   static void postIdle     (StackContext* prevStack);
   static void postYield    (StackContext* prevStack);
-  static void postMigrate  (StackContext* prevStack);
+  static void postResume   (StackContext* prevStack);
   static void postSuspend  (StackContext* prevStack);
   static void postTerminate(StackContext* prevStack);
 
   void suspendInternal();
   void resumeInternal();
   void changeProcessor(BaseProcessor&);
+  static inline void yieldTo(StackContext& nextStack);
+  static inline void yieldResume(StackContext& nextStack);
 
 protected:
   // constructor/destructors can only be called by derived classes
@@ -126,9 +128,9 @@ public:
   }
 
   // context switching - static -> apply to Context::CurrStack()
-  static void idleYieldTo(StackContext& nextStack, _friend<BaseProcessor>);
   static bool yield();
   static bool yieldGlobal();
+  static void idleYieldTo(StackContext& nextStack, _friend<BaseProcessor>);
   static void preempt();
   static void terminate() __noreturn;
 

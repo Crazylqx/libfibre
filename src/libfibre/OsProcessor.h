@@ -61,7 +61,7 @@ public:
   // dedicated constructor for bootstrap: pthread becomes mainFibre
   OsProcessor(Cluster& cluster, _friend<_Bootstrapper>);
 
-  // fake context for poller pthread, needed 'currScope' for timer handling
+  // fake context for poller pthread, set 'currScope' for timer handling
   static void setupFakeContext(StackContext* sc, EventScope* es, _friend<BaseThreadPoller>);
 
   ~OsProcessor() { RABORT("Cannot delete OsProcessor"); }

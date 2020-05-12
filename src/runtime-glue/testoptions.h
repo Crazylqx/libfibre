@@ -5,6 +5,9 @@
 #define TESTING_POLLER_FIBRE_SPIN 65536 // poller fibre: spin loop of NB polls
 #define TESTING_LAZY_FD_REGISTRATION  1 // lazy vs. eager registration after fd creation
 
+// **** libfibre options - system threading
+#define TESTING_LOCK_SPIN          1024 // spin before blocking on system lock
+
 /******************************** sanity checks ********************************/
 
 #if !TESTING_LOADBALANCING

@@ -20,7 +20,7 @@
 #include "runtime/Basics.h"
 
 template<typename T>
-static inline bool _CAS(T *ptr, T expected, T desired, int success_memorder = __ATOMIC_SEQ_CST, int failure_memorder = __ATOMIC_RELAXED) {
+static inline bool _CAS(T volatile *ptr, T expected, T desired, int success_memorder = __ATOMIC_SEQ_CST, int failure_memorder = __ATOMIC_RELAXED) {
   T* exp = &expected;
   return __atomic_compare_exchange_n(ptr, exp, desired, false, success_memorder, failure_memorder);
 }
@@ -126,13 +126,13 @@ public:
     volatile bool wait;
   };
 private:
-  Node* tail;
+  Node* volatile tail;
 public:
   MCSLock() : tail(nullptr) {}
   bool test() const { return tail != nullptr; }
   bool tryAcquire(Node& n) {
     n.next = nullptr;
-    return ((tail == nullptr) && _CAS(&tail, (Node*)nullptr, &n,__ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+    return ((tail == nullptr) && _CAS(&tail, (Node*)nullptr, &n, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
   }
   void acquire(Node& n) {
     n.next = nullptr;

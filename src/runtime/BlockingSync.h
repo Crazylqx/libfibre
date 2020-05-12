@@ -334,6 +334,7 @@ public:
 
 class FastMutex : public BaseSuspender {
   BlockStackMCS queue;
+
 public:
   bool acquire() {
     StackContext* cs = Context::CurrStack();
@@ -343,10 +344,12 @@ public:
     }
     return true;
   }
+
   bool tryAcquire() {
     StackContext* cs = Context::CurrStack();
     return queue.tryPushEmpty(*cs);
   }
+
   void release() {
     StackContext* cs = Context::CurrStack();
     StackContext* next = queue.next(*cs);

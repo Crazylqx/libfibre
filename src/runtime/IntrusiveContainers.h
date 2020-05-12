@@ -412,7 +412,7 @@ template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveQueueMC
   static_assert(NUM < CNT, "NUM >= CNT");
 
 protected:
-  T* tail;
+  T* volatile tail;
 
 public:
   IntrusiveQueueMCS() : tail(nullptr) {}

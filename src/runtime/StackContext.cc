@@ -32,7 +32,7 @@ StackContext::StackContext(Scheduler& scheduler, bool bg)
 template<StackContext::SwitchCode Code>
 inline void StackContext::switchStack(StackContext& nextStack) {
   // various checks
-  static_assert(Code == Idle || Code == Yield || Code == Migrate || Code == Suspend || Code == Terminate, "Illegal SwitchCode");
+  static_assert(Code == Idle || Code == Yield || Code == Resume || Code == Suspend || Code == Terminate, "Illegal SwitchCode");
   CHECK_PREEMPTION(0);
   RASSERT(this == Context::CurrStack() && this != &nextStack, FmtHex(this), ' ', FmtHex(Context::CurrStack()), ' ', FmtHex(&nextStack));
 
@@ -42,7 +42,7 @@ inline void StackContext::switchStack(StackContext& nextStack) {
   switch (Code) {
     case Idle:      stackSwitch(this, postIdle,      &stackPointer, nextStack.stackPointer); break;
     case Yield:     stackSwitch(this, postYield,     &stackPointer, nextStack.stackPointer); break;
-    case Migrate:   stackSwitch(this, postMigrate,   &stackPointer, nextStack.stackPointer); break;
+    case Resume:    stackSwitch(this, postResume,    &stackPointer, nextStack.stackPointer); break;
     case Suspend:   stackSwitch(this, postSuspend,   &stackPointer, nextStack.stackPointer); break;
     case Terminate: stackSwitch(this, postTerminate, &stackPointer, nextStack.stackPointer); break;
   }
@@ -62,7 +62,7 @@ void StackContext::postYield(StackContext* prevStack) {
 }
 
 // yield -> resume right away
-void StackContext::postMigrate(StackContext* prevStack) {
+void StackContext::postResume(StackContext* prevStack) {
   CHECK_PREEMPTION(0);
   prevStack->resumeInternal();
 }
@@ -81,6 +81,20 @@ void StackContext::postTerminate(StackContext* prevStack) {
   RuntimeStackDestroy(*prevStack, _friend<StackContext>());
 }
 
+void StackContext::suspendInternal() {
+  switchStack<Suspend>(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
+}
+
+void StackContext::resumeInternal() {
+  processor->enqueueResume(*this, _friend<StackContext>());
+}
+
+void StackContext::changeProcessor(BaseProcessor& p) {
+  processor->removeStack(_friend<StackContext>());
+  processor = &p;
+  processor->addStack(_friend<StackContext>());
+}
+
 // a new thread/stack starts in stubInit() and then jumps to this routine
 extern "C" void invokeStack(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) {
   CHECK_PREEMPTION(0);
@@ -90,29 +104,37 @@ extern "C" void invokeStack(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3
   StackContext::terminate();
 }
 
+inline void StackContext::yieldTo(StackContext& nextStack) {
+  CHECK_PREEMPTION(1);          // expect preemption still enabled
+  RuntimeDisablePreemption();
+  Context::CurrStack()->switchStack<Yield>(nextStack);
+  RuntimeEnablePreemption();
+}
+
+inline void StackContext::yieldResume(StackContext& nextStack) {
+  CHECK_PREEMPTION(1);          // expect preemption still enabled
+  RuntimeDisablePreemption();
+  Context::CurrStack()->switchStack<Resume>(nextStack);
+  RuntimeEnablePreemption();
+}
+
+bool StackContext::yield() {
+  StackContext* nextStack = Context::CurrProcessor().scheduleYield(_friend<StackContext>());
+  if (nextStack) yieldTo(*nextStack);
+  return nextStack;
+}
+
+bool StackContext::yieldGlobal() {
+  StackContext* nextStack = Context::CurrProcessor().scheduleYieldGlobal(_friend<StackContext>());
+  if (nextStack) yieldTo(*nextStack);
+  return nextStack;
+}
+
 void StackContext::idleYieldTo(StackContext& nextStack, _friend<BaseProcessor>) {
   CHECK_PREEMPTION(1);          // expect preemption still enabled
   RuntimeDisablePreemption();
   Context::CurrStack()->switchStack<Idle>(nextStack);
   RuntimeEnablePreemption();
-}
-
-bool StackContext::yield() {
-  CHECK_PREEMPTION(1);          // expect preemption still enabled
-  RuntimeDisablePreemption();
-  StackContext* nextStack = Context::CurrProcessor().scheduleYield(_friend<StackContext>());
-  if (nextStack) Context::CurrStack()->switchStack<Yield>(*nextStack);
-  RuntimeEnablePreemption();
-  return nextStack;
-}
-
-bool StackContext::yieldGlobal() {
-  CHECK_PREEMPTION(1);          // expect preemption still enabled
-  RuntimeDisablePreemption();
-  StackContext* nextStack = Context::CurrProcessor().scheduleYieldGlobal(_friend<StackContext>());
-  if (nextStack) Context::CurrStack()->switchStack<Yield>(*nextStack);
-  RuntimeEnablePreemption();
-  return nextStack;
 }
 
 void StackContext::preempt() {
@@ -126,20 +148,6 @@ void StackContext::terminate() {
   CHECK_PREEMPTION(0);
   Context::CurrStack()->switchStack<Terminate>(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
   unreachable();
-}
-
-void StackContext::suspendInternal() {
-  switchStack<Suspend>(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
-}
-
-void StackContext::resumeInternal() {
-  processor->enqueueResume(*this, _friend<StackContext>());
-}
-
-void StackContext::changeProcessor(BaseProcessor& p) {
-  processor->removeStack(_friend<StackContext>());
-  processor = &p;
-  processor->addStack(_friend<StackContext>());
 }
 
 void StackContext::rebalance() {
@@ -156,9 +164,7 @@ void StackContext::migrateNow(BaseProcessor& proc) {
   StackContext* sc = Context::CurrStack();
   sc->affinity = false;
   sc->changeProcessor(proc);
-  RuntimeDisablePreemption();
-  sc->switchStack<Migrate>(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
-  RuntimeEnablePreemption();
+  sc->yieldResume(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
 }
 
 // migrate to scheduler (for disk I/O), don't change stackCount or affinity
@@ -166,9 +172,7 @@ BaseProcessor& StackContext::migrateNow(Scheduler& scheduler, _friend<EventScope
   StackContext* sc = Context::CurrStack();
   BaseProcessor* proc = sc->processor;
   sc->processor = &scheduler.placement(_friend<StackContext>(), true);
-  RuntimeDisablePreemption();
-  sc->switchStack<Migrate>(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
-  RuntimeEnablePreemption();
+  sc->yieldResume(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
   return *proc;
 }
 
@@ -176,7 +180,5 @@ BaseProcessor& StackContext::migrateNow(Scheduler& scheduler, _friend<EventScope
 void StackContext::migrateNow(BaseProcessor& proc, _friend<EventScope>) {
   StackContext* sc = Context::CurrStack();
   sc->processor = &proc;
-  RuntimeDisablePreemption();
-  sc->switchStack<Migrate>(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
-  RuntimeEnablePreemption();
+  sc->yieldResume(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
 }

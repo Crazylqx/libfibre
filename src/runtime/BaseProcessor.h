@@ -93,6 +93,16 @@ class BaseProcessor : public ProcessorRing::Link {
 
   void idleLoopTerminate();
 
+  void enqueueDirect(StackContext& s) {
+    DBG::outl(DBG::Level::Scheduling, "Stack ", FmtHex(&s), " queueing on ", FmtHex(this));
+    stats->enq.count();
+    readyQueue.enqueue(s);
+  }
+
+#if TESTING_LOADBALANCING
+  bool addReadyStack(StackContext& s);
+#endif
+
 protected:
   Scheduler&    scheduler;
   StackContext* idleStack;
@@ -104,12 +114,6 @@ protected:
 
   void yieldDirect(StackContext& sc) {
     StackContext::idleYieldTo(sc, _friend<BaseProcessor>());
-  }
-
-  void enqueueDirect(StackContext& s) {
-    DBG::outl(DBG::Level::Scheduling, "Stack ", FmtHex(&s), " queueing on ", FmtHex(this));
-    stats->enq.count();
-    readyQueue.enqueue(s);
   }
 
 public:
@@ -136,7 +140,14 @@ public:
     enqueueDirect(s);
   }
 
-  void enqueueResume(StackContext& s, _friend<StackContext>);
+  void enqueueResume(StackContext& s, _friend<StackContext>) {
+#if TESTING_LOADBALANCING
+    if (!addReadyStack(s)) enqueueDirect(s);
+#else
+    enqueueDirect(s);
+    readyCount.V();
+#endif
+  }
 
   StackContext& scheduleFull(_friend<StackContext>);
   StackContext* scheduleYield(_friend<StackContext>);
