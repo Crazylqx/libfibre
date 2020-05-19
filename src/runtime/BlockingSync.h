@@ -333,28 +333,37 @@ public:
 };
 
 class FastMutex : public BaseSuspender {
-  BlockStackMCS queue;
+  volatile size_t counter;
+  FlexStackMPSC queue;
 
 public:
+  FastMutex() : counter(0) {}
+  bool test() { return counter > 0; }
+
   bool acquire() {
+    if (__atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST) == 1) return true;
     StackContext* cs = Context::CurrStack();
-    if (!queue.push(*cs)) {
-      prepareSuspend();
-      doSuspend(*cs);
-    }
+    queue.push(*cs);
+    prepareSuspend();
+    doSuspend(*cs);
     return true;
   }
 
   bool tryAcquire() {
-    StackContext* cs = Context::CurrStack();
-    return queue.tryPushEmpty(*cs);
+    size_t c = counter;
+    return (c == 0) && __atomic_compare_exchange_n(&counter, &c, c+1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
   }
 
+  template<bool DirectSwitch = false>
   void release() {
-    StackContext* cs = Context::CurrStack();
-    StackContext* next = queue.next(*cs);
-    BlockStackMCS::clear(*cs);
-    if (next) next->resume();
+    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) == 0) return;
+    StackContext* next;
+    for (;;) {
+      next = queue.pop();
+      if (next) break;
+      Pause();
+    }
+    next->resume<DirectSwitch>();
   }
 };
 

@@ -89,6 +89,10 @@ void StackContext::resumeInternal() {
   processor->enqueueResume(*this, _friend<StackContext>());
 }
 
+void StackContext::resumeDirect() {
+  yieldResume(*this);
+}
+
 void StackContext::changeProcessor(BaseProcessor& p) {
   processor->removeStack(_friend<StackContext>());
   processor = &p;

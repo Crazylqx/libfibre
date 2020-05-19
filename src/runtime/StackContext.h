@@ -34,9 +34,9 @@ class KernelProcessor;
 class Scheduler;
 
 #if TESTING_ENABLE_DEBUGGING
-static const size_t StackLinkCount = 3;
-#else
 static const size_t StackLinkCount = 2;
+#else
+static const size_t StackLinkCount = 1;
 #endif
 
 template <size_t NUM> class StackList :
@@ -56,15 +56,12 @@ public IntrusiveQueueStub<StackContext,NUM,StackLinkCount,DoubleLink<StackContex
 #endif
 
 static const size_t FlexQueueLink = 0;
-typedef StackList<FlexQueueLink> FlexStackList;
+typedef StackList <FlexQueueLink> FlexStackList;
 typedef StackQueue<FlexQueueLink> FlexStackQueue;
-typedef StackMPSC<FlexQueueLink> FlexStackMPSC;
-
-static const size_t BlockQueueLink = 1;
-typedef StackMCS<BlockQueueLink> BlockStackMCS;
+typedef StackMPSC <FlexQueueLink> FlexStackMPSC;
 
 #if TESTING_ENABLE_DEBUGGING
-static const size_t DebugListLink = 2;
+static const size_t DebugListLink = 1;
 typedef StackList<DebugListLink> GlobalStackList;
 #endif
 
@@ -93,6 +90,7 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
 
   void suspendInternal();
   void resumeInternal();
+  void resumeDirect();
   void changeProcessor(BaseProcessor&);
   static inline void yieldTo(StackContext& nextStack);
   static inline void yieldResume(StackContext& nextStack);
@@ -140,15 +138,21 @@ public:
     size_t spin = SpinStart;
     while (spin <= SpinEnd) {
       for (size_t i = 0; i < spin; i += 1) Pause();
-      if (runState) return; // resumed already? skip suspend
+      // resumed already? skip suspend
+      size_t exp = 2;
+      if (__atomic_compare_exchange_n(&runState, &exp, 1, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) return;
       spin += spin;
     }
     suspendInternal();
   }
 
   // if suspended (runState == 0), resume
+  template<bool DirectSwitch = false>
   void resume() {
-    if (__atomic_fetch_add( &runState, 1, __ATOMIC_RELAXED ) == 0) resumeInternal();
+    if (__atomic_fetch_add( &runState, 1, __ATOMIC_RELAXED ) == 0) {
+      if (DirectSwitch) resumeDirect();
+      else resumeInternal();
+    }
   }
 
   // set ResumeInfo to facilitate later resume race
