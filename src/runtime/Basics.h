@@ -17,8 +17,9 @@
 #ifndef _Basics_h_
 #define _Basics_h_ 1
 
-#include "runtime/Platform.h"
 #include "runtime/Assertions.h"
+#include "runtime/FloatingPoint.h"
+#include "runtime/Platform.h"
 
 class NoObject {
   NoObject() = delete;                           // no creation

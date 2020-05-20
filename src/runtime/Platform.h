@@ -19,12 +19,12 @@
 
 #include "runtime/testoptions.h"
 
-#include <cstddef>
-#include <cstdint>  
+#include <stddef.h>
+#include <stdint.h>
 
 #if defined(__x86_64__)
 
-#if defined(__clang__) // avoid include file problems
+#if defined(__clang__) || defined(__cforall) // avoid include file problems
 static inline void Pause(void) { asm volatile("pause"); }
 #else
 #include <xmmintrin.h> // _mm_pause
@@ -50,9 +50,11 @@ static const size_t charbits       = 8;
 static const size_t pageoffsetbits = 12;
 static const size_t pagetablebits  = 9;
 static const size_t pagelevels     = 4;
+#if defined(__cplusplus)
 static const size_t pagebits       = pageoffsetbits + pagetablebits * pagelevels;
 static const size_t framebits      = pageoffsetbits + 40;
 static const size_t ptentries      = 1 << pagetablebits;
+#endif
 
 static const vaddr stackAlignment  = 16;
 
@@ -78,43 +80,6 @@ static inline void unreachable() {
   __builtin_unreachable();
   __builtin_trap();
 }
-
-class FloatingPointFlags { // FP (x87/SSE) control/status words (ABI Section 3.2.3, Fig 3.4)
-  uint32_t csr;
-  uint32_t cw;
-public:
-  FloatingPointFlags(uint32_t csr = 0x1FC0, uint32_t cw = 0x037F) : csr(csr), cw(cw) {}
-  FloatingPointFlags(bool s) { if (s) save(); }
-  void save() {
-    asm volatile("stmxcsr %0" : "=m"(csr) :: "memory");
-    asm volatile("fnstcw  %0" : "=m"(cw) :: "memory");
-  }
-  void restore() {
-    asm volatile("ldmxcsr %0" :: "m"(csr) : "memory");
-    asm volatile("fldcw   %0" :: "m"(cw) : "memory");
-  }
-};
-
-class FloatingPointContext {
-  char fpu[512] __attribute__((__aligned__(16)));     // alignment required for fxsave/fxrstor
-  enum State { Init = 0, Clean = 1, Dirty = 2 } state;
-public:
-  FloatingPointContext() : state(Init) {}
-  void setClean() { state = Clean; }
-  bool  isClean() const { return state == Clean; }
-  static void initCPU() {
-    asm volatile("finit" ::: "memory");
-  }
-  void save() {    // TODO: later use XSAVEOPTS for complete SSE/AVX/etc state!
-    asm volatile("fxsave %0" : "=m"(fpu) :: "memory");
-    state = Dirty;
-  }
-  void restore() { // TODO: later use XRSTOR for complete SSE/AVX/etc state!
-    if (state == Dirty) asm volatile("fxrstor %0" :: "m"(fpu) : "memory");
-    else if (state == Init) initCPU();
-    state = Clean;
-  }
-};
 
 #else
 #error unsupported architecture: only __x86_64__ supported at this time
