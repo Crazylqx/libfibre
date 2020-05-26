@@ -3,47 +3,52 @@
 
 #include "Arachne/Arachne.h"
 
-class Fibre {
-  Arachne::ThreadId id;
-public:
-  Fibre(void (*start_routine)(void *), void* arg, bool = false) {
-    id = Arachne::createThread(start_routine, arg);
-    Arachne::yield();
-  }
-  ~Fibre() {
-    Arachne::join(id);
-  }
-  static void yield() { Arachne::yield(); }
-};
+#define HASTRYLOCK 1
 
-class FibreMutex {
-//  Arachne::SpinLock lock;
-  Arachne::SleepLock lock;
-public:
-  void acquire()    { lock.lock(); }
-  void tryAcquire() { lock.try_lock(); }
-  void release()    { lock.unlock(); }
-};
-
-class FibreBarrier {
-  Arachne::SpinLock lock;
+typedef Arachne::ThreadId  shim_thread_t;
+typedef Arachne::SleepLock shim_mutex_t;
+//typedef Arachne::SleepLock shim_mutex_t;
+struct shim_barrier_t {
+  shim_mutex_t lock;
+  Arachne::ConditionVariable queue;
   size_t target;
   size_t counter;
-  Arachne::ConditionVariable queue;
-public:
-  FibreBarrier(size_t t) : target(t), counter(0) {}
-  void wait() {
-    lock.lock();
-    counter += 1;
-    if (counter == target) {
-      queue.notifyAll();
-      counter = 0;
-    } else {
-      Arachne::yield();
-      queue.wait(lock);
-    }
-    lock.unlock();
-  }
+  shim_barrier_t(size_t cnt) : target(cnt), counter(0) {}
 };
+
+static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg, bool = false) {
+  shim_thread_t* tid = new shim_thread_t;
+  *tid = Arachne::createThread(start_routine, arg);
+  Arachne::yield();
+  return tid;
+}
+
+static inline void shim_thread_destroy(shim_thread_t* tid) {
+  Arachne::join(*tid);
+  delete tid;
+}
+
+static inline void shim_yield() { Arachne::yield(); }
+
+static inline void shim_mutex_init(shim_mutex_t* mtx)    { new (mtx) shim_mutex_t; }
+static inline void shim_mutex_destroy(shim_mutex_t* mtx) {}
+static inline void shim_mutex_lock(shim_mutex_t* mtx)    { mtx->lock(); }
+static inline bool shim_mutex_trylock(shim_mutex_t* mtx) { return mtx->try_lock(); }
+static inline void shim_mutex_unlock(shim_mutex_t* mtx)  { mtx->unlock(); }
+
+static inline shim_barrier_t* shim_barrier_create(size_t cnt) { return new shim_barrier_t(cnt); }
+static inline void shim_barrier_destroy(shim_barrier_t* barr) { delete barr; }
+static inline void shim_barrier_wait(shim_barrier_t* barr) {
+  barr->lock.lock();
+  barr->counter += 1;
+  if (barr->counter == barr->target) {
+    barr->queue.notifyAll();
+    barr->counter = 0;
+  } else {
+    Arachne::yield();
+    barr->queue.wait(barr->lock);
+  }
+  barr->lock.unlock();
+}
 
 #endif /* _tt_arachne_h_ */

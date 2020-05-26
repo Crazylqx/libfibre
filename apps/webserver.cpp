@@ -38,15 +38,7 @@ using namespace std;
 typedef cpuset_t cpu_set_t;
 #endif
 
-#include "Garage.h"
-
-#ifndef VARIANT
-
-#define __LIBFIBRE__
-#include "libfibre/fibre.h"
-#define CurrProcessor Context::CurrProcessor
-#define CurrCluster Context::CurrCluster
-#else /* VARIANT */
+#ifdef VARIANT
 
 #ifndef SYSCALL
 #include "syscall_macro.h"
@@ -75,7 +67,11 @@ T lfOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
 }
 #endif /* __U_CPLUSPLUS__ */
 
-#endif /* VARIANT */
+#else
+#include "include/libfibre.h"
+#endif
+
+#include "Garage.h"
 
 #include "picohttpparser/picohttpparser.h"
 #include "picohttpparser/picohttpparser.c"
@@ -98,13 +94,11 @@ typedef void (*UrlHandler)(void* fd, const char* path, int minor_version);
 // define routing table
 static map<const string,UrlHandler> routingTable;
 
-typedef Garage<FibreMutex,FibreCondition> FibreGarage;
-
-static FibreGarage& CurrGarage() {
+static Garage& CurrGarage() {
 #if defined __LIBFIBRE__
-  return *reinterpret_cast<FibreGarage*>(Context::CurrEventScope().getClientData());
+  return *reinterpret_cast<Garage*>(Context::CurrEventScope().getClientData());
 #else
-  static FibreGarage garage;
+  static Garage garage;
   return garage;
 #endif
 }
@@ -345,7 +339,7 @@ static void acceptor(void* arg) {
 #endif
     if (!CurrGarage().run((void*)connFD)) {
       __atomic_add_fetch(&connectionFibres, 1, __ATOMIC_RELAXED);
-      new Fibre(handler_loop, (void*)connFD);
+      shim_thread_create(handler_loop, (void*)connFD);
     }
   }
 #if defined __U_CPLUSPLUS__
@@ -373,7 +367,7 @@ static void acceptor_loop(void* arg) {
 #endif
     if (!CurrGarage().run((void*)arg)) {
       __atomic_add_fetch(&connectionFibres, 1, __ATOMIC_RELAXED);
-      new Fibre(acceptor_loop, (void*)arg, true);
+      shim_thread_create(acceptor_loop, (void*)arg, true);
     }
     while (connHandler((void*)connFD));
     CurrGarage().park();
@@ -387,7 +381,7 @@ static void acceptor_loop(void* arg) {
 
 static void scopemain(void* arg) {
 #if defined __LIBFIBRE__
-  FibreGarage garage;
+  Garage garage;
   Context::CurrEventScope().setClientData(&garage);
 #endif
 
@@ -478,15 +472,15 @@ static void scopemain(void* arg) {
 #endif
 
   // create initial listeners
-  list<Fibre*> fibreList;
+  list<shim_thread_t*> fibreList;
   for (unsigned int c = 0; c < clusterCount; c += 1) {
     if (listenerCount) {
       for (unsigned int i = 0; i < listenerCount; i += 1) {
-        Fibre* f = new Fibre(acceptor, (void*)servFD, true);
+        shim_thread_t* f = shim_thread_create(acceptor, (void*)servFD, true);
         fibreList.push_back(f);
       }
     } else {
-      Fibre* f = new Fibre(acceptor_loop, (void*)servFD, true);
+      shim_thread_t* f = shim_thread_create(acceptor_loop, (void*)servFD, true);
       fibreList.push_back(f);
     }
 #if defined __LIBFIBRE__
@@ -497,7 +491,7 @@ static void scopemain(void* arg) {
   }
 
   // wait for all listeners
-  for (Fibre* f : fibreList) delete f;
+  for (shim_thread_t* f : fibreList) shim_thread_destroy(f);
 
   // close server socket, if neccessary
   if (singleServerSocket) {

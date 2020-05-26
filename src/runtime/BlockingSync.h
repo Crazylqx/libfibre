@@ -490,7 +490,7 @@ template<typename Lock, bool OwnerLock = false>
 #if TESTING_MUTEX_FIFO
 class Mutex : public LockedMutex<Lock, OwnerLock, true> {};
 #elif TESTING_MUTEX_BARGING
-class Mutex : public LockedMutex<Lock, OwnerLock,  false> {};
+class Mutex : public LockedMutex<Lock, OwnerLock, false> {};
 #elif TESTING_MUTEX_SPIN
 class Mutex : public SpinMutex<Semaphore<Lock, true>, OwnerLock, 4, 1024, 16> {};
 #else

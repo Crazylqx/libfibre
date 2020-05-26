@@ -17,37 +17,41 @@
 #ifndef _Garage_h_
 #define _Garage_h_ 1
 
-template<typename Lock, typename Condition>
+// assume shim_cond/shim_mutex API is already defined
+
 class Garage {
   struct Link {
-    Link*     next;
-    Condition cond;
-    void*     ptr;
+    Link* next;
+    void* arg;
+    shim_cond_t cond;
+    Link() { shim_cond_init(&cond); }
+    ~Link() { shim_cond_destroy(&cond); }
   };
-  Lock  lock;
+  shim_mutex_t lock;
   Link* stack;
   
 public:
-  Garage() : stack(nullptr) {}
+  Garage() : stack(nullptr) { shim_mutex_init(&lock); }
+  ~Garage() { shim_mutex_destroy(&lock); }
   void* park() {
     Link link;
-    lock.acquire();
+    shim_mutex_lock(&lock);
     link.next = stack;
     stack = &link;
-    link.cond.wait(lock);
-    return link.ptr;
+    shim_cond_wait(&link.cond, &lock);
+    return link.arg;
   }
-  bool run(void* ptr) {
-    lock.acquire();
+  bool run(void* arg) {
+    shim_mutex_lock(&lock);
     if (!stack) {
-      lock.release();
+      shim_mutex_unlock(&lock);
       return false;
     }
     Link* link = stack;
     stack = link->next;
-    lock.release();      // can unlock early...
-    link->ptr = ptr;
-    link->cond.signal(); // ...since cond is private
+    shim_mutex_unlock(&lock);      // can unlock early...
+    link->arg = arg;
+    shim_cond_signal(&link->cond); // ...since cond is private
     return true;
   }
 };

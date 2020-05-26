@@ -1,76 +1,64 @@
 #ifndef _tt_pthreads_h_
 #define _tt_pthreads_h_ 1
 
+extern "C" { // needed for __cforall
 #include <pthread.h>
+}
 
-class Fibre {
-  pthread_t tid;
+#define HASTRYLOCK 1
+
+typedef pthread_t         shim_thread_t;
+typedef pthread_mutex_t   shim_mutex_t;
+typedef pthread_cond_t    shim_cond_t;
+typedef pthread_barrier_t shim_barrier_t;
+
+static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg, bool bg = false) {
   typedef void* (*TSR)(void*);
-public:
-  Fibre(void (*start_routine)(void *), void* arg, bool bg = false) {
-    pthread_attr_t attr;
-    SYSCALL(pthread_attr_init(&attr));
-    SYSCALL(pthread_attr_setstacksize(&attr, 65536));
-    SYSCALL(pthread_create(&tid, &attr, (TSR)(void*)start_routine, arg));
-    SYSCALL(pthread_attr_destroy(&attr));
-  }
-  ~Fibre() {
-    SYSCALL(pthread_join(tid, nullptr));
-  }
-
-  int setaffinity(size_t cpusetsize, const cpu_set_t *cpuset) {
-    return pthread_setaffinity_np(tid, cpusetsize, cpuset);
-  }
-
-  static void yield() {
-#if __FreeBSD__
-    pthread_yield();
+  pthread_t* tid = (pthread_t*)malloc(sizeof(pthread_t));
+  pthread_attr_t attr;
+  SYSCALL(pthread_attr_init(&attr));
+  SYSCALL(pthread_attr_setstacksize(&attr, 65536));
+#if defined(__cforall)
+  SYSCALL(pthread_create(tid, &attr, (TSR)start_routine, arg));
 #else
-    SYSCALL(pthread_yield());
+  SYSCALL(pthread_create(tid, &attr, (TSR)(void*)start_routine, arg));
 #endif
-  }
-};
+  SYSCALL(pthread_attr_destroy(&attr));
+  return tid;
+}
 
-class FibreMutex {
-  pthread_mutex_t mutex;
-  friend class FibreCondition;
-public:
-  FibreMutex() { SYSCALL(pthread_mutex_init(&mutex, nullptr)); }
-  ~FibreMutex() { SYSCALL(pthread_mutex_destroy(&mutex)); }
-  void acquire() { SYSCALL(pthread_mutex_lock(&mutex)); }
-  bool tryAcquire() { return pthread_mutex_trylock(&mutex) == 0; }
-  void release() { SYSCALL(pthread_mutex_unlock(&mutex)); }
-};
+static inline void shim_thread_destroy(shim_thread_t* tid) {
+  SYSCALL(pthread_join(*tid, nullptr));
+  free(tid);
+}
 
-class FibreCondition {
-  pthread_cond_t cond;
-public:
-  FibreCondition() { SYSCALL(pthread_cond_init(&cond, nullptr)); }
-  ~FibreCondition() { SYSCALL(pthread_cond_destroy(&cond)); }
+static inline void shim_yield() { pthread_yield(); }
 
-  void wait(FibreMutex& lock) {
-    SYSCALL(pthread_cond_wait(&cond, &lock.mutex));
-    lock.release();
-  }
+static inline void shim_mutex_init(shim_mutex_t* mtx)    { SYSCALL(pthread_mutex_init(mtx, nullptr)); }
+static inline void shim_mutex_destroy(shim_mutex_t* mtx) { SYSCALL(pthread_mutex_destroy(mtx)); }
+static inline void shim_mutex_lock(shim_mutex_t* mtx)    { SYSCALL(pthread_mutex_lock(mtx)); }
+static inline bool shim_mutex_trylock(shim_mutex_t* mtx) { return pthread_mutex_trylock(mtx) == 0; }
+static inline void shim_mutex_unlock(shim_mutex_t* mtx)  { SYSCALL(pthread_mutex_unlock(mtx)); }
 
-  template<bool Broadcast = false>
-  void signal() {
-    if (Broadcast) SYSCALL(pthread_cond_broadcast(&cond));
-    else SYSCALL(pthread_cond_signal(&cond));
-  }
-};
+static inline void shim_cond_init(shim_cond_t* cond)                    { SYSCALL(pthread_cond_init(cond, nullptr)); }
+static inline void shim_cond_destroy(shim_cond_t* cond)                 { SYSCALL(pthread_cond_destroy(cond)); }
+static inline void shim_cond_wait(shim_cond_t* cond, shim_mutex_t* mtx) { SYSCALL(pthread_cond_wait(cond, mtx)); SYSCALL(pthread_mutex_lock(mtx)); }
+static inline void shim_cond_signal(shim_cond_t* cond)                  { SYSCALL(pthread_cond_signal(cond)); }
 
-class FibreBarrier {
-  pthread_barrier_t barr;
-public:
-  FibreBarrier(size_t t) { SYSCALL(pthread_barrier_init(&barr, nullptr, t)); }
-  ~FibreBarrier() { SYSCALL(pthread_barrier_destroy(&barr)); }
+static inline shim_barrier_t* shim_barrier_create(size_t cnt) {
+  shim_barrier_t* barr = (shim_barrier_t*)malloc(sizeof(shim_barrier_t));
+  SYSCALL(pthread_barrier_init(barr, nullptr, cnt));
+  return barr;
+}
 
-  void wait() {
-    int ret = pthread_barrier_wait(&barr);
-    if (ret == 0 || ret == PTHREAD_BARRIER_SERIAL_THREAD) return;
-    assert(false);
-  }
-};
+static inline void shim_barrier_destroy(shim_barrier_t* barr) {
+  SYSCALL(pthread_barrier_destroy(barr));
+  free(barr);
+}
+
+static inline void shim_barrier_wait(shim_barrier_t* barr) {
+  int ret = pthread_barrier_wait(barr);
+  assert(ret == 0 || ret == PTHREAD_BARRIER_SERIAL_THREAD);
+}
 
 #endif /* _tt_pthreads_h_ */

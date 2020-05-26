@@ -4,7 +4,10 @@ SOURCES=$(wildcard *.cpp)
 TARGETS=$(subst .cpp,,$(SOURCES))
 DEPENDS=$(subst .cpp,.d,$(SOURCES))
 
+CFA=cfa
+
 CXXFLAGS+=-I. -I../src -I../src/libfibre
+CFAFLAGS+=-I. -I../src -I../src/libfibre
 
 LIBS=-lfibre -lrt
 ifeq ($(shell uname),FreeBSD)
@@ -30,6 +33,9 @@ gthreadtest: threadtest.go
 
 pthreadtest: threadtest.cpp include/pthreads.h
 	$(CXX) -Iinclude -DVARIANT=\"pthreads.h\" $(CXXFLAGS) -DPTHREADS $< -o $@ -lrt
+
+pthreadtestcfa: threadtest.cfa include/pthreads.h
+	$(CFA) -Iinclude -DVARIANT=\"pthreads.h\" $(CFAFLAGS) -DPTHREADS $< -o $@ -lrt
 
 uthreadtest: threadtest.cpp include/u++.h
 	command -v u++ && \
