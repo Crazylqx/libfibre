@@ -34,8 +34,8 @@ gthreadtest: threadtest.go
 pthreadtest: threadtest.cpp include/pthreads.h
 	$(CXX) -Iinclude -DVARIANT=\"pthreads.h\" $(CXXFLAGS) -DPTHREADS $< -o $@ -lrt
 
-pthreadtestcfa: threadtest.cfa include/pthreads.h
-	$(CFA) -Iinclude -DVARIANT=\"pthreads.h\" $(CFAFLAGS) -DPTHREADS $< -o $@ -lrt
+pthreadtestcfa: threadtest.cpp include/pthreads.h
+	$(CFA) -Iinclude -DVARIANT=\"pthreads.h\" $(CFAFLAGS) -DPTHREADS -x c $< -o $@ -lrt
 
 uthreadtest: threadtest.cpp include/u++.h
 	command -v u++ && \

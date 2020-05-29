@@ -106,29 +106,21 @@ class BaseProcessor : public ProcessorRing::Link {
 protected:
   Scheduler&    scheduler;
   StackContext* idleStack;
-  size_t        stackCount;
 
   ProcessorStats* stats;
 
   void idleLoop();
 
-  void yieldDirect(StackContext& sc) {
+  static void yieldDirect(StackContext& sc) {
     StackContext::idleYieldTo(sc, _friend<BaseProcessor>());
   }
 
 public:
-  BaseProcessor(Scheduler& c, const char* n = "Processor") : scheduler(c), idleStack(nullptr), stackCount(0) {
+  BaseProcessor(Scheduler& c, const char* n = "Processor") : scheduler(c), idleStack(nullptr) {
     stats = new ProcessorStats(this, n);
   }
 
   Scheduler& getScheduler() { return scheduler; }
-
-  void addStack(_friend<StackContext>) {
-//    __atomic_add_fetch(&stackCount, 1, __ATOMIC_RELAXED);
-  }
-  void removeStack(_friend<StackContext>) {
-//    __atomic_sub_fetch(&stackCount, 1, __ATOMIC_RELAXED);
-  }
 
 #if TESTING_LOADBALANCING
   StackContext* tryDequeue(_friend<Scheduler>) {

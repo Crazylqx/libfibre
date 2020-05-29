@@ -91,7 +91,6 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
   void suspendInternal();
   void resumeInternal();
   void resumeDirect();
-  void changeProcessor(BaseProcessor&);
   static inline void yieldTo(StackContext& nextStack);
   static inline void yieldResume(StackContext& nextStack);
 
@@ -166,7 +165,9 @@ public:
   }
 
   // change resume processor during scheduling
-  void changeProcessor(BaseProcessor& rp, _friend<BaseProcessor>) { changeProcessor(rp); }
+  void changeProcessor(BaseProcessor& rp, _friend<BaseProcessor>) {
+    processor = &rp;
+  }
 
   // hard affinity - no staging
   bool getAffinity()                  { return affinity; }

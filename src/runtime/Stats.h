@@ -106,7 +106,7 @@ public:
 template<size_t N>
 inline ostream& operator<<(ostream& os, const HashTable<N>& x) {
   for (size_t n = 0; n < N; n += 1) {
-    if (x[n]) os << n << ":" << x[n] << ' ';
+    if (x[n]) os << ' ' << n << ":" << x[n];
   }
   return os;
 }
@@ -176,13 +176,11 @@ struct LoadManagerStats : public StatsObject {
 
 struct ClusterStats : public StatsObject {
   Counter procs;
-  Counter pauses;
   Counter sleeps;
   ClusterStats(void* o, const char* n = "Cluster") : StatsObject(o, n) {}
   bool print(ostream& os);
   void aggregate(const ClusterStats& x) {
     procs.aggregate(x.procs);
-    pauses.aggregate(x.pauses);
     sleeps.aggregate(x.sleeps);
   }
 };

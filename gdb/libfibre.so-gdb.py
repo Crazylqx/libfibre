@@ -20,8 +20,8 @@ class FibreSupport():
         # traverse runtime stack list to build internal list of fibres
         _lfGlobalStackList = gdb.parse_and_eval("_lfGlobalStackList")
         DebugListLink = gdb.parse_and_eval("DebugListLink")
-        first = _lfGlobalStackList['_anchorlink'].address
-        next = _lfGlobalStackList['_anchorlink']['link'][DebugListLink]['next']
+        first = _lfGlobalStackList['anchorLink'].address
+        next = _lfGlobalStackList['anchorLink']['link'][DebugListLink]['next']
         while (next != first):
             FibreSupport.list.append(next)
             next = next['link'][DebugListLink]['next']

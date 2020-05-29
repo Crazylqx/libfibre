@@ -23,7 +23,6 @@ StackContext::StackContext(BaseProcessor& proc, bool aff)
 #if TESTING_SHARED_READYQUEUE
   affinity = true;
 #endif
-  processor->addStack(_friend<StackContext>());
 }
 
 StackContext::StackContext(Scheduler& scheduler, bool bg)
@@ -77,7 +76,6 @@ void StackContext::postSuspend(StackContext* prevStack) {
 // destroy stack
 void StackContext::postTerminate(StackContext* prevStack) {
   CHECK_PREEMPTION(0);
-  prevStack->processor->removeStack(_friend<StackContext>());
   RuntimeStackDestroy(*prevStack, _friend<StackContext>());
 }
 
@@ -91,12 +89,6 @@ void StackContext::resumeInternal() {
 
 void StackContext::resumeDirect() {
   yieldResume(*this);
-}
-
-void StackContext::changeProcessor(BaseProcessor& p) {
-  processor->removeStack(_friend<StackContext>());
-  processor = &p;
-  processor->addStack(_friend<StackContext>());
 }
 
 // a new thread/stack starts in stubInit() and then jumps to this routine
@@ -155,23 +147,23 @@ void StackContext::terminate() {
 }
 
 void StackContext::rebalance() {
-  if (!affinity) changeProcessor(Context::CurrProcessor().getScheduler().placement(_friend<StackContext>(), true));
+  if (!affinity) processor = &Context::CurrProcessor().getScheduler().placement(_friend<StackContext>(), true);
 }
 
-// migrate to scheduler; adjust stackCounts, clear affinity
+// migrate to scheduler; clear affinity
 void StackContext::migrateNow(Scheduler& scheduler) {
   migrateNow(scheduler.placement(_friend<StackContext>(), true));
 }
 
-// migrate to proessor; adjust stackCounts, clear affinity
+// migrate to proessor; clear affinity
 void StackContext::migrateNow(BaseProcessor& proc) {
   StackContext* sc = Context::CurrStack();
   sc->affinity = false;
-  sc->changeProcessor(proc);
+  sc->processor = &proc;
   sc->yieldResume(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
 }
 
-// migrate to scheduler (for disk I/O), don't change stackCount or affinity
+// migrate to scheduler (for disk I/O), don't change affinity
 BaseProcessor& StackContext::migrateNow(Scheduler& scheduler, _friend<EventScope>) {
   StackContext* sc = Context::CurrStack();
   BaseProcessor* proc = sc->processor;
@@ -180,7 +172,7 @@ BaseProcessor& StackContext::migrateNow(Scheduler& scheduler, _friend<EventScope
   return *proc;
 }
 
-// migrate back to previous processor (after disk I/O), don't change stackCount or affinity
+// migrate back to previous processor (after disk I/O), don't change affinity
 void StackContext::migrateNow(BaseProcessor& proc, _friend<EventScope>) {
   StackContext* sc = Context::CurrStack();
   sc->processor = &proc;

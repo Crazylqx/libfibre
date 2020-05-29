@@ -36,10 +36,10 @@ class Cluster : public Scheduler {
   PollerType*    pollVec;
   size_t         pollCount;
 
+  BaseProcessor* pauseProc;
   FibreSemaphore pauseSem;
   OsSemaphore    confirmSem;
   OsSemaphore    sleepSem;
-  BaseProcessor* pauseProc;
 
   ClusterStats*  stats;
 
@@ -72,7 +72,7 @@ public:
     ringLock.acquire();
     stats->procs.count(ringCount);
     pauseProc = &Context::CurrProcessor();
-    for (size_t p = 0; p < ringCount; p += 1) pauseSem.V();
+    for (size_t p = 1; p < ringCount; p += 1) pauseSem.V();
     for (size_t p = 1; p < ringCount; p += 1) confirmSem.P();
   }
 

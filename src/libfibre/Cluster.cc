@@ -19,11 +19,8 @@
 void Cluster::maintenance(Cluster* cl) {
   for (;;) {
     cl->pauseSem.P();
-    cl->stats->pauses.count();
-    if (cl->pauseProc != &Context::CurrProcessor()) {
-      cl->stats->sleeps.count();
-      cl->confirmSem.V();
-      cl->sleepSem.P();
-    }
+    cl->stats->sleeps.count();
+    cl->confirmSem.V();
+    cl->sleepSem.P();
   }
 }

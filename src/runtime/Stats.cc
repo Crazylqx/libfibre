@@ -57,15 +57,15 @@ bool LoadManagerStats::print(ostream& os) {
   if (totalLoadManagerStats && this != totalLoadManagerStats) totalLoadManagerStats->aggregate(*this);
   if (tasks == 0) return false;
   StatsObject::print(os);
-  os << tasks << ' ' << blocks;
+  os << tasks << blocks;
   return true;
 }
 
 bool ClusterStats::print(ostream& os) {
   if (totalClusterStats && this != totalClusterStats) totalClusterStats->aggregate(*this);
-  if (pauses == 0) return false;
+  if (sleeps == 0) return false;
   StatsObject::print(os);
-  os << procs << ' ' << pauses << ' ' << sleeps;
+  os << procs << sleeps;
   return true;
 }
 

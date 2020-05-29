@@ -36,13 +36,13 @@ class PollerFibre;
  An OsProcessor object represents an OS-level execution thread (pthread).
 */
 class OsProcessor : public BaseProcessor {
-  pthread_t               sysThread;
-  Fibre*                  initFibre;
-  Fibre*                  maintenanceFibre;
-  Benaphore<OsSemaphore>  haltNotify; // benaphore better for spinning
-  StackContext*           handoverStack;
+  pthread_t              sysThread;
+  Fibre*                 initFibre;
+  Fibre*                 maintenanceFibre;
+  Benaphore<OsSemaphore> haltNotify; // benaphore better for spinning
+  StackContext*          handoverStack;
 #if TESTING_PROCESSOR_POLLER
-  PollerFibre*            pollFibre;
+  PollerFibre*           pollFibre;
 #endif
 
   inline void  setupContext();
