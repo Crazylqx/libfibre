@@ -151,7 +151,7 @@ public:
 #endif
 
 #if TESTING_PROCESSOR_POLLER
-    BasePoller& cp = Cluster ? Context::CurrCluster().getPoller(fd) : Context::CurrProcessor().getPoller();
+    BasePoller& cp = Cluster ? Context::CurrCluster().getPoller(fd) : Context::CurrPoller();
 #else
     BasePoller& cp = Context::CurrCluster().getPoller(fd);
 #endif
@@ -176,7 +176,7 @@ public:
 #endif
     if (RemoveFromPollSet) {                        // only called from lfConnect
 #if TESTING_PROCESSOR_POLLER
-      BasePoller& cp = Context::CurrProcessor().getPoller();
+      BasePoller& cp = Context::CurrPoller();
 #else
       BasePoller& cp = Context::CurrCluster().getPoller(fd);
 #endif

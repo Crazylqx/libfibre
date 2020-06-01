@@ -26,12 +26,17 @@ static thread_local StackContext*  volatile currStack   = nullptr;
 static thread_local BaseProcessor* volatile currProc    = nullptr;
 static thread_local Cluster*       volatile currCluster = nullptr;
 static thread_local EventScope*    volatile currScope   = nullptr;
+#if TESTING_PROCESSOR_POLLER
+static thread_local PollerFibre*   volatile currPoller  = nullptr;
+#endif
 
 StackContext*  CurrStack()      { RASSERT0(currStack);   return  currStack; }
 BaseProcessor& CurrProcessor()  { RASSERT0(currProc);    return *currProc; }
 Cluster&       CurrCluster()    { RASSERT0(currCluster); return *currCluster; }
 EventScope&    CurrEventScope() { RASSERT0(currScope);   return *currScope; }
-
+#if TESTING_PROCESSOR_POLLER
+PollerFibre&   CurrPoller()     { RASSERT0(currPoller);  return *currPoller; }
+#endif
 void setCurrStack(StackContext& s, _friend<StackContext>) { currStack = &s; }
 }
 
@@ -45,8 +50,8 @@ inline void OsProcessor::setupContext() {
   maintenanceFibre->setPriority(TopPriority);
   maintenanceFibre->run(Cluster::maintenance, &cl);
 #if TESTING_PROCESSOR_POLLER
-  pollFibre = new PollerFibre(*Context::currScope, *this, false);
-  pollFibre->start();
+  Context::currPoller = new PollerFibre(*Context::currScope, *this, false);
+  Context::currPoller->start();
 #endif
 }
 

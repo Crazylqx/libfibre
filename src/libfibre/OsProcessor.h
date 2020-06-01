@@ -30,7 +30,7 @@ typedef Barrier<InternalLock>   FibreBarrier;
 class _Bootstrapper;
 class BaseThreadPoller;
 class Fibre;
-class PollerFibre;
+class LoadManager;
 
 /**
  An OsProcessor object represents an OS-level execution thread (pthread).
@@ -41,9 +41,6 @@ class OsProcessor : public BaseProcessor {
   Fibre*                 maintenanceFibre;
   Benaphore<OsSemaphore> haltNotify; // benaphore better for spinning
   StackContext*          handoverStack;
-#if TESTING_PROCESSOR_POLLER
-  PollerFibre*           pollFibre;
-#endif
 
   inline void  setupContext();
   static void  idleLoopStartFibre(OsProcessor* This);
@@ -66,13 +63,9 @@ public:
 
   ~OsProcessor() { RABORT("Cannot delete OsProcessor"); }
 
-#if TESTING_PROCESSOR_POLLER
-  PollerFibre& getPoller() { RASSERT0(pollFibre); return *pollFibre; }
-#endif
-
   pthread_t getSysID() { return sysThread; }
 
-  StackContext* suspend() {
+  StackContext* suspend(_friend<LoadManager>) {
 #if TESTING_HALT_SPIN
     static const size_t SpinMax = TESTING_HALT_SPIN;
     for (size_t i = 0; i < SpinMax; i += 1) {
@@ -85,7 +78,7 @@ public:
     return handoverStack;
   }
 
-  void resume(StackContext* sc = nullptr) {
+  void resume(_friend<LoadManager>, StackContext* sc = nullptr) {
     stats->wake.count();
     handoverStack = sc;
     haltNotify.V();

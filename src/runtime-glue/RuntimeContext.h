@@ -23,6 +23,9 @@ class StackContext;
 class BaseProcessor;
 class Cluster;
 class EventScope;
+#if TESTING_PROCESSOR_POLLER
+class PollerFibre;
+#endif
 
 // 'noinline' needed for TLS:
 // http://stackoverflow.com/questions/25673787/making-thread-local-variables-fully-volatile
@@ -35,6 +38,9 @@ namespace Context {
   Cluster&       CurrCluster()    __no_inline;
   EventScope&    CurrEventScope() __no_inline;
   // setCurrStack() to update current stack
+#if TESTING_PROCESSOR_POLLER
+  PollerFibre&   CurrPoller()     __no_inline;
+#endif
   void setCurrStack(StackContext& s, _friend<StackContext>) __no_inline;
 }
 

@@ -34,7 +34,7 @@ class LoadManager {
     if (waitingStacks.empty()) {
       waitingProcs.push_front(proc);
       procLock.release();
-      return reinterpret_cast<RuntimeProcessor&>(proc).suspend();
+      return reinterpret_cast<RuntimeProcessor&>(proc).suspend(_friend<LoadManager>());
     } else {
       StackContext* nextStack = waitingStacks.pop_front();
       procLock.release();
@@ -50,7 +50,7 @@ class LoadManager {
     } else {
       RuntimeProcessor* anyProc = reinterpret_cast<RuntimeProcessor*>(waitingProcs.pop_front());
       procLock.release();
-      anyProc->resume(&sc);
+      anyProc->resume(_friend<LoadManager>(), &sc);
     }
   }
 
