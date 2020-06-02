@@ -84,9 +84,7 @@ ptr_t OsProcessor::idleLoopStartPthread(OsProcessor* This) {
   return nullptr;
 }
 
-OsProcessor::OsProcessor(funcvoid1_t initFunc, ptr_t arg) : OsProcessor(Context::CurrCluster(), initFunc, arg) {}
-
-OsProcessor::OsProcessor(Cluster& cl, funcvoid1_t initFunc, ptr_t arg) : BaseProcessor(cl), initFibre(nullptr) {
+OsProcessor::OsProcessor(Cluster& cl, _friend<Cluster>, funcvoid1_t initFunc, ptr_t arg) : BaseProcessor(cl), initFibre(nullptr) {
   RASSERT0(&Context::CurrEventScope() == &cl.getEventScope());
   idleLoopCreatePthread(initFunc, arg); // create pthread running idleLoop
 }

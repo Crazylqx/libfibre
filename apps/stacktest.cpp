@@ -43,7 +43,7 @@ void f2main(int* result) {
 }
 
 int main() {
-  new OsProcessor[3];
+  Context::CurrCluster().addWorkers(3);
   static const int fcount = 10;
   Fibre f1s[fcount];
   Fibre f2s[fcount];

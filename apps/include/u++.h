@@ -11,10 +11,7 @@
 
 #define HASTRYLOCK 1
 
-typedef uProcessor OsProcessor;
 typedef uCluster Cluster;
-
-#define CurrProcessor uThisProcessor
 #define CurrCluster   uThisCluster
 
 _Task shim_thread_t {

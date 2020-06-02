@@ -394,8 +394,10 @@ int main(int argc, char* argv[]) {
   poolScheduler = new WorkerPool(threadCount);
 #elif defined BOOST_VERSION
   boost_init(threadCount);
-#elif defined __LIBFIBRE__ || defined __U_CPLUSPLUS__
-  OsProcessor* proc = new OsProcessor[threadCount - 1];
+#elif defined __LIBFIBRE__
+  CurrCluster().addWorkers(threadCount - 1);
+#elif defined __U_CPLUSPLUS__
+  uProcessor* proc = new uProcessor[threadCount - 1];
 #elif defined QTHREAD_VERSION
   setenv("QTHREAD_STACK_SIZE", "65536", 1);
   qthread_init(threadCount);
@@ -408,26 +410,37 @@ int main(int argc, char* argv[]) {
   shim_barrier_wait(deadlock);
 #endif
 
-#if defined __LIBFIBRE__
+#if defined __LIBFIBRE__ || __U_CPLUSPLUS__
   if (affinityFlag) {
-    cpu_set_t allcpus;
-    CPU_ZERO(&allcpus);
-    cpu_set_t onecpu;
+#if defined __LIBFIBRE__
+    pthread_t* tids = (pthread_t*)calloc(sizeof(pthread_t), threadCount);
+    size_t tcnt = CurrCluster().getWorkerSysIDs(tids, threadCount);
+    assert(tcnt == threadCount);
+#endif
+    cpu_set_t onecpu, allcpus;
     CPU_ZERO(&onecpu);
+    CPU_ZERO(&allcpus);
+#if defined __LIBFIBRE__
     SYSCALL(pthread_getaffinity_np(pthread_self(), sizeof(allcpus), &allcpus));
+#else
+    uThisProcessor().getAffinity(allcpus);
+#endif
     int cpu = 0;
-    while (!CPU_ISSET(cpu, &allcpus)) cpu = (cpu + 1) % CPU_SETSIZE;
-    CPU_SET(cpu, &onecpu);
-    SYSCALL(pthread_setaffinity_np(pthread_self(), sizeof(onecpu), &onecpu));
-    CPU_CLR(cpu, &onecpu);
-    cpu = (cpu + 1) % CPU_SETSIZE;
-    for (unsigned int i = 0; i < threadCount - 1; i += 1) {
+    for (unsigned int i = 0; i < threadCount; i += 1) {
       while (!CPU_ISSET(cpu, &allcpus)) cpu = (cpu + 1) % CPU_SETSIZE;
       CPU_SET(cpu, &onecpu);
-      SYSCALL(pthread_setaffinity_np(proc[i].getSysID(), sizeof(onecpu), &onecpu));
+#if defined __LIBFIBRE__
+      SYSCALL(pthread_setaffinity_np(tids[i], sizeof(onecpu), &onecpu));
+#else
+      if (i == threadCount - 1) uThisProcessor().setAffinity(onecpu);
+      else proc[i].setAffinity(onecpu);
+#endif
       CPU_CLR(cpu, &onecpu);
       cpu = (cpu + 1) % CPU_SETSIZE;
     }
+#if defined __LIBFIBRE__
+    free(tids);
+#endif
   }
 #endif
 
@@ -543,7 +556,7 @@ int main(int argc, char* argv[]) {
   delete poolScheduler;
 #elif defined BOOST_VERSION
   boost_finalize(threadCount);
-#elif defined  __LIBFIBRE__ || __U_CPLUSPLUS__
+#elif defined  __U_CPLUSPLUS__
   delete [] proc;
 #elif defined QTHREAD_VERSION
   qthread_finalize();

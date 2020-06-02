@@ -163,8 +163,7 @@ int main()
 
     // Spawn the threads
 #if defined(__LIBFIBRE__)
-    OsProcessor op1;
-    OsProcessor op2;
+    Context::CurrCluster().addWorkers(2);
     (new Fibre)->run(thread1Func, (void*)nullptr);
     (new Fibre)->run(thread2Func, (void*)nullptr);
 #else

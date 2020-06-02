@@ -166,7 +166,7 @@ void servaccept() {
 
 static void servaccept2() {
   Context::CurrEventScope().registerFD<true,false,false,true>(servFD);
-  new OsProcessor[2];
+  Context::CurrCluster().addWorkers(2);
   servaccept();
 }
 
@@ -186,7 +186,7 @@ void servmain(sockaddr_in& addr) {
   SYSCALL(lfListen(servFD, numconn));
 
   {
-    new OsProcessor[2];
+    Context::CurrCluster().addWorkers(2);
     Fibre a1(Context::CurrCluster(), defaultStackSize, true);
     a1.run(servaccept);
     if (numaccept == 2) {
@@ -195,7 +195,7 @@ void servmain(sockaddr_in& addr) {
       a2.run(servaccept2);
       std::cout << "waiting for 2nd accept loop" << std::endl;
     } else {
-      new OsProcessor[2];
+      Context::CurrCluster().addWorkers(2);
     }
     std::cout << "waiting for 1st accept loop" << std::endl;
   }
@@ -242,7 +242,7 @@ void clientconn(sockaddr_in* server) {
 
 void clientmain(sockaddr_in& addr) {
   // create more system threads
-  new OsProcessor[4];
+  Context::CurrCluster().addWorkers(4);
   // create and run N client fibres
   Fibre** f = new Fibre*[numconn];
   for (int n = 0; n < numconn; n += 1) f[n] = (new Fibre)->run(clientconn, &addr);

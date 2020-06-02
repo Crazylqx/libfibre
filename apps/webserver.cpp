@@ -394,37 +394,59 @@ static void scopemain(void* arg) {
   for (unsigned int c = 1; c < clusterCount; c += 1) {
     cluster[c] = new Cluster;
   }
-  OsProcessor** sproc = new OsProcessor*[threadCount];
-  sproc[0] = &reinterpret_cast<OsProcessor&>(CurrProcessor());
-  for (unsigned int t = 1; t < threadCount; t += 1) {
-    sproc[t] = new OsProcessor(*cluster[t/clusterSize]);
+
+#if defined __LIBFIBRE__
+  for (unsigned int c = 0; c < clusterCount; c += 1) {
+    cluster[c]->addWorkers(threadCount / clusterCount);
   }
+#endif
+
+#if defined __U_CPLUSPLUS__
+  uProcessor** proc = new uProcessor*[threadCount];
+  proc[0] = &uThisProcessor();
+  for (unsigned int t = 1; t < threadCount; t += 1) {
+    proc[t] = new uProcessor(*cluster[t / clusterSize]);
+  }
+#endif
 
   if (affinityFlag || groupAffinityFlag) {
 
     // set processor per-core affinity
 #if defined __LIBFIBRE__
+    pthread_t* tids = (pthread_t*)calloc(sizeof(pthread_t), threadCount);
+    size_t idx = 0;
+    for (unsigned int c = 0; c < clusterCount; c += 1) {
+      size_t tcnt = CurrCluster().getWorkerSysIDs(tids + idx, threadCount / clusterCount);
+      assert(tcnt == threadCount / clusterCount);
+      idx += threadCount / clusterCount;
+    }
     cpu_set_t clustercpus;
     CPU_ZERO(&clustercpus);
     unsigned int cidx = 0;
 #endif
-    cpu_set_t allcpus;
-    CPU_ZERO(&allcpus);
-    SYSCALL(pthread_getaffinity_np(pthread_self(), sizeof(allcpus), &allcpus));
-    int cpu = 0;
-    while (!CPU_ISSET(cpu, &allcpus)) cpu = (cpu + 1) % CPU_SETSIZE;
-    cpu += (uintptr_t)arg;
-    cpu_set_t onecpu;
+    cpu_set_t onecpu, allcpus;
     CPU_ZERO(&onecpu);
+    CPU_ZERO(&allcpus);
+#if defined __LIBFIBRE__
+    SYSCALL(pthread_getaffinity_np(pthread_self(), sizeof(allcpus), &allcpus));
+#else
+    uThisProcessor().getAffinity(allcpus);
+#endif
+    int cpu = 0;
+    for (unsigned int i = 0; i < (uintptr_t)arg; i += 1) {
+      for (unsigned int t = 0; t < threadCount; t += 1) {
+        while (!CPU_ISSET(cpu, &allcpus)) cpu = (cpu + 1) % CPU_SETSIZE;
+      }
+    }
     for (unsigned int t = 0; t < threadCount; t += 1) {
       while (!CPU_ISSET(cpu, &allcpus)) cpu = (cpu + 1) % CPU_SETSIZE;
       if (affinityFlag) {
         CPU_SET(cpu, &onecpu);
         cout << "thread "<< t << " affinity " << cpu << endl;
 #if defined __LIBFIBRE__
-        SYSCALL(pthread_setaffinity_np(sproc[t]->getSysID(), sizeof(onecpu), &onecpu));
+        SYSCALL(pthread_setaffinity_np(tids[t], sizeof(onecpu), &onecpu));
 #else
-        sproc[t]->setAffinity(onecpu);
+        proc[t]->setAffinity(onecpu);
 #endif
         CPU_CLR(cpu, &onecpu);
       }
@@ -445,7 +467,7 @@ static void scopemain(void* arg) {
           cout << "threads:";
           for (unsigned int x = t - (clusterSize-1); x <= t; x += 1) {
             cout << ' ' << x;
-            SYSCALL(pthread_setaffinity_np(sproc[t]->getSysID(), sizeof(clustercpus), &clustercpus));
+            SYSCALL(pthread_setaffinity_np(tids[t], sizeof(clustercpus), &clustercpus));
           }
           cout << endl;
         }
@@ -456,9 +478,12 @@ static void scopemain(void* arg) {
 
       cpu += 1;
     } // loop through CPUs
+#if defined __LIBFIBRE__
+    free(tids);
+#endif
   } // affinityFlag || groupAffinityFlag
 
-#else
+#else /* __LIBFIBRE__ || __U_CPLUSPLUS__ */
 
   unsigned int clusterCount = 1;
 
@@ -504,10 +529,10 @@ static void scopemain(void* arg) {
 
   // clean up
 #if defined __U_CPLUSPLUS__
+  for (unsigned int t = 1; t < threadCount; t += 1) delete proc[t];
+  delete [] proc;
   for (unsigned int c = 1; c < clusterCount; c += 1) delete cluster[c];
   delete [] cluster;
-  for (unsigned int t = 1; t < threadCount; t += 1) delete sproc[t];
-  delete [] sproc;
 #endif
 }
 

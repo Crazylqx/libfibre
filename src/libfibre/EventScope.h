@@ -63,7 +63,6 @@ class EventScope {
 
   // main cluster, processor. fibre
   Cluster*      mainCluster;
-  OsProcessor*  mainProcessor;
 
   // simple kludge to provide event-scope-local data
   void*         clientData;
@@ -92,15 +91,14 @@ public:
   /** Constructor. */
   EventScope(size_t pollerCount = 1, void* cd = nullptr) : diskCluster(nullptr), clientData(cd) {
     mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>()); // delayed master poller start
-    mainProcessor = new OsProcessor(*mainCluster, split, this, _friend<EventScope>()); // waits until phread running and split() called
+    new OsProcessor(*mainCluster, split, this, _friend<EventScope>()); // waits until phread running and split() called
   }
   EventScope(_friend<_Bootstrapper> fb, size_t pollerCount = 1) : diskCluster(nullptr), clientData(nullptr) {
     mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>()); // delayed master poller start
-    mainProcessor = new OsProcessor(*mainCluster, fb);
+    new OsProcessor(*mainCluster, fb);
     init(); // bootstrap event scope -> no unshare() necessary
   }
   ~EventScope() {
-    delete mainProcessor;
     delete mainCluster;
     delete masterPoller;
     delete[] fdSyncVector;

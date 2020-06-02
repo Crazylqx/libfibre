@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
   else Fibre::usleep(1000);
   SYSCALL(clock_gettime(CLOCK_REALTIME, &ct));
   cout << ct.tv_sec << '.' << ct.tv_nsec << endl;
-  new OsProcessor;
+  Context::CurrCluster().addWorkers(1);
   Fibre* f1 = (new Fibre)->run(f1main);
   Fibre* f2 = (new Fibre)->run(f2main);
   Fibre* f3 = (new Fibre)->run(f3main);

@@ -19,6 +19,7 @@
 
 #include "runtime/BlockingSync.h"
 #include "runtime/Scheduler.h"
+#include "libfibre/OsProcessor.h"
 #include "libfibre/Poller.h"
 
 /**
@@ -63,6 +64,27 @@ public:
   // special constructor and start routine for bootstrapping event scope
   Cluster(EventScope& es, size_t pollerCount, _friend<EventScope>) : Cluster(es, pollerCount, _friend<Cluster>()) {}
   void startPolling(_friend<EventScope>) { start(); }
+
+  void addWorkers(size_t cnt) {
+    for (size_t i = 0; i < cnt; i += 1) {
+      new OsProcessor(*this, _friend<Cluster>());
+      // add processor to ring, then start?
+    }
+  }
+
+  void registerWorker(funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr, bool idle = true) {
+    // TODO
+  }
+
+  size_t getWorkerSysIDs(pthread_t* tid = nullptr, size_t cnt = 0) {
+    ScopedLock<WorkerLock> sl(ringLock);
+    BaseProcessor* p = placeProc;
+    for (size_t i = 0; i < cnt && i < ringCount; i += 1) {
+      tid[i] = reinterpret_cast<OsProcessor*>(p)->getSysID();
+      p = ProcessorRing::next(*p);
+    }
+    return ringCount;
+  }
 
   EventScope& getEventScope() { return scope; }
   PollerType& getPoller(size_t hint) { return pollVec[hint % pollCount]; }

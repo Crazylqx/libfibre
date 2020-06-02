@@ -34,13 +34,13 @@ namespace Context {
   // CurrStack() and CurrProcessor() needed for generic runtime code
   StackContext*  CurrStack()      __no_inline;
   BaseProcessor& CurrProcessor()  __no_inline;
-  // CurrCluster(), CurrEventScope() only used in libfibre code
+  // CurrCluster(), CurrEventScope(), CurrPoller() only used in libfibre code
   Cluster&       CurrCluster()    __no_inline;
   EventScope&    CurrEventScope() __no_inline;
-  // setCurrStack() to update current stack
 #if TESTING_PROCESSOR_POLLER
   PollerFibre&   CurrPoller()     __no_inline;
 #endif
+  // setCurrStack() to update current stack
   void setCurrStack(StackContext& s, _friend<StackContext>) __no_inline;
 }
 

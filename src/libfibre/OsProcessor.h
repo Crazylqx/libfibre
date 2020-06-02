@@ -39,10 +39,8 @@ class OsProcessor : public BaseProcessor {
   static ptr_t idleLoopStartPthread(OsProcessor* This);
 
 public:
-  /** Constructor: create OsProcessor in current Cluster. */
-  OsProcessor(funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
   /** Constructor: create OsProcessor in specified Cluster. */
-  OsProcessor(Cluster& cluster, funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
+  OsProcessor(Cluster& cluster, _friend<Cluster>, funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr);
 
   // dedicated constructor for event scope: pthread executes initFunc before idle
   OsProcessor(Cluster& cluster, funcvoid1_t initFunc, ptr_t arg, _friend<EventScope>);

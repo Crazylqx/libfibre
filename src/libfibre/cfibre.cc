@@ -35,10 +35,6 @@ struct _cfast_mutexattr_t    : public fast_mutexattr_t {};
 struct _cfast_condattr_t     : public fast_condattr_t {};
 
 struct _cfibre_cluster_t : public Cluster {};
-struct _cfibre_sproc_t   : public OsProcessor {
-  _cfibre_sproc_t(Cluster& c, funcvoid1_t func = nullptr, ptr_t arg = nullptr) : OsProcessor(c, func, arg) {}
-};
-
 extern "C" int cfibre_cluster_create(cfibre_cluster_t* cluster) {
   *cluster = new _cfibre_cluster_t;
   return 0;
@@ -74,6 +70,11 @@ extern "C" int cfibre_resume_cluster(cfibre_cluster_t* cluster) {
   return 0;
 }
 
+#if 0
+struct _cfibre_sproc_t   : public OsProcessor {
+  _cfibre_sproc_t(Cluster& c, funcvoid1_t func = nullptr, ptr_t arg = nullptr) : OsProcessor(c, func, arg) {}
+};
+
 extern "C" int cfibre_sproc_create(cfibre_sproc_t* sproc, cfibre_cluster_t cluster) {
   if (cluster == nullptr) cfibre_cluster_self();
   *sproc = new _cfibre_sproc_t(*cluster);
@@ -95,6 +96,7 @@ extern "C" int cfibre_sproc_destroy(cfibre_sproc_t* sproc) {
 extern "C" pthread_t cfibre_sproc_pthread(cfibre_sproc_t sproc) {
   return sproc->getSysID();
 }
+#endif
 
 extern "C" int cfibre_attr_init(cfibre_attr_t *attr) {
   *attr = new _cfibre_attr_t;

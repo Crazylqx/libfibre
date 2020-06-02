@@ -7,7 +7,6 @@
 
 #define HASTRYLOCK 1
 
-#define CurrProcessor Context::CurrProcessor
 #define CurrCluster   Context::CurrCluster
 
 typedef Fibre          shim_thread_t;

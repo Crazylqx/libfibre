@@ -45,7 +45,6 @@ typedef struct _cfast_mutexattr_t*    cfast_mutexattr_t;
 typedef struct _cfast_condattr_t*     cfast_condattr_t;
 
 typedef struct _cfibre_cluster_t*     cfibre_cluster_t;
-typedef struct _cfibre_sproc_t*       cfibre_sproc_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,6 +66,8 @@ int cfibre_pause_cluster(cfibre_cluster_t* cluster);
 /** @brief Resume processors in specified Cluster. */
 int cfibre_resume_cluster(cfibre_cluster_t* cluster);
 
+#if 0
+typedef struct _cfibre_sproc_t*       cfibre_sproc_t;
 /** @brief Create Processor. */
 int cfibre_sproc_create(cfibre_sproc_t* sp, cfibre_cluster_t cluster);
 /** @brief Create Processor and run init routine `func(arg)` first. */
@@ -75,6 +76,7 @@ int cfibre_sproc_create_init(cfibre_sproc_t* sp, cfibre_cluster_t cluster, void 
 int cfibre_sproc_destroy(cfibre_sproc_t* sp);
 /** @brief Obtain processor's OS-level pthread ID */
 pthread_t cfibre_sproc_pthread(cfibre_sproc_t sp);
+#endif
 
 /** @brief Read OS-level `errno` variable (special routine due to TLS). */
 int cfibre_get_errno(void);
