@@ -17,6 +17,7 @@
 #ifndef _Cluster_h_
 #define _Cluster_h_ 1
 
+#include "runtime/BlockingSync.h"
 #include "runtime/Scheduler.h"
 #include "libfibre/Poller.h"
 
@@ -36,10 +37,10 @@ class Cluster : public Scheduler {
   PollerType*    pollVec;
   size_t         pollCount;
 
-  BaseProcessor* pauseProc;
-  FibreSemaphore pauseSem;
-  OsSemaphore    confirmSem;
-  OsSemaphore    sleepSem;
+  BaseProcessor*  pauseProc;
+  TaskSemaphore   pauseSem;
+  WorkerSemaphore confirmSem;
+  WorkerSemaphore sleepSem;
 
   ClusterStats*  stats;
 

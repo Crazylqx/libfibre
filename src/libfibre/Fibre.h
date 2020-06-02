@@ -37,7 +37,7 @@ static const size_t stackProtection  =  1 * pagesize<1>();
 #endif
 
 #if TESTING_ENABLE_DEBUGGING
-extern InternalLock*    _lfGlobalStackLock;
+extern WorkerLock*      _lfGlobalStackLock;
 extern GlobalStackList* _lfGlobalStackList;
 #endif
 
@@ -52,7 +52,7 @@ class Fibre : public StackContext {
 #else
   vaddr stackBottom;            // bottom of allocated memory for stack
 #endif
-  SyncPoint<InternalLock> done; // synchronization (join) at destructor
+  SyncPoint<WorkerLock> done;   // synchronization (join) at destructor
 
   size_t stackAlloc(size_t size) {
 #ifdef SPLIT_STACK
@@ -82,14 +82,14 @@ class Fibre : public StackContext {
 
   void initDebug() {
 #if TESTING_ENABLE_DEBUGGING
-    ScopedLock<InternalLock> sl(*_lfGlobalStackLock);
+    ScopedLock<WorkerLock> sl(*_lfGlobalStackLock);
     _lfGlobalStackList->push_back(*this);
 #endif
   }
 
   void clearDebug() {
 #if TESTING_ENABLE_DEBUGGING
-    ScopedLock<InternalLock> sl(*_lfGlobalStackLock);
+    ScopedLock<WorkerLock> sl(*_lfGlobalStackLock);
     _lfGlobalStackList->remove(*this);
 #endif
   }

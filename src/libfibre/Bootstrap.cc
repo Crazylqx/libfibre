@@ -20,9 +20,9 @@
 #include <execinfo.h> // see _lfAbort
 
 // other global objects
-InternalLock*                _lfDebugOutputLock = nullptr; // RuntimeDebug.h
+WorkerLock*                  _lfDebugOutputLock = nullptr; // RuntimeDebug.h
 #if TESTING_ENABLE_DEBUGGING
-InternalLock*                _lfGlobalStackLock = nullptr; // StackContext.h
+WorkerLock*                  _lfGlobalStackLock = nullptr; // StackContext.h
 GlobalStackList*             _lfGlobalStackList = nullptr; // StackContext.h
 #endif
 #if TESTING_ENABLE_STATISTICS
@@ -54,10 +54,10 @@ _Bootstrapper::_Bootstrapper() {
     StatsObject::lst = new IntrusiveQueue<StatsObject>;
 #endif
     // create locks for debug/assert output
-    _lfDebugOutputLock = new InternalLock;
+    _lfDebugOutputLock = new WorkerLock;
 #if TESTING_ENABLE_DEBUGGING
     // create global fibre list
-    _lfGlobalStackLock = new InternalLock;
+    _lfGlobalStackLock = new WorkerLock;
     _lfGlobalStackList = new GlobalStackList;
 #endif
     // bootstrap system via event scope

@@ -19,6 +19,10 @@
 
 #include "libfibre/OsLocks.h"
 
-typedef InternalLock RuntimeLock;
-
+#if TESTING_LOCK_SPIN
+typedef OsLock<4,TESTING_LOCK_SPIN,1> WorkerLock;
+#else
+typedef OsLock<0,0,0> WorkerLock;
+#endif
+typedef OsSemaphore   WorkerSemaphore;
 #endif /* _RuntimeLock_h_ */

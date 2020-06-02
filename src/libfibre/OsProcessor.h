@@ -21,16 +21,9 @@
 #include "runtime/BaseProcessor.h"
 #include "runtime/BlockingSync.h"
 
-typedef Semaphore<InternalLock> FibreSemaphore;
-typedef Mutex<InternalLock>     FibreMutex;
-typedef Condition<FibreMutex>   FibreCondition;
-typedef LockRW<InternalLock>    FibreLockRW;
-typedef Barrier<InternalLock>   FibreBarrier;
-
 class _Bootstrapper;
 class BaseThreadPoller;
 class Fibre;
-class LoadManager;
 
 /**
  An OsProcessor object represents an OS-level execution thread (pthread).
@@ -39,8 +32,6 @@ class OsProcessor : public BaseProcessor {
   pthread_t              sysThread;
   Fibre*                 initFibre;
   Fibre*                 maintenanceFibre;
-  Benaphore<OsSemaphore> haltNotify; // benaphore better for spinning
-  StackContext*          handoverStack;
 
   inline void  setupContext();
   static void  idleLoopStartFibre(OsProcessor* This);
@@ -64,25 +55,6 @@ public:
   ~OsProcessor() { RABORT("Cannot delete OsProcessor"); }
 
   pthread_t getSysID() { return sysThread; }
-
-  StackContext* suspend(_friend<LoadManager>) {
-#if TESTING_HALT_SPIN
-    static const size_t SpinMax = TESTING_HALT_SPIN;
-    for (size_t i = 0; i < SpinMax; i += 1) {
-      if fastpath(haltNotify.tryP()) return handoverStack;
-      Pause();
-    }
-#endif
-    stats->idle.count();
-    haltNotify.P();
-    return handoverStack;
-  }
-
-  void resume(_friend<LoadManager>, StackContext* sc = nullptr) {
-    stats->wake.count();
-    handoverStack = sc;
-    haltNotify.V();
-  }
 };
 
 #endif /* _OsProcessor_h_ */

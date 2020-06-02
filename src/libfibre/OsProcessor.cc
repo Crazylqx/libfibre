@@ -45,7 +45,6 @@ inline void OsProcessor::setupContext() {
   Context::currProc = this;
   Context::currCluster = &cl;
   Context::currScope = &cl.getEventScope();
-  handoverStack = nullptr;
   maintenanceFibre = new Fibre(*this);
   maintenanceFibre->setPriority(TopPriority);
   maintenanceFibre->run(Cluster::maintenance, &cl);

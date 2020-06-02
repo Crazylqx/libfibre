@@ -18,7 +18,7 @@
 #define _RuntimeDebug_h_ 1
 
 #include "runtime/ScopedLocks.h"
-#include "libfibre/OsLocks.h"
+#include "runtime-glue/RuntimeLock.h"
 
 #if __FreeBSD__
 #include <sys/thr.h>     // thr_self
@@ -59,7 +59,7 @@ static inline void dprinttid() {
 #endif
 }
 
-extern InternalLock* _lfDebugOutputLock;
+extern WorkerLock* _lfDebugOutputLock;
 
 template<typename... Args>
 inline void DBG::out1(DBG::Level c, const Args&... a) {
@@ -77,7 +77,7 @@ inline void DBG::outs(DBG::Level c, const Args&... a) {
 template<typename... Args>
 inline void DBG::outl(DBG::Level c, const Args&... a) {
   if (c && !test(c)) return;
-  ScopedLock<InternalLock> sl(*_lfDebugOutputLock);
+  ScopedLock<WorkerLock> sl(*_lfDebugOutputLock);
   dprinttid();
   dprint(a...);
   dprintl();

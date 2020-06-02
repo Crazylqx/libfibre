@@ -22,7 +22,7 @@
 #if defined(__LIBFIBRE__)
 
 #define USE_MUTEX                  0
-static Mutex<InternalLock> mutex;
+static FibreMutex mutex;
 
 #endif /* __LIBFIBRE__ */
 

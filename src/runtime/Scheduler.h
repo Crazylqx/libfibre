@@ -17,13 +17,14 @@
 #ifndef _Scheduler_h_
 #define _Scheduler_h_ 1
 
-#include "runtime-glue/RuntimeProcessor.h"
+#include "runtime/BaseProcessor.h"
+#include "runtime-glue/RuntimeLock.h"
 
 #if TESTING_LOADBALANCING
 
 class LoadManager {
   volatile ssize_t stackCounter;
-  RuntimeLock procLock;
+  WorkerLock procLock;
   ProcessorList waitingProcs;
   FlexStackList waitingStacks;
 
@@ -34,7 +35,7 @@ class LoadManager {
     if (waitingStacks.empty()) {
       waitingProcs.push_front(proc);
       procLock.release();
-      return reinterpret_cast<RuntimeProcessor&>(proc).suspend(_friend<LoadManager>());
+      return proc.suspend(_friend<LoadManager>());
     } else {
       StackContext* nextStack = waitingStacks.pop_front();
       procLock.release();
@@ -48,9 +49,9 @@ class LoadManager {
       waitingStacks.push_back(sc);
       procLock.release();
     } else {
-      RuntimeProcessor* anyProc = reinterpret_cast<RuntimeProcessor*>(waitingProcs.pop_front());
+      BaseProcessor* nextProc = waitingProcs.pop_front();
       procLock.release();
-      anyProc->resume(_friend<LoadManager>(), &sc);
+      nextProc->resume(_friend<LoadManager>(), &sc);
     }
   }
 
@@ -92,20 +93,20 @@ class LoadManager {};
 
 class Scheduler : public LoadManager {
 protected:
-  RuntimeSchedulerLock ringLock;
-  size_t               ringCount;
-  BaseProcessor*       placeProc;
-  BaseProcessor        stagingProc;
+  WorkerLock     ringLock;
+  size_t         ringCount;
+  BaseProcessor* placeProc;
+  BaseProcessor  stagingProc;
 
 public:
   Scheduler() : ringCount(0), placeProc(nullptr), stagingProc(*this, "Staging") {}
   ~Scheduler() {
-    ScopedLock<RuntimeSchedulerLock> sl(ringLock);
+    ScopedLock<WorkerLock> sl(ringLock);
     RASSERT(!ringCount, ringCount);
   }
 
   void addProcessor(BaseProcessor& proc) {
-    ScopedLock<RuntimeSchedulerLock> sl(ringLock);
+    ScopedLock<WorkerLock> sl(ringLock);
     if (placeProc == nullptr) {
       ProcessorRing::close(proc);
       placeProc = &proc;
@@ -116,7 +117,7 @@ public:
   }
 
   void removeProcessor(BaseProcessor& proc) {
-    ScopedLock<RuntimeSchedulerLock> sl(ringLock);
+    ScopedLock<WorkerLock> sl(ringLock);
     RASSERT0(placeProc);
     // move placeProc, if necessary
     if (placeProc == &proc) placeProc = ProcessorRing::next(*placeProc);
@@ -135,7 +136,7 @@ public:
 #endif
     RASSERT0(placeProc);
     // ring insert is traversal-safe, so could use separate 'placeLock' here
-    ScopedLock<RuntimeSchedulerLock> sl(ringLock);
+    ScopedLock<WorkerLock> sl(ringLock);
     placeProc = ProcessorRing::next(*placeProc);
     return *placeProc;
 #endif

@@ -33,7 +33,7 @@ class TimerQueue;
 // DEADLOCK AVOIDANCE RULE: acquire Timer lock while BlockingQueue lock held, but not vice versa!
 
 class TimerQueue {
-  RuntimeLock lock;
+  WorkerLock lock;
   std::multimap<Time,BaseTimer*> queue;
   TimerStats* stats;
 
@@ -43,14 +43,14 @@ public:
   TimerQueue() { stats = new TimerStats(this); }
 
   Handle insert(BaseTimer& bt, const Time& relTimeout, const Time& absTimeout) {
-    ScopedLock<RuntimeLock> al(lock);
+    ScopedLock<WorkerLock> al(lock);
     Handle ret = queue.insert( {absTimeout, &bt} ); // set up timeout
     if (ret == queue.begin()) Runtime::Timer::newTimeout(relTimeout);
     return ret; // returns with lock held
   }
 
   void erase(Handle titer) {
-    ScopedLock<RuntimeLock> al(lock);
+    ScopedLock<WorkerLock> al(lock);
     queue.erase(titer);
   }
 
@@ -266,7 +266,7 @@ public:
   }
 };
 
-template<typename Lock, bool Binary = false, typename BQ = BlockingQueue>
+template<typename Lock, bool Binary, typename BQ = BlockingQueue>
 class Semaphore {
 protected:
   Lock lock;
@@ -687,5 +687,12 @@ public:
   bool post()   { ScopedLock<Lock> al(lock); return Baseclass::post(); }
   void detach() { ScopedLock<Lock> al(lock); Baseclass::detach(); }
 };
+
+typedef Mutex<WorkerLock>           TaskLock;
+typedef Condition<TaskLock>         TaskCondition;
+typedef Semaphore<WorkerLock,false> TaskSemaphore;
+typedef Semaphore<WorkerLock,true>  TaskBinarySemaphore;
+typedef LockRW<WorkerLock>          TaskLockRW;
+typedef Barrier<WorkerLock>         TaskBarrier;
 
 #endif /* _BlockingSync_h_ */

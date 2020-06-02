@@ -39,14 +39,14 @@
 */
 class EventScope {
   struct SyncSem {
-    FibreMutex                   mtx;
-    Semaphore<InternalLock,true> sem;
+    TaskLock            mtx;
+    TaskBinarySemaphore sem;
   };
   struct SyncFD {
     SyncSem RD;
     SyncSem WR;
 #if TESTING_LAZY_FD_REGISTRATION
-    FibreMutex lock;
+    TaskLock lock;
     size_t     status;
     SyncFD() : status(0) {}
 #endif
@@ -145,7 +145,7 @@ public:
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
     if ((fdsync.status & target) == target) return false; // outside of lock: faster, but double regs possible...
-    ScopedLock<FibreMutex> sl(fdsync.lock);
+    ScopedLock<TaskLock> sl(fdsync.lock);
     bool change = fdsync.status;                          // already registered for polling?
     fdsync.status |= target;
 #endif
@@ -171,7 +171,7 @@ public:
     RASSERT0(fdsync.RD.sem.empty());
     RASSERT0(fdsync.WR.sem.empty());
 #if TESTING_LAZY_FD_REGISTRATION
-    ScopedLock<FibreMutex> sl(fdsync.lock);
+    ScopedLock<TaskLock> sl(fdsync.lock);
     fdsync.status = 0;
 #endif
     if (RemoveFromPollSet) {                        // only called from lfConnect
@@ -192,7 +192,7 @@ public:
   void blockPollFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     masterPoller->setupPollFD(fd, true);  // reset using ONESHOT to reduce polling
-    ScopedLock<FibreMutex> sl(fdSyncVector[fd].RD.mtx);
+    ScopedLock<TaskLock> sl(fdSyncVector[fd].RD.mtx);
     fdSyncVector[fd].RD.sem.P();
   }
 
@@ -217,7 +217,7 @@ public:
   void block(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    ScopedLock<FibreMutex> sl(sync.mtx);
+    ScopedLock<TaskLock> sl(sync.mtx);
     sync.sem.P();
   }
 
@@ -270,7 +270,7 @@ public:
     }
 #endif
     SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    ScopedLock<FibreMutex> sl(sync.mtx);
+    ScopedLock<TaskLock> sl(sync.mtx);
     for (;;) {
       sync.sem.P();
       ret = iofunc(fd, a...);

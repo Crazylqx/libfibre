@@ -35,6 +35,12 @@ public:
 // EventScope.h pulls in everything else
 #include "libfibre/EventScope.h"
 
+typedef TaskLock      FibreMutex;
+typedef TaskCondition FibreCondition;
+typedef TaskSemaphore FibreSemaphore;
+typedef TaskLockRW    FibreLockRW;
+typedef TaskBarrier   FibreBarrier;
+
 typedef Fibre*         fibre_t;
 typedef FibreMutex     fibre_mutex_t;
 typedef FibreCondition fibre_cond_t;

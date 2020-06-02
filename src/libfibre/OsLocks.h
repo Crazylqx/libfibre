@@ -173,10 +173,4 @@ public:
   }
 };
 
-#if TESTING_LOCK_SPIN
-typedef OsLock<4,TESTING_LOCK_SPIN,1> InternalLock;
-#else
-typedef OsLock<0,0,0> InternalLock;
-#endif
-
 #endif /* _OsLocks_h_ */

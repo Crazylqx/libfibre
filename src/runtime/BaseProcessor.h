@@ -23,10 +23,11 @@
 #include "runtime/StackContext.h"
 #include "runtime-glue/RuntimeLock.h"
 
+class LoadManager;
 class Scheduler;
 
 class ReadyQueue {
-  RuntimeLock readyLock;
+  WorkerLock readyLock;
 #if TESTING_LOCKED_READYQUEUE
   FlexStackQueue queue[NumPriority];
 #else
@@ -54,7 +55,7 @@ public:
   ReadyQueue() = default;
 
   StackContext* dequeue() {
-    ScopedLock<RuntimeLock> sl(readyLock);
+    ScopedLock<WorkerLock> sl(readyLock);
     return dequeueInternal();
   }
 
@@ -70,7 +71,7 @@ public:
   void enqueue(StackContext& s) {
     RASSERT(s.getPriority() < NumPriority, s.getPriority());
 #if TESTING_LOCKED_READYQUEUE
-    ScopedLock<RuntimeLock> sl(readyLock);
+    ScopedLock<WorkerLock> sl(readyLock);
 #endif
     queue[s.getPriority()].push(s);
   }
@@ -107,6 +108,9 @@ protected:
   Scheduler&    scheduler;
   StackContext* idleStack;
 
+  WorkerSemaphore haltNotify;
+  StackContext*   handoverStack;
+
   ProcessorStats* stats;
 
   void idleLoop();
@@ -116,7 +120,7 @@ protected:
   }
 
 public:
-  BaseProcessor(Scheduler& c, const char* n = "Processor") : scheduler(c), idleStack(nullptr) {
+  BaseProcessor(Scheduler& c, const char* n = "Processor") : scheduler(c), idleStack(nullptr), haltNotify(0), handoverStack(nullptr) {
     stats = new ProcessorStats(this, n);
   }
 
@@ -145,6 +149,25 @@ public:
   StackContext* scheduleYield(_friend<StackContext>);
   StackContext* scheduleYieldGlobal(_friend<StackContext>);
   StackContext* schedulePreempt(StackContext* currStack,_friend<StackContext>);
+
+  StackContext* suspend(_friend<LoadManager>) {
+#if TESTING_HALT_SPIN
+    static const size_t SpinMax = TESTING_HALT_SPIN;
+    for (size_t i = 0; i < SpinMax; i += 1) {
+      if fastpath(haltNotify.tryP()) return handoverStack;
+      Pause();
+    }
+#endif
+    stats->idle.count();
+    haltNotify.P();
+    return handoverStack;
+  }
+
+  void resume(_friend<LoadManager>, StackContext* sc = nullptr) {
+    stats->wake.count();
+    handoverStack = sc;
+    haltNotify.V();
+  }
 };
 
 #endif /* _BaseProcessor_h_ */
