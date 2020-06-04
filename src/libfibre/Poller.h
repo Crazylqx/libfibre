@@ -158,7 +158,7 @@ public:
     wakeUp(); // use self-pipe trick to terminate poll loop
     SYSCALL(pthread_join(pollThread, nullptr));
   }
-  pthread_t getSysID() { return pollThread; }
+  pthread_t getSysThreadId() { return pollThread; }
 };
 
 class PollerFibre : public BasePoller {
@@ -190,10 +190,10 @@ public:
   static const int extraTimerFD = 0;
 #endif
 
-  MasterPoller(EventScope& es, unsigned long fd, _friend<EventScope>) : BaseThreadPoller(es, "MasterPoller") {
+  MasterPoller(EventScope& es, unsigned long fdCount, _friend<EventScope>) : BaseThreadPoller(es, "MasterPoller") {
     BaseThreadPoller::start(pollLoopSetup);
 #if __FreeBSD__
-    timerFD = fd;
+    timerFD = fdCount - 1;
 #else
     timerFD = SYSCALLIO(timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC));
     setupFD(timerFD, Input);

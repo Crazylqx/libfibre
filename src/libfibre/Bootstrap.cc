@@ -16,26 +16,26 @@
 ******************************************************************************/
 #include "libfibre/fibre.h"
 
+#include <atomic>
 #include <cxxabi.h>   // see _lfAbort
 #include <execinfo.h> // see _lfAbort
 
-// other global objects
-WorkerLock*                  _lfDebugOutputLock = nullptr; // RuntimeDebug.h
+// various global objects and pointers
+static WorkerLock      _dummy1;
+WorkerLock*            _lfDebugOutputLock = &_dummy1; // RuntimeDebug.h
+
 #if TESTING_ENABLE_DEBUGGING
-WorkerLock*                  _lfGlobalStackLock = nullptr; // StackContext.h
-GlobalStackList*             _lfGlobalStackList = nullptr; // StackContext.h
+static WorkerLock      _dummy2;
+static GlobalStackList _dummy3;
+WorkerLock*            _lfGlobalStackLock = &_dummy2; // Fibre.h
+GlobalStackList*       _lfGlobalStackList = &_dummy3; // Fibre.h
 #endif
+
 #if TESTING_ENABLE_STATISTICS
-IntrusiveQueue<StatsObject>* StatsObject::lst   = nullptr ; // Stats.h
+IntrusiveQueue<StatsObject>* StatsObject::lst = nullptr ; // Stats.h
 #endif
 
 // ******************** BOOTSTRAP *************************
-
-// default EventScope object
-static EventScope* _lfEventScope = nullptr; // EventScope.h
-
-// bootstrap counter definition
-std::atomic<int> _Bootstrapper::counter(0);
 
 static const char* DebugOptions[] = {
   "basic",
@@ -48,41 +48,27 @@ static const char* DebugOptions[] = {
 
 static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug options mismatch");
 
-_Bootstrapper::_Bootstrapper() {
-  if (++counter == 1) {
+static std::atomic<int> initCounter(0);
+
+static void FibreCleanup() {
+#if TESTING_ENABLE_STATISTICS
+  StatsObject::printAll(std::cout);
+  delete StatsObject::lst;
+#endif
+}
+
+EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
+  if (++initCounter == 1) {
 #if TESTING_ENABLE_STATISTICS
     StatsObject::lst = new IntrusiveQueue<StatsObject>;
 #endif
-    // create locks for debug/assert output
-    _lfDebugOutputLock = new WorkerLock;
-#if TESTING_ENABLE_DEBUGGING
-    // create global fibre list
-    _lfGlobalStackLock = new WorkerLock;
-    _lfGlobalStackList = new GlobalStackList;
-#endif
+    // register cleanup routine
+    SYSCALL(atexit(FibreCleanup));
     // bootstrap system via event scope
-    char* e = getenv("FibreDefaultPollers");
-    size_t p = e ? atoi(e) : 1;
-    RASSERT0(p > 0);
-    _lfEventScope = new EventScope(_friend<_Bootstrapper>(), p);
-    char* d = getenv("FibreDebugString");
-    if (d) DBG::init(DebugOptions, d, false);
+    char* env = getenv("FibreDebugString");
+    if (env) DBG::init(DebugOptions, env, false);
   }
-}
-
-_Bootstrapper::~_Bootstrapper() {
-  if (--counter == 0) {
-    // delete _lfEventScope
-    // delete _lfDebugOutputLock;
-#if TESTING_ENABLE_DEBUGGING
-    delete _lfGlobalStackList;
-    delete _lfGlobalStackLock;
-#endif
-#if TESTING_ENABLE_STATISTICS
-    StatsObject::printAll(std::cout);
-    delete StatsObject::lst;
-#endif
-  }
+  return EventScope::bootstrap(pollerCount, workerCount);
 }
 
 // ******************** GLOBAL HELPERS ********************

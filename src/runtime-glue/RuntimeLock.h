@@ -25,4 +25,5 @@ typedef OsLock<4,TESTING_LOCK_SPIN,1> WorkerLock;
 typedef OsLock<0,0,0> WorkerLock;
 #endif
 typedef OsSemaphore   WorkerSemaphore;
+
 #endif /* _RuntimeLock_h_ */

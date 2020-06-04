@@ -50,6 +50,9 @@ typedef struct _cfibre_cluster_t*     cfibre_cluster_t;
 extern "C" {
 #endif
 
+/** @brief Bootstrap routine should be called early in main() */
+void cfibre_init();
+
 /** @brief Create Cluster */
 int cfibre_cluster_create(cfibre_cluster_t* cluster);
 /** @brief Destroy Cluster */
@@ -57,26 +60,13 @@ int cfibre_cluster_destroy(cfibre_cluster_t* cluster);
 /** @brief Obtain Cluster ID */
 cfibre_cluster_t cfibre_cluster_self(void);
 
-/** @brief Pause (all but current) processors in current Cluster. */
-int cfibre_pause(void);
-/** @brief Resume processors in current Cluster. */
-int cfibre_resume(void);
-/** @brief Pause (all but current) processors in specified Cluster. */
-int cfibre_pause_cluster(cfibre_cluster_t* cluster);
-/** @brief Resume processors in specified Cluster. */
-int cfibre_resume_cluster(cfibre_cluster_t* cluster);
+/** @brief Add one worker to cluster; execute init_routine first */
+int cfibre_add_worker(cfibre_cluster_t cluster, pthread_t* tid, void (*init_routine) (void *), void *arg);
 
-#if 0
-typedef struct _cfibre_sproc_t*       cfibre_sproc_t;
-/** @brief Create Processor. */
-int cfibre_sproc_create(cfibre_sproc_t* sp, cfibre_cluster_t cluster);
-/** @brief Create Processor and run init routine `func(arg)` first. */
-int cfibre_sproc_create_init(cfibre_sproc_t* sp, cfibre_cluster_t cluster, void (*func)(void *), void *arg);
-/** @brief Destroy Processor */
-int cfibre_sproc_destroy(cfibre_sproc_t* sp);
-/** @brief Obtain processor's OS-level pthread ID */
-pthread_t cfibre_sproc_pthread(cfibre_sproc_t sp);
-#endif
+/** @brief Pause (all but current) processors in specified Cluster. */
+int cfibre_pause(cfibre_cluster_t cluster);
+/** @brief Resume processors in specified Cluster. */
+int cfibre_resume(cfibre_cluster_t cluster);
 
 /** @brief Read OS-level `errno` variable (special routine due to TLS). */
 int cfibre_get_errno(void);

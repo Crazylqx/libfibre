@@ -47,6 +47,7 @@ static void f3main() {
 }
 
 int main(int argc, char** argv) {
+  FibreInit();
   cout << "Hello world" << endl;
   Time ct;
   SYSCALL(clock_gettime(CLOCK_REALTIME, &ct));

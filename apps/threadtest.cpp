@@ -395,6 +395,7 @@ int main(int argc, char* argv[]) {
 #elif defined BOOST_VERSION
   boost_init(threadCount);
 #elif defined __LIBFIBRE__
+  FibreInit();
   CurrCluster().addWorkers(threadCount - 1);
 #elif defined __U_CPLUSPLUS__
   uProcessor* proc = new uProcessor[threadCount - 1];

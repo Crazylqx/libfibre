@@ -23,17 +23,9 @@
 #define __LIBFIBRE__ 1
 #endif
 
-// bootstrap object needs to come first
-#include <atomic>
-static class _Bootstrapper {
-  static std::atomic<int> counter;
-public:
-  _Bootstrapper();
-  ~_Bootstrapper();
-} _lfBootstrap;
+#include "libfibre/EventScope.h" // EventScope.h pulls in everything else
 
-// EventScope.h pulls in everything else
-#include "libfibre/EventScope.h"
+extern EventScope* FibreInit(size_t pollerCount = 0, size_t workerCount = 0);
 
 typedef TaskLock      FibreMutex;
 typedef TaskCondition FibreCondition;
@@ -78,6 +70,10 @@ struct fast_condattr_t {};
 #define restrict
 #endif
 
+/** @brief Bootstrap routine should be called early in main(). */
+inline void fibre_init() {
+  FibreInit();
+}
 
 /** @brief Initialize attributes for fibre creation (`pthread_attr_init`). */
 inline int fibre_attr_init(fibre_attr_t *attr) {
@@ -441,15 +437,15 @@ to structure the scheduling and I/O handling of fibres and processors within
 an <i>event scope</i>.  More than one event scope can be created to take
 advantage of partitioned kernel file descriptor tables (on Linux, see `man 2
 clone`).  Before the execution of the regular `main()` routine, the runtime
-system automatically creates one of each default objects: Fibre, OsProcessor,
-Cluster, EventScope.
+system automatically creates one of each default objects: Fibre, Cluster,
+EventScope.
 
 
 Application source code must include fibre declarations via either fibre.h
 (for C++) or cfibre.h (for C).  The runtime provides both C and C++ APIs:
 
 - Regular C++ API
-  - classes (Fibre, OsProcessor, Cluster, EventScope)
+  - classes (Fibre, Cluster, EventScope)
   - global routines (Fibre.h, EventScope.h)
 - Subset of API corresponding to the POSIX Threads API (fibre.h)
 - C wrapper/bindings (cfibre.h)

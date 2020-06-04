@@ -379,8 +379,14 @@ static void acceptor_loop(void* arg) {
 #endif
 }
 
-static void scopemain(void* arg) {
+static void* scopemain(void* arg) {
 #if defined __LIBFIBRE__
+  if (arg != 0) {
+#if __linux__
+    SYSCALL(unshare(CLONE_FILES));
+#endif
+    EventScope::bootstrap();
+  }
   Garage garage;
   Context::CurrEventScope().setClientData(&garage);
 #endif
@@ -396,7 +402,10 @@ static void scopemain(void* arg) {
   }
 
 #if defined __LIBFIBRE__
-  for (unsigned int c = 0; c < clusterCount; c += 1) {
+  if (threadCount / clusterCount > 1) {
+    cluster[0]->addWorkers(threadCount / clusterCount - 1);
+  }
+  for (unsigned int c = 1; c < clusterCount; c += 1) {
     cluster[c]->addWorkers(threadCount / clusterCount);
   }
 #endif
@@ -460,7 +469,7 @@ static void scopemain(void* arg) {
         if (affinityFlag) {
 #if !TESTING_CLUSTER_POLLER_FIBRE
           for (size_t pp = 0; pp < cluster[cidx]->getPollerCount(); pp += 1) {
-            SYSCALL(pthread_setaffinity_np(cluster[cidx]->getPoller(pp).getSysID(), sizeof(clustercpus), &clustercpus));
+            SYSCALL(pthread_setaffinity_np(cluster[cidx]->getPoller(pp).getSysThreadId(), sizeof(clustercpus), &clustercpus));
           }
 #endif
         } else if (groupAffinityFlag) {
@@ -534,6 +543,7 @@ static void scopemain(void* arg) {
   for (unsigned int c = 1; c < clusterCount; c += 1) delete cluster[c];
   delete [] cluster;
 #endif
+  return nullptr;
 }
 
 int main(int argc, char** argv) {
@@ -570,10 +580,10 @@ int main(int argc, char** argv) {
 #endif
 
 #if defined  __LIBFIBRE__
-  EventScope* es = new EventScope[scopeCount-1];
-  Fibre** esf = new Fibre*[scopeCount-1];
+  FibreInit();
+  pthread_t* tids = new pthread_t[scopeCount-1];
   for (unsigned int i = 0; i < scopeCount-1; i++) {
-    esf[i] = (new Fibre(es[i].getMainCluster()))->run(scopemain, (void*)uintptr_t(threadCount * (i+1)));
+    SYSCALL(pthread_create(&tids[i], nullptr, scopemain, (void*)uintptr_t(threadCount * (i+1))));
   }
 #endif
 
@@ -581,7 +591,7 @@ int main(int argc, char** argv) {
 
 #if defined  __LIBFIBRE__
   for (unsigned int i = 0; i < scopeCount-1; i++) {
-    delete esf[i];
+    SYSCALL(pthread_join(tids[i], nullptr));
   }
 #endif
 

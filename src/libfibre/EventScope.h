@@ -21,8 +21,8 @@
 
 #include "libfibre/Fibre.h"
 #include "libfibre/Cluster.h"
-#include "libfibre/OsProcessor.h"
 
+#include <limits.h>       // PTHREAD_STACK_MIN
 #include <unistd.h>       // close
 #include <sys/resource.h> // getrlimit
 #include <sys/types.h>
@@ -61,60 +61,85 @@ class EventScope {
   // therefore, all file operations are executed on dedicated processor(s)
   Cluster*      diskCluster;
 
-  // main cluster, processor. fibre
+  // main fibre, cluster
+  Fibre*        mainFibre;
   Cluster*      mainCluster;
 
   // simple kludge to provide event-scope-local data
   void*         clientData;
 
-  // initialization happens after new scope is created with pthread_create() and unshare()
-  void init() {
-    stats = new ConnectionStats(this);
-    struct rlimit rl;
-    SYSCALL(getrlimit(RLIMIT_NOFILE, &rl));           // get hard limit for file descriptor count
-    fdCount = rl.rlim_max + MasterPoller::extraTimerFD;
-    fdSyncVector = new SyncFD[fdCount];               // create vector of R/W sync points
-    masterPoller = new MasterPoller(*this, fdCount - 1, _friend<EventScope>()); // start master poller & timer handling
-    mainCluster->startPolling(_friend<EventScope>()); // start main cluster's poller
-  }
-
-  static void split(void* This) {
-#if __linux__
-    SYSCALL(unshare(CLONE_FILES));
-#endif
-    reinterpret_cast<EventScope*>(This)->init();
-  }
-
-public:
-  ConnectionStats* stats;
-
-  /** Constructor. */
-  EventScope(size_t pollerCount = 1, void* cd = nullptr) : diskCluster(nullptr), clientData(cd) {
-    mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>()); // delayed master poller start
-    new OsProcessor(*mainCluster, split, this, _friend<EventScope>()); // waits until phread running and split() called
-  }
-  EventScope(_friend<_Bootstrapper> fb, size_t pollerCount = 1) : diskCluster(nullptr), clientData(nullptr) {
-    mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>()); // delayed master poller start
-    new OsProcessor(*mainCluster, fb);
-    init(); // bootstrap event scope -> no unshare() necessary
-  }
+  // TODO: not available until cluster deletion implemented
   ~EventScope() {
+    delete mainFibre;
     delete mainCluster;
     delete masterPoller;
     delete[] fdSyncVector;
   }
 
+  static void cloneInternal(EventScope* This) {
+#if __linux__
+    SYSCALL(unshare(CLONE_FILES));
+#endif
+    This->initIO();
+  }
+
+  EventScope(size_t pollerCount) : diskCluster(nullptr) {
+    if (pollerCount == 0) {
+      char* env = getenv("FibreDefaultPollers");
+      pollerCount = env ? atoi(env) : 1;
+    }
+    RASSERT0(pollerCount > 0);
+    stats = new ConnectionStats(this);
+    mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>());   // create main cluster
+  }
+
+  void initIO() {
+    struct rlimit rl;
+    SYSCALL(getrlimit(RLIMIT_NOFILE, &rl));                                 // get hard limit for file descriptor count
+    fdCount = rl.rlim_max + MasterPoller::extraTimerFD;
+    fdSyncVector = new SyncFD[fdCount];                                     // create vector of R/W sync points
+    masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
+  }
+
+public:
+  ConnectionStats* stats;
+
+  /** Bootstrap a new event scope, e.g., after a suitable call to `clone()` or `pthread_create()`. */
+  static EventScope* bootstrap(size_t pollerCount = 0, size_t workerCount = 0) {
+    EventScope* es = new EventScope(pollerCount);
+    es->mainFibre = es->mainCluster->registerWorker(_friend<EventScope>());
+    if (workerCount > 0) es->mainCluster->addWorkers(workerCount);
+    es->initIO();
+    return es;
+  }
+
+  /** Create a event scope by cloning the current one.
+      The new event scope automatically starts with a single worker (pthread)
+      and a separate kernel file descriptor table where supported (Linux).
+      `mainFunc(mainArg)` is invoked as main fibre of the new scope. */
+  static EventScope* clone(funcvoid1_t mainFunc, ptr_t mainArg, size_t pollerCount = 0) {
+    EventScope* es = new EventScope(pollerCount);
+    es->mainCluster->addWorker((funcvoid1_t)cloneInternal, (ptr_t)es); // calls initIO()
+    es->mainFibre = new Fibre(*es->mainCluster);
+    es->mainFibre->run(mainFunc, mainArg);
+    return es;
+  }
+
+  /** Wait for the main routine of a cloned event scope. */
+  void join() { mainFibre->join(); }
+
   /** Create disk cluster (if needed for application). */
-  Cluster& addDiskCluster() {
+  Cluster& addDiskCluster(size_t cnt = 1) {
     RASSERT0(!diskCluster);
     diskCluster = new Cluster;
+    diskCluster->addWorkers(cnt);
     return *diskCluster;
   }
 
-  /** Obtain reference to main cluster - needed to bootstrap fibres in new event scope. */
-  Cluster& getMainCluster() { return *mainCluster; }
-
+  /** Set event-scope-local data. */
   void setClientData(void* cd) { clientData = cd; }
+
+  /** Get event-scope-local data. */
   void* getClientData() { return clientData; }
 
   void setTimer(const Time& timeout) {
@@ -349,12 +374,12 @@ inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
   } else if (_SysErrno() == EINPROGRESS) {
     Context::CurrEventScope().registerFD<true,true,false,false>(fd); // register immediately
     Context::CurrEventScope().block<false>(fd);       // wait for connect to complete
-#if TESTING_LAZY_FD_REGISTRATION
-    Context::CurrEventScope().deregisterFD<true>(fd); // revert to lazy registration
-#endif
     socklen_t sz = sizeof(ret);
     SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &sz));
     RASSERT(ret == 0, ret);
+#if TESTING_LAZY_FD_REGISTRATION
+    Context::CurrEventScope().deregisterFD<true>(fd); // revert to lazy registration
+#endif
     Context::CurrEventScope().stats->cliconn.count();
   }
   return ret;

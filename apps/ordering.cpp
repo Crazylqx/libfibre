@@ -5,15 +5,15 @@
 // Note: The original source code has been published without license terms.
 //       It is used here with permission from the author.
 
-#if defined(FIBRE)
-#include "fibre.h"
-#else
+#if defined(PTHREADS)
 #include <pthread.h>
 #include <semaphore.h>
 #define fibre_sem_t sem_t
 #define fibre_sem_init sem_init
 #define fibre_sem_wait sem_wait
 #define fibre_sem_post sem_post
+#else
+#include "fibre.h"
 #endif
 
 #include <cassert>
@@ -156,6 +156,10 @@ void *thread2Func(void *param)
 
 int main()
 {
+#if defined(__LIBFIBRE__)
+    fibre_init();
+#endif
+
     // Initialize the semaphores
     fibre_sem_init(&beginSema1, 0, 0);
     fibre_sem_init(&beginSema2, 0, 0);

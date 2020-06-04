@@ -26,7 +26,7 @@ $(TARGETS): %: %.cpp ../src/libfibre.so
 	$(CXX) $(CXXFLAGS) -MMD $< -o $@ -L../src $(LIBS) -Wl,-rpath=$(TOPDIR)/src
 
 pordering: ordering.cpp
-	$(CXX) -pthread $< -o $@
+	$(CXX) -DPTHREADS -pthread $< -o $@
 
 gthreadtest: threadtest.go
 	go build -o $@ $<

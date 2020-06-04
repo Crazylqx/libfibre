@@ -43,6 +43,7 @@ void f2main(int* result) {
 }
 
 int main() {
+  FibreInit();
   Context::CurrCluster().addWorkers(3);
   static const int fcount = 10;
   Fibre f1s[fcount];

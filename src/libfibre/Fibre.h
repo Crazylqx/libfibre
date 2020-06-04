@@ -41,7 +41,7 @@ extern WorkerLock*      _lfGlobalStackLock;
 extern GlobalStackList* _lfGlobalStackList;
 #endif
 
-class OsProcessor;
+class Cluster;
 
 /** A Fibre object represents an independent execution context backed by a stack. */
 class Fibre : public StackContext {
@@ -113,11 +113,11 @@ public:
   : Fibre(Context::CurrProcessor().getScheduler(), defaultStackSize, background) { run(func, arg); }
 
   // constructor for idle loop or main loop (bootstrap) on existing pthread stack
-  Fibre(BaseProcessor &sp, _friend<OsProcessor>)
+  Fibre(BaseProcessor &sp, _friend<Cluster>)
   : StackContext(sp), stackSize(0) { initDebug(); }
 
   //  explicit final notification for idle loop or main loop (bootstrap) on pthread stack
-  void endDirect(_friend<OsProcessor>) {
+  void endDirect(_friend<Cluster>) {
     done.post();
   }
 

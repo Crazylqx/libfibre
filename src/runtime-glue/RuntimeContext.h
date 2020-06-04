@@ -26,11 +26,15 @@ class EventScope;
 #if TESTING_PROCESSOR_POLLER
 class PollerFibre;
 #endif
+class BaseThreadPoller;
 
-// 'noinline' needed for TLS:
-// http://stackoverflow.com/questions/25673787/making-thread-local-variables-fully-volatile
-// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66631
+// routine definitions are in Cluster.cc
 namespace Context {
+
+  // 'noinline' needed for TLS:
+  // http://stackoverflow.com/questions/25673787/making-thread-local-variables-fully-volatile
+  // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66631
+
   // CurrStack() and CurrProcessor() needed for generic runtime code
   StackContext*  CurrStack()      __no_inline;
   BaseProcessor& CurrProcessor()  __no_inline;
@@ -40,8 +44,13 @@ namespace Context {
 #if TESTING_PROCESSOR_POLLER
   PollerFibre&   CurrPoller()     __no_inline;
 #endif
+
   // setCurrStack() to update current stack
-  void setCurrStack(StackContext& s, _friend<StackContext>) __no_inline;
+  void setCurrStack(StackContext& s, _friend<StackContext>);
+
+  // install context
+  void install(BaseProcessor* bp, Cluster* cl, EventScope* es, _friend<Cluster>);
+  void installFake(EventScope* es, _friend<BaseThreadPoller>);
 }
 
 #endif /* _RuntimeContext_h_ */

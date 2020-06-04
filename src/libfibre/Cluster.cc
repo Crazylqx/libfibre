@@ -16,6 +16,132 @@
 ******************************************************************************/
 #include "libfibre/Cluster.h"
 
+#include <limits.h> // PTHREAD_STACK_MIN
+
+namespace Context {
+
+struct Data {
+  StackContext*  currStack;
+  BaseProcessor* currProc;
+  Cluster*       currCluster;
+  EventScope*    currScope;
+#if TESTING_PROCESSOR_POLLER
+  PollerFibre*   currPoller;
+#endif
+};
+
+#if TESTING_PROCESSOR_POLLER
+static thread_local Data data = { nullptr, nullptr, nullptr, nullptr, nullptr };
+#else
+static thread_local Data data = { nullptr, nullptr, nullptr, nullptr };
+#endif
+
+StackContext*  CurrStack()      { RASSERT0(data.currStack);   return  data.currStack; }
+BaseProcessor& CurrProcessor()  { RASSERT0(data.currProc);    return *data.currProc; }
+Cluster&       CurrCluster()    { RASSERT0(data.currCluster); return *data.currCluster; }
+EventScope&    CurrEventScope() { RASSERT0(data.currScope);   return *data.currScope; }
+#if TESTING_PROCESSOR_POLLER
+PollerFibre&   CurrPoller()     { RASSERT0(data.currPoller);  return *data.currPoller; }
+#endif
+
+void setCurrStack(StackContext& s, _friend<StackContext>) { data.currStack = &s; }
+
+void install(Fibre* fib, BaseProcessor* bp, Cluster* cl, EventScope* es, _friend<Cluster>) {
+  data.currStack   = fib;
+  data.currProc    = bp;
+  data.currCluster = cl;
+  data.currScope   = es;
+#if TESTING_PROCESSOR_POLLER
+  data.currPoller = new PollerFibre(*es, *bp, false);
+  data.currPoller->start();
+#endif
+}
+
+void installFake(EventScope* es, _friend<BaseThreadPoller>) {
+  data.currStack = (StackContext*)0xdeadbeef;
+  data.currScope = es;
+}
+
+} // namespace Context
+
+Cluster::Worker::~Worker() {
+  if (maintenanceFibre) delete maintenanceFibre;
+}
+
+inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
+  worker->sysThreadId = pthread_self();
+  Context::install(fibre, worker, this, &scope, _friend<Cluster>());
+  worker->maintenanceFibre = new Fibre(*worker);
+  worker->maintenanceFibre->setPriority(TopPriority);
+  worker->maintenanceFibre->run(maintenance, this);
+}
+
+void Cluster::initDummy(ptr_t) {
+}
+
+void Cluster::fibreHelper(Worker* worker) {
+  worker->runIdleLoop();
+}
+
+void* Cluster::threadHelper(Argpack* args) {
+  args->cluster->registerIdleWorker(args->worker, args->initFibre);
+  return nullptr;
+}
+
+inline void Cluster::registerIdleWorker(Worker* worker, Fibre* initFibre) {
+  Fibre* idleFibre = new Fibre(*worker, _friend<Cluster>()); // idle fibre on pthread stack
+  setupWorker(idleFibre, worker);
+  worker->setIdleLoop(idleFibre);
+  Worker::yieldDirect(*initFibre);                           // run init fibre right away
+  worker->runIdleLoop();
+  idleFibre->endDirect(_friend<Cluster>());
+}
+
+Fibre* Cluster::registerWorker(_friend<EventScope>) {
+  Worker* worker = new Worker(*this);
+  Fibre* mainFibre = new Fibre(*worker, _friend<Cluster>()); // caller continues on pthread stack
+  setupWorker(mainFibre, worker);
+  Fibre* idleFibre = new Fibre(*worker);                     // idle fibre on new stack
+  idleFibre->setup((ptr_t)fibreHelper, worker);              // set up idle fibre for execution
+  worker->setIdleLoop(idleFibre);
+  return mainFibre;
+}
+
+pthread_t Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
+  Worker* worker = new Worker(*this);
+  Fibre* initFibre = new Fibre(*worker);
+  if (initFunc) {
+    initFibre->setup((ptr_t)initFunc, initArg);
+  } else {
+    initFibre->setup((ptr_t)initDummy, nullptr);
+  }
+  Argpack args = { this, worker, initFibre };
+  pthread_t tid;
+  pthread_attr_t attr;
+  SYSCALL(pthread_attr_init(&attr));
+  SYSCALL(pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED));
+#if __linux__ // FreeBSD jemalloc segfaults when trying to use minimum stack
+  SYSCALL(pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN));
+#endif
+  SYSCALL(pthread_create(&tid, &attr, (funcptr1_t)threadHelper, &args));
+  SYSCALL(pthread_attr_destroy(&attr));
+  delete initFibre;
+  return tid;
+}
+
+void Cluster::pause() {
+  ringLock.acquire();
+  stats->procs.count(ringCount);
+  pauseProc = &Context::CurrProcessor();
+  for (size_t p = 1; p < ringCount; p += 1) pauseSem.V();
+  for (size_t p = 1; p < ringCount; p += 1) confirmSem.P();
+}
+
+void Cluster::resume() {
+  for (size_t p = 1; p < ringCount; p += 1) sleepSem.V();
+  ringLock.release();
+}
+
 void Cluster::maintenance(Cluster* cl) {
   for (;;) {
     cl->pauseSem.P();

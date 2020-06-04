@@ -17,9 +17,8 @@
 #ifndef _Cluster_h_
 #define _Cluster_h_ 1
 
-#include "runtime/BlockingSync.h"
 #include "runtime/Scheduler.h"
-#include "libfibre/OsProcessor.h"
+#include "libfibre/Fibre.h"
 #include "libfibre/Poller.h"
 
 /**
@@ -45,67 +44,80 @@ class Cluster : public Scheduler {
 
   ClusterStats*  stats;
 
-  void start() {
-    for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start();
-  }
+  struct Worker : public BaseProcessor {
+    pthread_t sysThreadId;
+    Fibre*    maintenanceFibre;
+    Worker(Cluster& c) : BaseProcessor(c), maintenanceFibre(nullptr) { c.Scheduler::addProcessor(*this); }
+    ~Worker();
+    void setIdleLoop(Fibre* f) { BaseProcessor::idleStack = f; }
+    void runIdleLoop()         { BaseProcessor::idleLoop(); }
+    static void yieldDirect(StackContext& sc) { BaseProcessor::yieldDirect(sc); }
+  };
 
-  Cluster(EventScope& es, size_t p, _friend<Cluster>) : scope(es), pollCount(p), pauseProc(nullptr) {
+  static void maintenance(Cluster* cl);
+
+  Cluster(EventScope& es, size_t pcnt) : scope(es), pollCount(pcnt), pauseProc(nullptr) {
     stats = new ClusterStats(this);
     pollVec = (PollerType*)new char[sizeof(PollerType[pollCount])];
-    for (size_t p = 0; p < pollCount; p += 1) new (&pollVec[p]) PollerType(scope, stagingProc);
+    for (size_t p = 0; p < pollCount; p += 1) {
+      (new (&pollVec[p]) PollerType(scope, stagingProc))->start();
+    }
   }
+
+  struct Argpack {
+    Cluster* cluster;
+    Worker* worker;
+    Fibre* initFibre;
+  };
+
+  inline void  setupWorker(Fibre*, Worker*);
+  static void  initDummy(ptr_t);
+  static void  fibreHelper(Worker*);
+  static void* threadHelper(Argpack*);
+  inline void  registerIdleWorker(Worker* worker, Fibre* initFibre);
 
 public:
   /** Constructor: create Cluster in current EventScope. */
   Cluster(size_t pollerCount = 1) : Cluster(Context::CurrEventScope(), pollerCount) {}
-  /** Constructor: create Cluster in specfied EventScope. */
-  Cluster(EventScope& es, size_t pollerCount = 1) : Cluster(es, pollerCount, _friend<Cluster>()) { start(); }
 
-  // special constructor and start routine for bootstrapping event scope
-  Cluster(EventScope& es, size_t pollerCount, _friend<EventScope>) : Cluster(es, pollerCount, _friend<Cluster>()) {}
-  void startPolling(_friend<EventScope>) { start(); }
+  // Dedicated constructor for EventScope creation.
+  Cluster(EventScope& es, size_t pollerCount, _friend<EventScope>) : Cluster(es, pollerCount) {}
 
-  void addWorkers(size_t cnt) {
-    for (size_t i = 0; i < cnt; i += 1) {
-      new OsProcessor(*this, _friend<Cluster>());
-      // add processor to ring, then start?
-    }
+  ~Cluster() {
+    // TODO: wait until all work is done, i.e., all regular fibres have left
+    // TODO: delete all processors: join pthread via maintenance fibre?
+    delete [] pollVec;
   }
 
-  void registerWorker(funcvoid1_t initFunc = nullptr, ptr_t arg = nullptr, bool idle = true) {
-    // TODO
-  }
+  // Register curent system thread (pthread) as worker.
+  Fibre* registerWorker(_friend<EventScope>);
 
+  /** Create one new worker (pthread) and add to cluster.
+      Start `initFunc(initArg)` as dedicated fibre immediately after creation. */
+  pthread_t addWorker(funcvoid1_t initFunc = nullptr, ptr_t initArg = nullptr);
+  /** Create new workers (pthreads) and add to cluster. */
+  void addWorkers(size_t cnt = 1) { for (size_t i = 0; i < cnt; i += 1) addWorker(); }
+
+  /** Obtain system-level ids for workers (pthread_t). */
   size_t getWorkerSysIDs(pthread_t* tid = nullptr, size_t cnt = 0) {
     ScopedLock<WorkerLock> sl(ringLock);
     BaseProcessor* p = placeProc;
     for (size_t i = 0; i < cnt && i < ringCount; i += 1) {
-      tid[i] = reinterpret_cast<OsProcessor*>(p)->getSysID();
+      tid[i] = reinterpret_cast<Worker*>(p)->sysThreadId;
       p = ProcessorRing::next(*p);
     }
     return ringCount;
   }
 
-  EventScope& getEventScope() { return scope; }
+  /** Get individual access to pollers. */
   PollerType& getPoller(size_t hint) { return pollVec[hint % pollCount]; }
+  /** Obtain number of pollers */
   size_t getPollerCount() { return pollCount; }
 
-  /** Pause all OsProcessors (except caller). */
-  void pause() {
-    ringLock.acquire();
-    stats->procs.count(ringCount);
-    pauseProc = &Context::CurrProcessor();
-    for (size_t p = 1; p < ringCount; p += 1) pauseSem.V();
-    for (size_t p = 1; p < ringCount; p += 1) confirmSem.P();
-  }
-
-  /** Pause all OsProcessors. */
-  void resume() {
-    for (size_t p = 1; p < ringCount; p += 1) sleepSem.V();
-    ringLock.release();
-  }
-
-  static void maintenance(Cluster* cl);
+  /** Pause all OsProcessors (except caller).. */
+  void pause();
+  /** Resume all OsProcessors. */
+  void resume();
 };
 
 #endif /* _Cluster_h_ */

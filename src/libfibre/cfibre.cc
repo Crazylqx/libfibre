@@ -35,6 +35,11 @@ struct _cfast_mutexattr_t    : public fast_mutexattr_t {};
 struct _cfast_condattr_t     : public fast_condattr_t {};
 
 struct _cfibre_cluster_t : public Cluster {};
+
+extern "C" void cfibre_init() {
+  fibre_init();
+}
+
 extern "C" int cfibre_cluster_create(cfibre_cluster_t* cluster) {
   *cluster = new _cfibre_cluster_t;
   return 0;
@@ -50,53 +55,20 @@ extern "C" cfibre_cluster_t cfibre_cluster_self() {
   return &reinterpret_cast<_cfibre_cluster_t&>(Context::CurrCluster());
 }
 
-extern "C" int cfibre_pause() {
-  Context::CurrCluster().pause();
+extern "C" int cfibre_add_worker(cfibre_cluster_t cluster, pthread_t* tid, void (*init_routine) (void *), void *arg) {
+  *tid = cluster->addWorker(init_routine, arg);
   return 0;
 }
 
-extern "C" int cfibre_resume() {
-  Context::CurrCluster().resume();
+extern "C" int cfibre_pause(cfibre_cluster_t cluster) {
+  cluster->pause();
   return 0;
 }
 
-extern "C" int cfibre_pause_cluster(cfibre_cluster_t* cluster) {
-  (*cluster)->pause();
+extern "C" int cfibre_resume(cfibre_cluster_t cluster) {
+  cluster->resume();
   return 0;
 }
-
-extern "C" int cfibre_resume_cluster(cfibre_cluster_t* cluster) {
-  (*cluster)->resume();
-  return 0;
-}
-
-#if 0
-struct _cfibre_sproc_t   : public OsProcessor {
-  _cfibre_sproc_t(Cluster& c, funcvoid1_t func = nullptr, ptr_t arg = nullptr) : OsProcessor(c, func, arg) {}
-};
-
-extern "C" int cfibre_sproc_create(cfibre_sproc_t* sproc, cfibre_cluster_t cluster) {
-  if (cluster == nullptr) cfibre_cluster_self();
-  *sproc = new _cfibre_sproc_t(*cluster);
-  return 0;
-}
-
-extern "C" int cfibre_sproc_create_init(cfibre_sproc_t* sproc, cfibre_cluster_t cluster, void (*func)(void *), void *arg) {
-  if (cluster == nullptr) cfibre_cluster_self();
-  *sproc = new _cfibre_sproc_t(*cluster, func, arg);
-  return 0;
-}
-
-extern "C" int cfibre_sproc_destroy(cfibre_sproc_t* sproc) {
-  delete *sproc;
-  *sproc = nullptr;
-  return 0;
-}
-
-extern "C" pthread_t cfibre_sproc_pthread(cfibre_sproc_t sproc) {
-  return sproc->getSysID();
-}
-#endif
 
 extern "C" int cfibre_attr_init(cfibre_attr_t *attr) {
   *attr = new _cfibre_attr_t;

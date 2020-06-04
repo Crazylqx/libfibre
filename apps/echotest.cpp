@@ -164,10 +164,11 @@ void servaccept() {
   delete [] f;
 }
 
-static void servaccept2() {
-  Context::CurrEventScope().registerFD<true,false,false,true>(servFD);
+void servaccept2(void*) {
   Context::CurrCluster().addWorkers(2);
+  Context::CurrEventScope().registerFD<true,false,false,true>(servFD);
   servaccept();
+  std::cout << "finishing 2nd accept loop" << std::endl;
 }
 
 void servmain(sockaddr_in& addr) {
@@ -190,10 +191,9 @@ void servmain(sockaddr_in& addr) {
     Fibre a1(Context::CurrCluster(), defaultStackSize, true);
     a1.run(servaccept);
     if (numaccept == 2) {
-      EventScope* es2 = new EventScope;
-      Fibre a2(es2->getMainCluster(), defaultStackSize, true);
-      a2.run(servaccept2);
+      EventScope* es2 = EventScope::clone(servaccept2, nullptr);
       std::cout << "waiting for 2nd accept loop" << std::endl;
+      es2->join();
     } else {
       Context::CurrCluster().addWorkers(2);
     }
@@ -258,6 +258,7 @@ int main(int argc, char** argv) {
   sockaddr_in addr = { AF_INET, htons(8888), { INADDR_ANY }, { 0 } };
 #endif
   opts(argc, argv, addr);
+  FibreInit();
   if (server) servmain(addr);
   else clientmain(addr);
   return 0;
