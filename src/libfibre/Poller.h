@@ -133,9 +133,9 @@ public:
     struct kevent ev[2];
     EV_SET(&ev[0], fd, EVFILT_READ, EV_DELETE, 0, 0, 0);
     EV_SET(&ev[1], fd, EVFILT_WRITE, EV_DELETE, 0, 0, 0);
-    kevent(pollFD, ev, 2, nullptr, 0, nullptr);    // best-effort only
+    SYSCALL(kevent(pollFD, ev, 2, nullptr, 0, nullptr));
 #else // __linux__ below
-    epoll_ctl(pollFD, EPOLL_CTL_DEL, fd, nullptr); // best-effort only
+    SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_DEL, fd, nullptr));
 #endif
   }
 };

@@ -47,8 +47,9 @@ class EventScope {
     SyncSem WR;
 #if TESTING_LAZY_FD_REGISTRATION
     TaskLock lock;
-    size_t     status;
-    SyncFD() : status(0) {}
+    BasePoller* poller;
+    size_t      status;
+    SyncFD() : poller(nullptr), status(0) {}
 #endif
   } *fdSyncVector;
 
@@ -162,14 +163,11 @@ public:
 
 #if TESTING_LAZY_FD_REGISTRATION
     if (Lazy) return false;
-#endif
-
-#if TESTING_LAZY_FD_REGISTRATION
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
     if ((fdsync.status & target) == target) return false; // outside of lock: faster, but double regs possible...
     ScopedLock<TaskLock> sl(fdsync.lock);
-    bool change = fdsync.status;                          // already registered for polling?
+    RASSERT0((bool)fdsync.status == (bool)fdsync.poller)
     fdsync.status |= target;
 #endif
 
@@ -180,9 +178,14 @@ public:
 #endif
 
 #if TESTING_LAZY_FD_REGISTRATION
-    cp.setupFD(fd, fdsync.status, change);                // add or modify poll settings
+    if (fdsync.poller) {
+      fdsync.poller->setupFD(fd, fdsync.status, true); // modify poll settings
+    } else {
+      fdsync.poller = &cp;
+      fdsync.poller->setupFD(fd, fdsync.status);       // add poll settings
+    }
 #else
-    cp.setupFD(fd, target, false);
+    cp.setupFD(fd, target);                            // add poll settings
 #endif
     return true;
   }
@@ -196,15 +199,12 @@ public:
 #if TESTING_LAZY_FD_REGISTRATION
     ScopedLock<TaskLock> sl(fdsync.lock);
     fdsync.status = 0;
-#endif
-    if (RemoveFromPollSet) {                        // only called from lfConnect
-#if TESTING_PROCESSOR_POLLER
-      BasePoller& cp = Context::CurrPoller();
-#else
-      BasePoller& cp = Context::CurrCluster().getPoller(fd);
-#endif
-      cp.resetFD(fd);
+    if (RemoveFromPollSet) {              // only called from lfConnect w/ TESTING_LAZY_FD_REGISTRATION
+      RASSERT0(fdsync.poller)
+      fdsync.poller->resetFD(fd);
     }
+    fdsync.poller = nullptr;
+#endif
   }
 
   void registerPollFD(int fd) {
