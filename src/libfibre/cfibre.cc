@@ -37,7 +37,11 @@ struct _cfast_condattr_t     : public fast_condattr_t {};
 struct _cfibre_cluster_t : public Cluster {};
 
 extern "C" void cfibre_init() {
-  fibre_init();
+  FibreInit();
+}
+
+extern "C" void cfibre_init_n(size_t pollerCount, size_t workerCount) {
+  FibreInit(pollerCount, workerCount);
 }
 
 extern "C" int cfibre_cluster_create(cfibre_cluster_t* cluster) {

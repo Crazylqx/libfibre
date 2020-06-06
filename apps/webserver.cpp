@@ -80,6 +80,7 @@ T lfOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
 static unsigned int clusterSize = 64;
 static unsigned int scopeCount = 1;
 static unsigned int listenerCount = 1; // 0 -> listener per connection
+static unsigned int pollerCount = 1;
 static unsigned int threadCount = 1;
 static bool affinityFlag = false;
 static bool groupAffinityFlag = false;
@@ -105,7 +106,7 @@ static Garage& CurrGarage() {
 
 // help message
 static void usage(const char* prog) {
-  cerr << "usage: " << prog << " -c <cluster size> -e <event scope count> -l <listener count> -t <system threads> -a -g -m -r" << endl;
+  cerr << "usage: " << prog << " -c <cluster size> -e <event scope count> -l <listener count> -p <poller count> -t <system threads> -a -g -m -r" << endl;
 }
 
 // fibre counting
@@ -122,12 +123,13 @@ static void exitHandler(int sig) {
 // command-line option processing
 static void opts(int argc, char** argv) {
   for (;;) {
-    int option = getopt( argc, argv, "c:e:l:t:agmh?" );
+    int option = getopt( argc, argv, "c:e:l:p:t:agmh?" );
     if ( option < 0 ) break;
     switch(option) {
     case 'c': clusterSize = atoi(optarg); break;
     case 'e': scopeCount = atoi(optarg); break;
     case 'l': listenerCount = atoi(optarg); break;
+    case 'p': pollerCount = atoi(optarg); break;
     case 't': threadCount = atoi(optarg); break;
     case 'a': affinityFlag = true; break;
     case 'g': groupAffinityFlag = true; break;
@@ -147,8 +149,8 @@ static void opts(int argc, char** argv) {
     usage(argv[0]);
     exit(1);
   }
-  if (clusterSize == 0 || threadCount == 0) {
-    cerr << "none of -c, -t can be zero" << endl;
+  if (clusterSize == 0 || pollerCount == 0 || threadCount == 0) {
+    cerr << "none of -c, -p, -t can be zero" << endl;
   }
 #if defined __U_CPLUSPLUS__
   singleServerSocket = true;
@@ -385,7 +387,7 @@ static void* scopemain(void* arg) {
 #if __linux__
     SYSCALL(unshare(CLONE_FILES));
 #endif
-    EventScope::bootstrap();
+    EventScope::bootstrap(pollerCount);
   }
   Garage garage;
   Context::CurrEventScope().setClientData(&garage);
@@ -550,7 +552,9 @@ int main(int argc, char** argv) {
   // parse command-line arguments
   opts(argc, argv);
 
-  cout << "threads: " << threadCount << " cluster size: " << clusterSize << " listeners: " << listenerCount << " event scopes: " << scopeCount;
+  cout << "threads: " << threadCount << " pollers: " << pollerCount
+       << " cluster size: " << clusterSize << " listeners: " << listenerCount
+       << " event scopes: " << scopeCount;
   if (affinityFlag) cout << " affinity";
   else if (groupAffinityFlag) cout << " group affinity";
   cout << endl;
@@ -580,7 +584,7 @@ int main(int argc, char** argv) {
 #endif
 
 #if defined  __LIBFIBRE__
-  FibreInit();
+  FibreInit(pollerCount);
   pthread_t* tids = new pthread_t[scopeCount-1];
   for (unsigned int i = 0; i < scopeCount-1; i++) {
     SYSCALL(pthread_create(&tids[i], nullptr, scopemain, (void*)uintptr_t(threadCount * (i+1))));

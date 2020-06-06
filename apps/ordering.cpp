@@ -157,7 +157,7 @@ void *thread2Func(void *param)
 int main()
 {
 #if defined(__LIBFIBRE__)
-    fibre_init();
+    FibreInit();
 #endif
 
     // Initialize the semaphores

@@ -25,8 +25,6 @@
 
 #include "libfibre/EventScope.h" // EventScope.h pulls in everything else
 
-extern EventScope* FibreInit(size_t pollerCount = 0, size_t workerCount = 0);
-
 typedef TaskLock      FibreMutex;
 typedef TaskCondition FibreCondition;
 typedef TaskSemaphore FibreSemaphore;
@@ -71,9 +69,7 @@ struct fast_condattr_t {};
 #endif
 
 /** @brief Bootstrap routine should be called early in main(). */
-inline void fibre_init() {
-  FibreInit();
-}
+extern EventScope* FibreInit(size_t pollerCount = 1, size_t workerCount = 1);
 
 /** @brief Initialize attributes for fibre creation (`pthread_attr_init`). */
 inline int fibre_attr_init(fibre_attr_t *attr) {

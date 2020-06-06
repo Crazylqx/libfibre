@@ -85,10 +85,6 @@ class EventScope {
   }
 
   EventScope(size_t pollerCount) : diskCluster(nullptr) {
-    if (pollerCount == 0) {
-      char* env = getenv("FibreDefaultPollers");
-      pollerCount = env ? atoi(env) : 1;
-    }
     RASSERT0(pollerCount > 0);
     stats = new ConnectionStats(this);
     mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>());   // create main cluster
@@ -107,10 +103,10 @@ public:
   ConnectionStats* stats;
 
   /** Bootstrap a new event scope, e.g., after a suitable call to `clone()` or `pthread_create()`. */
-  static EventScope* bootstrap(size_t pollerCount = 0, size_t workerCount = 0) {
+  static EventScope* bootstrap(size_t pollerCount = 1, size_t workerCount = 1) {
     EventScope* es = new EventScope(pollerCount);
     es->mainFibre = es->mainCluster->registerWorker(_friend<EventScope>());
-    if (workerCount > 0) es->mainCluster->addWorkers(workerCount);
+    if (workerCount > 1) es->mainCluster->addWorkers(workerCount - 1);
     es->initIO();
     return es;
   }
@@ -119,7 +115,7 @@ public:
       The new event scope automatically starts with a single worker (pthread)
       and a separate kernel file descriptor table where supported (Linux).
       `mainFunc(mainArg)` is invoked as main fibre of the new scope. */
-  static EventScope* clone(funcvoid1_t mainFunc, ptr_t mainArg, size_t pollerCount = 0) {
+  static EventScope* clone(funcvoid1_t mainFunc, ptr_t mainArg, size_t pollerCount = 1) {
     EventScope* es = new EventScope(pollerCount);
     es->mainCluster->addWorker((funcvoid1_t)cloneInternal, (ptr_t)es); // calls initIO()
     es->mainFibre = new Fibre(*es->mainCluster);

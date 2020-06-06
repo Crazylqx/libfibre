@@ -50,8 +50,10 @@ typedef struct _cfibre_cluster_t*     cfibre_cluster_t;
 extern "C" {
 #endif
 
-/** @brief Bootstrap routine should be called early in main() */
+/** @brief Bootstrap routine should be called early in main(). */
 void cfibre_init();
+/** @brief Alternative bootstrap routine. */
+void cfibre_init_n(size_t pollerCount, size_t workerCount);
 
 /** @brief Create Cluster */
 int cfibre_cluster_create(cfibre_cluster_t* cluster);
