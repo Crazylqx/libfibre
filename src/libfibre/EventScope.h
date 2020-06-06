@@ -100,6 +100,7 @@ class EventScope {
     fdCount = rl.rlim_max + MasterPoller::extraTimerFD;
     fdSyncVector = new SyncFD[fdCount];                                     // create vector of R/W sync points
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
+    mainCluster->startPolling(_friend<EventScope>());                       // start polling now (potentially new event scope)
   }
 
 public:

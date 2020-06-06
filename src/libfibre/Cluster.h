@@ -59,10 +59,10 @@ class Cluster : public Scheduler {
   Cluster(EventScope& es, size_t pcnt) : scope(es), pollCount(pcnt), pauseProc(nullptr) {
     stats = new ClusterStats(this);
     pollVec = (PollerType*)new char[sizeof(PollerType[pollCount])];
-    for (size_t p = 0; p < pollCount; p += 1) {
-      (new (&pollVec[p]) PollerType(scope, stagingProc))->start();
-    }
+    for (size_t p = 0; p < pollCount; p += 1) new (&pollVec[p]) PollerType(scope, stagingProc);
   }
+
+  void start() { for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start(); }
 
   struct Argpack {
     Cluster* cluster;
@@ -78,10 +78,11 @@ class Cluster : public Scheduler {
 
 public:
   /** Constructor: create Cluster in current EventScope. */
-  Cluster(size_t pollerCount = 1) : Cluster(Context::CurrEventScope(), pollerCount) {}
+  Cluster(size_t pollerCount = 1) : Cluster(Context::CurrEventScope(), pollerCount) { start(); }
 
-  // Dedicated constructor for EventScope creation.
+  // Dedicated constructor & helper for EventScope creation.
   Cluster(EventScope& es, size_t pollerCount, _friend<EventScope>) : Cluster(es, pollerCount) {}
+  void startPolling(_friend<EventScope>) { start(); }
 
   ~Cluster() {
     // TODO: wait until all work is done, i.e., all regular fibres have left
