@@ -17,6 +17,10 @@
 #ifndef _syscall_macro_h_
 #define _syscall_macro_h_
 
+extern "C" {
+#include "errnoname/errnoname.h"
+}
+
 #ifndef fastpath
 #define fastpath(x)   (__builtin_expect((bool(x)),true))
 #endif
@@ -49,7 +53,7 @@ static inline void _SYSCALLabortUnlock() {}
   int ret ## __COUNTER__ = call;\
   if slowpath(!(ret ## __COUNTER__ cmp expected || ret ## __COUNTER__ == errcode || _SysErrno() == errcode)) {\
     _SYSCALLabortLock();\
-    printf("FAILED SYSCALL: %s -> %d (expected %s %lli), errno: %d\nat: %s:%d\n", #call, ret ## __COUNTER__, #cmp, (long long)expected, _SysErrno(), __FILE__, __LINE__);\
+    printf("FAILED SYSCALL at %s:%d\n%s\nEXPECTED %s %lli RETURN: %d errno: %d %s\n", __FILE__, __LINE__, #call, #cmp, (long long)expected, ret ## __COUNTER__, _SysErrno(), errnoname(_SysErrno()));\
     _SYSCALLabortUnlock();\
     _SYSCALLabort();\
   }\
