@@ -14,14 +14,15 @@ cltop2=$(expr $(expr $count \* 3) - 1)
 svbot=$count
 svtop=$(expr $(expr $count + $count) - 1)
 
-echo $clbot1-$cltop1 $clbot2-$cltop2 $svbot-$svtop
+echo server cores: $svbot-$svtop
+echo client cores: $cl1bot-$cl1top,$clbot2-$cltop2
 
 function pre() {
-	make clean all
+	make clean all || exit 1
 	[ "$1" = "memcached" ] || return
 	FPATH=$PWD
 	cd memcached; ./configure2.sh $FPATH; cd -
-	make -C memcached all -j $(nproc)
+	make -C memcached all -j $(nproc) || exit 1
 }
 
 function post() {
@@ -36,7 +37,7 @@ function prep_0() {
 }
 
 function run_0() {
-	./apps/threadtest
+	./apps/threadtest || exit 1
 }
 
 function prep_1() {
@@ -56,11 +57,14 @@ function run_1() {
 		echo LOADED
 		perf stat -p $(pidof memcached) taskset -c $cl1bot-$cl1top,$clbot2-$cltop2 \
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --noload -i fb_ia -u0.5 -c25 -d1 -t10 -T32
-		[ $? -eq 0 ] && killall memcached || break
+		[ $? -eq 0 ] && killall memcached || {
+			rm -f memcached.running
+			killall memcached
+			exit 1
+		}
 		sleep 3
 	done | tee memcached.client.out
 	rm -f memcached.running
-	killall memcached
 }
 
 for ((e=0;e<2;e+=1)); do
@@ -69,3 +73,4 @@ for ((e=0;e<2;e+=1)); do
 	run_$e
 	post $addon
 done
+exit 0

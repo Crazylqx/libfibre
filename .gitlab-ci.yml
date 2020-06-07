@@ -1,0 +1,11 @@
+stages:
+  - test
+
+test1:
+  stage: test
+  before_script:
+    - "git clone https://git.uwaterloo.ca/mkarsten/memcached-1.5.7-libfibre memcached"
+  script:
+    - "./testsuite.sh"
+  after_script:
+    - "echo DONE"
