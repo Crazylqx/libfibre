@@ -15,7 +15,7 @@ svbot=$count
 svtop=$(expr $(expr $count + $count) - 1)
 
 echo server cores: $svbot-$svtop
-echo client cores: $cl1bot-$cl1top,$clbot2-$cltop2
+echo client cores: $clbot1-$cltop1,$clbot2-$cltop2
 
 function pre() {
 	make clean all || exit 1
