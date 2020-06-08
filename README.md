@@ -5,6 +5,9 @@ libfibre is an M:N user-level threading runtime without preemption, thus the ter
 
 Running `make all` builds the fibre library in `src/libfibre.so` along with several example/test programs: `test1`, `ordering`, `threadtest`, `echotest`, and `webserver` in the subdirectory `apps`.
 
+The build process should download all git submodules.
+If that fails, download manually using `git submodule update --init --recursive`.
+
 Running `make doc` builds documentation in `doc/html/index.html`.
 
 Both Linux/epoll and FreeBSD/kqueue are supported, but significantly more testing has been done for Linux/epoll.

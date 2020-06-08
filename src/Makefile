@@ -1,8 +1,8 @@
 include ../Makefile.config
-SOURCEDIRS=runtime libfibre errnoname
+SOURCEDIRS=runtime libfibre
 SOURCES=$(wildcard $(addsuffix /*.cc,$(SOURCEDIRS)))
 OBJECTS=$(subst .cc,.o,$(notdir $(SOURCES)))
-CSOURCES=$(wildcard $(addsuffix /*.c,$(SOURCEDIRS)))
+CSOURCES=$(wildcard $(addsuffix /*.c,$(SOURCEDIRS))) errnoname/errnoname.c
 COBJECTS=$(subst .c,.o,$(notdir $(CSOURCES)))
 ASOURCES=$(wildcard $(addsuffix /*.S,$(SOURCEDIRS)))
 AOBJECTS=$(subst .S,.o,$(notdir $(ASOURCES)))
@@ -16,7 +16,7 @@ LIBSO=libfibre.so
 CXXFLAGS+=-I. -D__LIBFIBRE__
 
 vpath %.cc $(SOURCEDIRS)
-vpath %.c $(SOURCEDIRS)
+vpath %.c errnoname
 vpath %.S $(SOURCEDIRS)
 
 AFLAGS=-g --divide -I$(SRCDIR) --defsym __$(shell uname -m)__=1
@@ -41,6 +41,11 @@ $(COBJECTS): %.o: %.c
 
 $(AOBJECTS): %.o: %.S
 	$(AS) $(ASFLAGS) $< -o $@
+
+$(OBJECTS): errnoname/errnoname.h
+
+errnoname/errnoname.h errnoname/errnoname.c &:
+	git submodule update --init errnoname
 
 clean:
 	rm -f $(LIBA) $(LIBSO) $(OBJECTS) $(COBJECTS) $(AOBJECTS) $(DEPENDS)
