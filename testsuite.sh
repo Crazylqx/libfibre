@@ -51,18 +51,18 @@ function run_1() {
 		taskset -c $svbot-$svtop memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24
 		sleep 1
 	done | tee memcached.server.out &
-	sleep 1
 	for ((i=0;i<5;i+=1)); do
+		sleep 3
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --loadonly
 		echo LOADED
-		perf stat -p $(pidof memcached) taskset -c $cl1bot-$cl1top,$clbot2-$cltop2 \
+		perf stat -p $(pidof memcached) taskset -c $clbot1-$cltop1,$clbot2-$cltop2 timeout 30 \
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --noload -i fb_ia -u0.5 -c25 -d1 -t10 -T32
 		[ $? -eq 0 ] && killall memcached || {
 			rm -f memcached.running
 			killall memcached
+			sleep 1
 			exit 1
 		}
-		sleep 3
 	done | tee memcached.client.out
 	rm -f memcached.running
 }

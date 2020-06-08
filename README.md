@@ -9,6 +9,13 @@ Running `make doc` builds documentation in `doc/html/index.html`.
 
 Both Linux/epoll and FreeBSD/kqueue are supported, but significantly more testing has been done for Linux/epoll.
 
+### Results
+
+The runtime system has been described and evaluated in our Sigmetrics 2020
+paper [User-level Threading: Have Your Cake and Eat It Too](https://cs.uwaterloo.ca/~mkarsten/papers/sigmetrics2020.html).
+In this paper, it has been named <b>Fred</b> to satsify anonymity
+requirements during peer review - and to distinguish it from other user-level threading runtimes.
+
 ### Contributors
 
 The runtime has originally been developed in close collaboration with Saman Barghi.
