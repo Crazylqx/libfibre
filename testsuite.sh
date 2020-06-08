@@ -32,20 +32,7 @@ function post() {
 	git checkout src/runtime-glue/testoptions.h
 }
 
-function prep_0() {
-	true
-}
-
-function run_0() {
-	./apps/threadtest || exit 1
-}
-
-function prep_1() {
-	sed -i -e 's/.*TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/'
-	echo memcached
-}
-
-function run_1() {
+function run_memcached() {
 	touch memcached.running
 	while [ -f memcached.running ]; do
 		taskset -c $svbot-$svtop memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24
@@ -65,6 +52,24 @@ function run_1() {
 		}
 	done | tee memcached.client.out
 	rm -f memcached.running
+}
+
+function prep_0() {
+	echo memcached
+}
+
+function run_0() {
+	./apps/threadtest || exit 1
+	run_memcached
+}
+
+function prep_1() {
+	sed -i -e 's/.*TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/'
+	echo memcached
+}
+
+function run_1() {
+	run_memcached
 }
 
 for ((e=0;e<2;e+=1)); do
