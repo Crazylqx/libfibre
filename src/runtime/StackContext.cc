@@ -103,27 +103,35 @@ extern "C" void invokeStack(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3
 inline void StackContext::yieldTo(StackContext& nextStack) {
   CHECK_PREEMPTION(1);          // expect preemption still enabled
   RuntimeDisablePreemption();
-  Context::CurrStack()->switchStack<Yield>(nextStack);
+  switchStack<Yield>(nextStack);
   RuntimeEnablePreemption();
 }
 
 inline void StackContext::yieldResume(StackContext& nextStack) {
   CHECK_PREEMPTION(1);          // expect preemption still enabled
   RuntimeDisablePreemption();
-  Context::CurrStack()->switchStack<Resume>(nextStack);
+  switchStack<Resume>(nextStack);
   RuntimeEnablePreemption();
+}
+
+inline void StackContext::yieldForce() {
+  yieldResume(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
 }
 
 bool StackContext::yield() {
   StackContext* nextStack = Context::CurrProcessor().scheduleYield(_friend<StackContext>());
-  if (nextStack) yieldTo(*nextStack);
+  if (nextStack) Context::CurrStack()->yieldTo(*nextStack);
   return nextStack;
 }
 
 bool StackContext::yieldGlobal() {
   StackContext* nextStack = Context::CurrProcessor().scheduleYieldGlobal(_friend<StackContext>());
-  if (nextStack) yieldTo(*nextStack);
+  if (nextStack) Context::CurrStack()->yieldTo(*nextStack);
   return nextStack;
+}
+
+void StackContext::forceYield() {
+  Context::CurrStack()->yieldForce();
 }
 
 void StackContext::idleYieldTo(StackContext& nextStack, _friend<BaseProcessor>) {
@@ -160,7 +168,7 @@ void StackContext::migrateNow(BaseProcessor& proc) {
   StackContext* sc = Context::CurrStack();
   sc->affinity = false;
   sc->processor = &proc;
-  sc->yieldResume(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
+  sc->yieldForce();
 }
 
 // migrate to scheduler (for disk I/O), don't change affinity
@@ -168,7 +176,7 @@ BaseProcessor& StackContext::migrateNow(Scheduler& scheduler, _friend<EventScope
   StackContext* sc = Context::CurrStack();
   BaseProcessor* proc = sc->processor;
   sc->processor = &scheduler.placement(_friend<StackContext>(), true);
-  sc->yieldResume(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
+  sc->yieldForce();
   return *proc;
 }
 
@@ -176,5 +184,5 @@ BaseProcessor& StackContext::migrateNow(Scheduler& scheduler, _friend<EventScope
 void StackContext::migrateNow(BaseProcessor& proc, _friend<EventScope>) {
   StackContext* sc = Context::CurrStack();
   sc->processor = &proc;
-  sc->yieldResume(Context::CurrProcessor().scheduleFull(_friend<StackContext>()));
+  sc->yieldForce();
 }

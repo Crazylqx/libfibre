@@ -91,8 +91,9 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
   void suspendInternal();
   void resumeInternal();
   void resumeDirect();
-  static inline void yieldTo(StackContext& nextStack);
-  static inline void yieldResume(StackContext& nextStack);
+  inline void yieldTo(StackContext& nextStack);
+  inline void yieldResume(StackContext& nextStack);
+  inline void yieldForce();
 
 protected:
   // constructor/destructors can only be called by derived classes
@@ -127,6 +128,7 @@ public:
   // context switching - static -> apply to Context::CurrStack()
   static bool yield();
   static bool yieldGlobal();
+  static void forceYield();
   static void idleYieldTo(StackContext& nextStack, _friend<BaseProcessor>);
   static void preempt();
   static void terminate() __noreturn;

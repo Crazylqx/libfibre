@@ -50,8 +50,13 @@ static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug
 
 static std::atomic<int> initCounter(0);
 
+#if TESTING_ENABLE_STATISTICS
+static std::ios ioFormatFlags(NULL);
+#endif
+
 static void FibreCleanup() {
 #if TESTING_ENABLE_STATISTICS
+  std::cout.copyfmt(ioFormatFlags);
   StatsObject::printAll(std::cout);
   delete StatsObject::lst;
 #endif
@@ -60,6 +65,7 @@ static void FibreCleanup() {
 EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
   if (++initCounter == 1) {
 #if TESTING_ENABLE_STATISTICS
+    ioFormatFlags.copyfmt(std::cout);
     StatsObject::lst = new IntrusiveQueue<StatsObject>;
 #endif
     // register cleanup routine

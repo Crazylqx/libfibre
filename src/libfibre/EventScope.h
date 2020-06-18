@@ -93,7 +93,9 @@ class EventScope {
   void initIO() {
     struct rlimit rl;
     SYSCALL(getrlimit(RLIMIT_NOFILE, &rl));                                 // get hard limit for file descriptor count
-    fdCount = rl.rlim_max + MasterPoller::extraTimerFD;
+    rl.rlim_max = rl.rlim_cur;                                              // firm up current FD limit
+    SYSCALL(setrlimit(RLIMIT_NOFILE, &rl));                                 // and install maximum
+    fdCount = rl.rlim_max + MasterPoller::extraTimerFD;                     // add fake timer fd, if necessary
     fdSyncVector = new SyncFD[fdCount];                                     // create vector of R/W sync points
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
     mainCluster->startPolling(_friend<EventScope>());                       // start polling now (potentially new event scope)

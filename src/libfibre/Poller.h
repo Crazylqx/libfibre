@@ -123,7 +123,11 @@ public:
     epoll_event ev;
     ev.events = EPOLLET | status; // man 2 epoll_ctl: EPOLLERR, EPOLLHUP not needed
     ev.data.fd = fd;
-    SYSCALL(epoll_ctl(pollFD, change ? EPOLL_CTL_MOD : EPOLL_CTL_ADD, fd, &ev));
+    if (change) {
+      SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_MOD, fd, &ev));
+    } else {
+      SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_ADD, fd, &ev));
+    }
 #endif
   }
 
@@ -226,7 +230,11 @@ public:
     epoll_event ev;
     ev.events = EPOLLIN | EPOLLONESHOT;
     ev.data.fd = fd;
-    SYSCALL(epoll_ctl(pollFD, change ? EPOLL_CTL_MOD : EPOLL_CTL_ADD, fd, &ev));
+    if (change) {
+      SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_MOD, fd, &ev));
+    } else {
+      SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_ADD, fd, &ev));
+    }
 #endif
   }
 };
