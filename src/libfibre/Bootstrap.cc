@@ -17,6 +17,7 @@
 #include "libfibre/fibre.h"
 
 #include <atomic>
+#include <iostream>
 #include <cxxabi.h>   // see _lfAbort
 #include <execinfo.h> // see _lfAbort
 
@@ -48,32 +49,45 @@ static const char* DebugOptions[] = {
 
 static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug options mismatch");
 
-static std::atomic<int> initCounter(0);
-
+// bootstrap definitions
+static std::atomic<int> _bootstrapCounter(0);
 #if TESTING_ENABLE_STATISTICS
 static std::ios ioFormatFlags(NULL);
 #endif
 
-static void FibreCleanup() {
+_Bootstrapper::_Bootstrapper() {
+  if (++_bootstrapCounter == 1) {
 #if TESTING_ENABLE_STATISTICS
-  std::cout.copyfmt(ioFormatFlags);
-  StatsObject::printAll(std::cout);
-  delete StatsObject::lst;
-#endif
-}
-
-EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
-  if (++initCounter == 1) {
-#if TESTING_ENABLE_STATISTICS
-    ioFormatFlags.copyfmt(std::cout);
     StatsObject::lst = new IntrusiveQueue<StatsObject>;
 #endif
-    // register cleanup routine
-    SYSCALL(atexit(FibreCleanup));
     // bootstrap system via event scope
     char* env = getenv("FibreDebugString");
     if (env) DBG::init(DebugOptions, env, false);
   }
+}
+
+_Bootstrapper::~_Bootstrapper() {
+  if (--_bootstrapCounter == 0) {
+#if TESTING_ENABLE_STATISTICS
+    if (StatsObject::lst) {
+      std::cout.copyfmt(ioFormatFlags);
+      StatsObject::printAll(std::cout);
+      delete StatsObject::lst;
+    }
+#endif
+  }
+}
+
+static struct _Bootstrapper2 {
+  _Bootstrapper2() {
+#if TESTING_ENABLE_STATISTICS
+    ioFormatFlags.copyfmt(std::cout); // doing this during _Bootstrapper::_Bootstrapper() is too early
+#endif
+  }
+} _lfBootstrap2;
+
+// definition here ensures that boot strapper object has been created
+EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
   return EventScope::bootstrap(pollerCount, workerCount);
 }
 

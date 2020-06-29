@@ -23,7 +23,14 @@
 #define __LIBFIBRE__ 1
 #endif
 
-#include "libfibre/EventScope.h" // EventScope.h pulls in everything else
+// bootstrap object needs to come first
+static struct _Bootstrapper {
+  _Bootstrapper();
+  ~_Bootstrapper();
+} _lfBootstrap;
+
+// EventScope.h pulls in everything else
+#include "libfibre/EventScope.h"
 
 typedef TaskLock      FibreMutex;
 typedef TaskCondition FibreCondition;
