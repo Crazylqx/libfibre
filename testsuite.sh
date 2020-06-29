@@ -37,7 +37,7 @@ function run_memcached() {
 	while [ -f memcached.running ]; do
 		taskset -c $svbot-$svtop memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24
 		sleep 1
-	done | tee memcached.server.out &
+	done | tee memcached.server.$1.out &
 	for ((i=0;i<5;i+=1)); do
 		sleep 3
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --loadonly
@@ -50,7 +50,7 @@ function run_memcached() {
 			sleep 1
 			exit 1
 		}
-	done | tee memcached.client.out
+	done | tee memcached.client.$1.out
 	rm -f memcached.running
 }
 
@@ -60,19 +60,38 @@ function prep_0() {
 
 function run_0() {
 	./apps/threadtest || exit 1
-	run_memcached
+	run_memcached 0
 }
 
 function prep_1() {
-	sed -i -e 's/.*TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/'
+	sed -i -e 's/.*TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
 function run_1() {
-	run_memcached
+	run_memcached 1
 }
 
-for ((e=0;e<2;e+=1)); do
+function prep_2() {
+	sed -i -e 's/.*TESTING_LAZY_FD_REGISTRATION.*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	echo memcached
+}
+
+function run_2() {
+	run_memcached 2
+}
+
+function prep_3() {
+	sed -i -e 's/.*TESTING_LAZY_FD_REGISTRATION.*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
+	echo memcached
+}
+
+function run_3() {
+	run_memcached 3
+}
+
+for ((e=0;e<4;e+=1)); do
 	addon=$(prep_$e)
 	pre $addon
 	run_$e

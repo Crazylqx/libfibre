@@ -166,7 +166,7 @@ void servaccept() {
 
 void servaccept2(void*) {
   Context::CurrCluster().addWorkers(2);
-  Context::CurrEventScope().registerFD<true,false,false,true>(servFD);
+  Context::CurrEventScope().registerServerFD(servFD);
   servaccept();
   std::cout << "finishing 2nd accept loop" << std::endl;
 }

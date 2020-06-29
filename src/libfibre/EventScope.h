@@ -155,13 +155,14 @@ public:
     if (timerQueue.checkExpiry(currTime, newTime)) setTimer(newTime);
   }
 
-  template<bool Input, bool Output, bool Lazy, bool Cluster>
-  bool registerFD(int fd) {
+private:
+  template<bool Input, bool Output, bool Cluster>
+  bool internalRegisterFD(int fd, bool now) {
     static_assert(Input || Output, "must set Input or Output in registerFD()");
     const size_t target = (Input ? BasePoller::Input : 0) | (Output ? BasePoller::Output : 0);
 
 #if TESTING_LAZY_FD_REGISTRATION
-    if (Lazy) return false;
+    if (!now) return true;
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
     if ((fdsync.status & target) == target) return false; // outside of lock: faster, but double regs possible...
@@ -189,6 +190,15 @@ public:
     return true;
   }
 
+public:
+  bool registerServerFD(int fd, bool now = false) {
+    return internalRegisterFD<true,false,true>(fd, now);
+  }
+
+  bool registerFD(int fd, bool now = false) {
+    return internalRegisterFD<true,true,false>(fd, now);
+  }
+
   template<bool RemoveFromPollSet = false>
   void deregisterFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
@@ -203,6 +213,18 @@ public:
       fdsync.poller->resetFD(fd);
     }
     fdsync.poller = nullptr;
+#endif
+  }
+
+  void checkAsyncCompletion(int fd) {
+    registerFD(fd, true);   // register immediately
+    block<false>(fd);       // wait for completion
+    int ret;
+    socklen_t sz = sizeof(ret);
+    SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &sz));
+    RASSERT(ret == 0, ret);
+#if TESTING_LAZY_FD_REGISTRATION
+    deregisterFD<true>(fd); // revert to lazy registration
 #endif
   }
 
@@ -285,7 +307,7 @@ public:
     T ret = iofunc(fd, a...);
     if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
 #if TESTING_LAZY_FD_REGISTRATION
-    if (registerFD<Input,!Input,false,false>(fd)) {
+    if (internalRegisterFD<Input,!Input,false>(fd, true)) {
       Fibre::yield();
       T ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
@@ -323,43 +345,20 @@ inline T lfDirectIO( T (*diskfunc)(int, Args...), int fd, Args... a) {
 /** @brief Create new socket. */
 inline int lfSocket(int domain, int type, int protocol) {
   int ret = socket(domain, type | SOCK_NONBLOCK, protocol);
+  if (ret < 0) return ret;
   // do not register SOCK_STREAM yet (cf. listen, connect) -> mandatory for FreeBSD!
-  if (ret >= 0) if (type != SOCK_STREAM) Context::CurrEventScope().registerFD<true,true,true,false>(ret);
+  if (type != SOCK_STREAM) Context::CurrEventScope().registerFD(ret);
   return ret;
 }
 
 /** @brief Bind socket to local name. */
 inline int lfBind(int fd, const sockaddr *addr, socklen_t addrlen) {
   int ret = bind(fd, addr, addrlen);
-  if (ret < 0 && _SysErrno() != EINPROGRESS) return ret;
-  return 0;
-}
-
-/** @brief Set up socket listen queue. */
-inline int lfListen(int fd, int backlog) {
-  int ret = listen(fd, backlog);
-  if (ret < 0) return ret;
-  // register SOCK_STREAM server fd only after 'listen' system call (cf. socket/connect)
-  Context::CurrEventScope().registerFD<true,false,false,true>(fd);
-  return 0;
-}
-
-/** @brief Accept new connection. New file descriptor registered for I/O events. */
-inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
-  int ret = Context::CurrEventScope().syncIO<true,false>(accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK);
   if (ret >= 0) {
-    Context::CurrEventScope().stats->srvconn.count();
-    Context::CurrEventScope().registerFD<true,true,true,false>(ret);
-  }
-  return ret;
-}
-
-/** @brief Nonblocking accept for listen queue draining. New file descriptor registered for I/O events. */
-inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
-  int ret = accept4(fd, addr, addrlen, flags | SOCK_NONBLOCK);
-  if (ret >= 0) {
-    Context::CurrEventScope().stats->srvconn.count();
-    Context::CurrEventScope().registerFD<true,true,true,false>(ret);
+    return ret;
+  } else if (_SysErrno() == EINPROGRESS) {
+    Context::CurrEventScope().checkAsyncCompletion(fd);
+    return 0;
   }
   return ret;
 }
@@ -368,19 +367,41 @@ inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0
 inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
   int ret = connect(fd, addr, addrlen);
   if (ret >= 0) {
-    Context::CurrEventScope().registerFD<true,true,true,false>(fd);  // register lazily
+    Context::CurrEventScope().registerFD(fd);
     Context::CurrEventScope().stats->cliconn.count();
+    return ret;
   } else if (_SysErrno() == EINPROGRESS) {
-    Context::CurrEventScope().registerFD<true,true,false,false>(fd); // register immediately
-    Context::CurrEventScope().block<false>(fd);       // wait for connect to complete
-    socklen_t sz = sizeof(ret);
-    SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &sz));
-    RASSERT(ret == 0, ret);
-#if TESTING_LAZY_FD_REGISTRATION
-    Context::CurrEventScope().deregisterFD<true>(fd); // revert to lazy registration
-#endif
+    Context::CurrEventScope().checkAsyncCompletion(fd);
     Context::CurrEventScope().stats->cliconn.count();
+    return 0;
   }
+  return ret;
+}
+
+/** @brief Set up socket listen queue. */
+inline int lfListen(int fd, int backlog) {
+  int ret = listen(fd, backlog);
+  if (ret < 0) return ret;
+  // register SOCK_STREAM server fd only after 'listen' system call (cf. socket/connect)
+  Context::CurrEventScope().registerServerFD(fd);
+  return ret;
+}
+
+/** @brief Accept new connection. New file descriptor registered for I/O events. */
+inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
+  int ret = Context::CurrEventScope().syncIO<true,false>(accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK);
+  if (ret < 0) return ret;
+  Context::CurrEventScope().stats->srvconn.count();
+  Context::CurrEventScope().registerFD(ret);
+  return ret;
+}
+
+/** @brief Nonblocking accept for listen queue draining. New file descriptor registered for I/O events. */
+inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
+  int ret = accept4(fd, addr, addrlen, flags | SOCK_NONBLOCK);
+  if (ret < 0) return ret;
+  Context::CurrEventScope().stats->srvconn.count();
+  Context::CurrEventScope().registerFD(ret);
   return ret;
 }
 
@@ -388,7 +409,8 @@ inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
 /** @brief Clone file descriptor. */
 inline int lfDup(int fd) {
   int ret = dup(fd);
-  if (ret >= 0) Context::CurrEventScope().registerFD<true,true,true,false>(ret);
+  if (ret < 0) return ret;
+  Context::CurrEventScope().registerFD(ret);
   return ret;
 }
 
