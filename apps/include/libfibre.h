@@ -2,7 +2,6 @@
 #define _tt_libfibre_h_ 1
 
 #define __LIBFIBRE__
-//#define FibreMutex FastMutex
 #include "libfibre/fibre.h"
 
 #define HASTRYLOCK 1

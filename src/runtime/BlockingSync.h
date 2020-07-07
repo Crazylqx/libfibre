@@ -17,6 +17,7 @@
 #ifndef _BlockingSync_h_
 #define _BlockingSync_h_ 1
 
+#include "runtime/Benaphore.h"
 #include "runtime/Debug.h"
 #include "runtime/Stats.h"
 #include "runtime/StackContext.h"
@@ -333,39 +334,60 @@ public:
   void release() { return V(); }
 };
 
-class FastMutex : public BaseSuspender {
-  volatile size_t counter;
+// limited: no concurrent invocations of V() allowed!
+class LimitedSemaphore : public BaseSuspender {
   FlexStackMPSC queue;
-
 public:
-  FastMutex() : counter(0) {}
-  bool test() { return counter > 0; }
-
-  bool acquire() {
-    if (__atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST) == 1) return true;
+  LimitedSemaphore(ssize_t c = 0) { RASSERT(c == 0, c); }
+  bool P() {
     StackContext* cs = Context::CurrStack();
     queue.push(*cs);
-    prepareSuspend();
-    doSuspend(*cs);
+    BaseSuspender::prepareSuspend();
+    BaseSuspender::doSuspend(*cs);
     return true;
   }
-
-  bool tryAcquire() {
-    size_t c = counter;
-    return (c == 0) && __atomic_compare_exchange_n(&counter, &c, c+1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
-  }
-
-  template<bool DirectSwitch = false>
-  void release() {
-    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) == 0) return;
+  template<bool Enqueue = true>
+  StackContext* V() {
     StackContext* next;
     for (;;) {
       next = queue.pop();
       if (next) break;
       Pause();
     }
-    next->resume<DirectSwitch>();
+    if (!Enqueue) return next;
+    next->resume();
+    return nullptr;
   }
+};
+
+template<typename SemType>
+class BinaryBenaphore : public Benaphore<SemType> {
+  using Benaphore<SemType>::counter;
+  using Benaphore<SemType>::sem;
+
+public:
+  BinaryBenaphore(ssize_t c) : Benaphore<SemType>(c) {}
+
+  bool P(bool wait = true) {
+    if (!wait) return Benaphore<SemType>::tryP();
+    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) sem.P();
+    return true;
+  }
+
+  template<bool Enqueue = true>
+  StackContext* V() {
+    for (;;) {
+      ssize_t c = counter;
+      if (c == 1) return nullptr;
+      if (__atomic_compare_exchange_n(&counter, &c, c+1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
+        if (c == 0) return nullptr;
+        RASSERT(c < 0, c);
+        return sem.template V<Enqueue>();
+      }
+    }
+  }
+
+  void release() { return V(); }
 };
 
 template<typename Lock, bool OwnerLock, bool Fifo, typename BQ = BlockingQueue>
@@ -462,8 +484,9 @@ public:
 
   void release() {
     RASSERT(owner == Context::CurrStack(), FmtHex(owner));
+    StackContext* next = sem.template V<false>();
     __atomic_store_n(&owner, nullptr, __ATOMIC_RELAXED); // memory sync via sem.V()
-    sem.V();
+    if (next) next->resume();
   }
 };
 
@@ -496,6 +519,12 @@ class Mutex : public LockedMutex<Lock, OwnerLock, false> {};
 class Mutex : public SpinMutex<Semaphore<Lock, true>, OwnerLock, 4, 1024, 16> {};
 #else
 class Mutex : public SpinMutex<Semaphore<Lock, true>, OwnerLock, 0, 0, 0> {};
+#endif
+
+#if TESTING_MUTEX_SPIN
+typedef SpinMutex<BinaryBenaphore<LimitedSemaphore>,false, 4, 1024, 16> FastMutex;
+#else
+typedef SpinMutex<BinaryBenaphore<LimitedSemaphore>,false, 0, 0, 0> FastMutex;
 #endif
 
 // simple blocking RW lock: release alternates; new readers block when writer waits -> no starvation
