@@ -299,6 +299,7 @@ public:
 
   template<typename... Args>
   bool P(const Args&... args) { lock.acquire(); return internalP(false, args...); }
+
   bool tryP() { return P(false); }
 
   template<typename Lock2>
@@ -308,9 +309,9 @@ public:
     return internalP(false);
   }
 
-  bool P_yield() {
+  bool P_yield(bool yield) {
     lock.acquire();
-    return internalP(true);
+    return internalP(yield);
   }
 
   void P_fake(size_t c = 1) {
@@ -588,13 +589,16 @@ public:
 };
 
 // simple blocking condition variable: assume caller holds lock
-template<typename Lock, typename BQ = BlockingQueue>
+template<typename BQ = BlockingQueue>
 class Condition {
   BQ bq;
 public:
   bool empty() { return bq.empty(); }
+  template<typename Lock>
   void reset(Lock& lock) { bq.reset(lock); }
+  template<typename Lock>
   bool wait(Lock& lock) { return bq.block(lock); }
+  template<typename Lock>
   bool wait(Lock& lock, const Time& timeout) { return bq.block(lock, timeout); }
   template<bool Broadcast = false>
   void signal() { while (bq.unblock() && Broadcast); }
@@ -689,7 +693,7 @@ public:
 };
 
 typedef Mutex<WorkerLock>           TaskLock;
-typedef Condition<TaskLock>         TaskCondition;
+typedef Condition<>                 TaskCondition;
 typedef Semaphore<WorkerLock,false> TaskSemaphore;
 typedef Semaphore<WorkerLock,true>  TaskBinarySemaphore;
 typedef LockRW<WorkerLock>          TaskLockRW;

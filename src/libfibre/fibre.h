@@ -45,8 +45,8 @@ typedef FibreSemaphore fibre_sem_t;
 typedef FibreLockRW    fibre_rwlock_t;
 typedef FibreBarrier   fibre_barrier_t;
 
-typedef FastMutex            fast_mutex_t;
-typedef Condition<FastMutex> fast_cond_t;
+typedef FastMutex   fast_mutex_t;
+typedef Condition<> fast_cond_t;
 
 struct fibre_attr_t {
   size_t stackSize;

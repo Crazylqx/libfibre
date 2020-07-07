@@ -21,6 +21,7 @@
 
 template<typename SemType>
 class Benaphore {
+protected:
   volatile ssize_t counter;
   SemType sem;
 public:
@@ -44,11 +45,11 @@ public:
     return (c >= 1) && __atomic_compare_exchange_n(&counter, &c, c-1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
   }
 
-  template<typename Lock2>
-  bool P_unlock(Lock2& l) {
+  bool P_unlock(Benaphore<SemType>& l) {
     if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) {
-      l.release();
-      sem.P();
+      sem.P_unlock(l.sem);
+    } else {
+      l.sem.V();
     }
     return true;
   }
