@@ -181,6 +181,22 @@ extern "C" int cfibre_sem_getvalue(cfibre_sem_t *sem, int *sval) {
   return fibre_sem_getvalue(*sem, sval);
 }
 
+extern "C" int cfibre_mutexattr_init(cfibre_mutexattr_t *attr) {
+  *attr = new _cfibre_mutexattr_t;
+  return fibre_mutexattr_init(*attr);
+}
+
+extern "C" int cfibre_mutexattr_destroy(cfibre_mutexattr_t *attr) {
+  int ret = fibre_mutexattr_destroy(*attr);
+  delete *attr;
+  *attr = nullptr;
+  return ret;
+}
+
+extern "C" int cfibre_mutexattr_settype(cfibre_mutexattr_t *attr, int type) {
+  return fibre_mutexattr_settype(*attr, type);
+}
+
 extern "C" int cfibre_mutex_init(cfibre_mutex_t *restrict mutex, const cfibre_mutexattr_t *restrict attr) {
   *mutex = (cfibre_mutex_t)new fibre_mutex_t;
   return fibre_mutex_init(*mutex, (fibre_mutexattr_t*)attr);
@@ -291,6 +307,22 @@ extern "C" int cfibre_barrier_destroy(cfibre_barrier_t *barrier) {
 
 extern "C" int cfibre_barrier_wait(cfibre_barrier_t *barrier) {
   return fibre_barrier_wait(*barrier);
+}
+
+extern "C" int cfibre_fastmutexattr_init(cfibre_fastmutexattr_t *attr) {
+  *attr = new _cfibre_fastmutexattr_t;
+  return fibre_fastmutexattr_init(*attr);
+}
+
+extern "C" int cfibre_fastmutexattr_destroy(cfibre_fastmutexattr_t *attr) {
+  int ret = fibre_fastmutexattr_destroy(*attr);
+  delete *attr;
+  *attr = nullptr;
+  return ret;
+}
+
+extern "C" int cfibre_fastmutexattr_settype(cfibre_fastmutexattr_t *attr, int type) {
+  return fibre_fastmutexattr_settype(*attr, type);
 }
 
 extern "C" int cfibre_fastmutex_init(cfibre_fastmutex_t *restrict mutex, const cfibre_fastmutexattr_t *restrict attr) {

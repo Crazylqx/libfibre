@@ -9,9 +9,14 @@
 #define CurrCluster   Context::CurrCluster
 
 typedef Fibre          shim_thread_t;
-typedef FibreMutex     shim_mutex_t;
 typedef FibreCondition shim_cond_t;
 typedef FibreBarrier   shim_barrier_t;
+
+#if TESTING_LOCK_RECURSION
+typedef OwnerMutex<FibreMutex> shim_mutex_t;
+#else
+typedef FibreMutex     shim_mutex_t;
+#endif
 
 static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg, bool bg = false) {
   return new Fibre(start_routine, arg, bg);
@@ -19,11 +24,30 @@ static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), v
 static inline void shim_thread_destroy(shim_thread_t* tid) { delete tid; }
 static inline void shim_yield() { Fibre::yield(); }
 
+#if TESTING_LOCK_RECURSION
+#undef HASTRYLOCK
+static inline void shim_mutex_init(shim_mutex_t* mtx)    {
+  new (mtx) shim_mutex_t;
+  mtx->enableRecursion();
+}
+static inline void shim_mutex_lock(shim_mutex_t* mtx)    {
+  size_t x;
+  x = mtx->acquire(); RASSERT0(x == 1);
+  x = mtx->acquire(); RASSERT0(x == 2);
+}
+static inline void shim_mutex_unlock(shim_mutex_t* mtx)  {
+  size_t x;
+  x = mtx->release(); RASSERT0(x == 1);
+  x = mtx->release(); RASSERT0(x == 0);
+}
+#else
 static inline void shim_mutex_init(shim_mutex_t* mtx)    { new (mtx) shim_mutex_t; }
-static inline void shim_mutex_destroy(shim_mutex_t* mtx) {}
 static inline void shim_mutex_lock(shim_mutex_t* mtx)    { mtx->acquire(); }
 static inline bool shim_mutex_trylock(shim_mutex_t* mtx) { return mtx->tryAcquire(); }
 static inline void shim_mutex_unlock(shim_mutex_t* mtx)  { mtx->release(); }
+#endif
+
+static inline void shim_mutex_destroy(shim_mutex_t* mtx) {}
 
 static inline void shim_cond_init(shim_cond_t* cond)                    { new (cond) shim_cond_t; }
 static inline void shim_cond_destroy(shim_cond_t* cond)                 {}

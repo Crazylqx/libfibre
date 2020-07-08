@@ -7,6 +7,7 @@
 
 // **** libfibre options - system threading
 //#define TESTING_LOCK_SPIN          1024 // spin before blocking on system lock
+//#define TESTING_LOCK_RECURSION        1 // enable mutex recursion in C interface
 
 /******************************** sanity checks ********************************/
 

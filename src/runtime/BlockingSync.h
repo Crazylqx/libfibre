@@ -493,13 +493,18 @@ public:
 template<typename BaseMutex>
 class OwnerMutex : private BaseMutex {
   size_t counter;
+  bool recursion;
 
 public:
-  OwnerMutex() : counter(0) {}
+  OwnerMutex() : counter(0), recursion(false) {}
+  void enableRecursion() { recursion = true; }
 
   template<typename... Args>
   size_t acquire(const Args&... args) {
-    if (BaseMutex::template internalAcquire<true>(args...)) return ++counter; else return 0;
+    bool success = recursion
+      ? BaseMutex::template internalAcquire<true>(args...)
+      : BaseMutex::template internalAcquire<false>(args...);
+    if (success) return ++counter; else return 0;
   }
   size_t tryAcquire() { return acquire(false); }
 

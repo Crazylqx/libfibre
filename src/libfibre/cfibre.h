@@ -99,6 +99,10 @@ int cfibre_sem_timedwait(cfibre_sem_t *sem, const struct timespec *abs_timeout);
 int cfibre_sem_post(cfibre_sem_t *sem);
 int cfibre_sem_getvalue(cfibre_sem_t *sem, int *sval);
 
+int cfibre_mutexattr_init(cfibre_mutexattr_t *attr);
+int cfibre_mutexattr_destroy(cfibre_mutexattr_t *attr);
+int cfibre_mutexattr_settype(cfibre_mutexattr_t *attr, int type);
+
 int cfibre_mutex_init(cfibre_mutex_t *restrict mutex, const cfibre_mutexattr_t *restrict attr);
 int cfibre_mutex_destroy(cfibre_mutex_t *mutex);
 int cfibre_mutex_lock(cfibre_mutex_t *mutex);
@@ -126,6 +130,10 @@ int cfibre_rwlock_unlock(cfibre_rwlock_t *rwlock);
 int cfibre_barrier_init(cfibre_barrier_t *restrict barrier, const cfibre_barrierattr_t *restrict attr, unsigned count);
 int cfibre_barrier_destroy(cfibre_barrier_t *barrier);
 int cfibre_barrier_wait(cfibre_barrier_t *barrier);
+
+int cfibre_fastmutexattr_init(cfibre_fastmutexattr_t *attr);
+int cfibre_fastmutexattr_destroy(cfibre_fastmutexattr_t *attr);
+int cfibre_fastmutexattr_settype(cfibre_fastmutexattr_t *attr, int type);
 
 int cfibre_fastmutex_init(cfibre_fastmutex_t *restrict mutex, const cfibre_fastmutexattr_t *restrict attr);
 int cfibre_fastmutex_destroy(cfibre_fastmutex_t *mutex);

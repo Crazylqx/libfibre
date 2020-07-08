@@ -39,13 +39,18 @@ typedef LockRW<WorkerLock>          FibreLockRW;
 typedef Barrier<WorkerLock>         FibreBarrier;
 
 typedef Fibre*         fibre_t;
-typedef FibreMutex     fibre_mutex_t;
 typedef FibreCondition fibre_cond_t;
 typedef FibreSemaphore fibre_sem_t;
 typedef FibreLockRW    fibre_rwlock_t;
 typedef FibreBarrier   fibre_barrier_t;
 
+#if TESTING_LOCK_RECURSION
+typedef OwnerMutex<FibreMutex> fibre_mutex_t;
+typedef OwnerMutex<FastMutex>  fibre_fastmutex_t;
+#else
+typedef FibreMutex     fibre_mutex_t;
 typedef FastMutex      fibre_fastmutex_t;
+#endif
 
 struct fibre_attr_t {
   size_t stackSize;
@@ -60,12 +65,23 @@ struct fibre_attr_t {
   }
 };
 
-struct fibre_mutexattr_t {};
+enum {
+  FIBRE_MUTEX_RECURSIVE = PTHREAD_MUTEX_RECURSIVE,
+  FIBRE_MUTEX_DEFAULT = PTHREAD_MUTEX_DEFAULT
+};
+
+struct fibre_mutexattr_t {
+  int type;
+  fibre_mutexattr_t() : type(FIBRE_MUTEX_DEFAULT) {}
+};
 struct fibre_condattr_t {};
 struct fibre_rwlockattr_t {};
 struct fibre_barrierattr_t {};
 
-struct fibre_fastmutexattr_t {};
+struct fibre_fastmutexattr_t {
+  int type;
+  fibre_fastmutexattr_t() : type(FIBRE_MUTEX_DEFAULT) {}
+};
 
 #ifdef __GNUC__
 #define restrict __restrict__
@@ -214,9 +230,29 @@ inline int fibre_sem_getvalue(fibre_sem_t *sem, int *sval) {
   return 0;
 }
 
+/** @brief Initialize the mutex attributes object. (`pthread_mutexattr_init`) */
+inline int fibre_mutexattr_init(fibre_mutexattr_t *attr) {
+  return 0;
+}
+
+/** @brief Destroy the mutex attributes object. (`pthread_mutexattr_destroy`) */
+inline int fibre_mutexattr_destroy(fibre_mutexattr_t *attr) {
+  return 0;
+}
+
+/** @brief Set the mutex type attribute. (`pthread_mutexattr_settype`) */
+inline int fibre_mutexattr_settype(fibre_mutexattr_t *attr, int type) {
+  attr->type = type;
+  return 0;
+}
+
 /** @brief Initialize mutex lock. (`pthread_mutex_init`) */
 inline int fibre_mutex_init(fibre_mutex_t *restrict mutex, const fibre_mutexattr_t *restrict attr) {
-  RASSERT0(attr == nullptr);
+#if TESTING_LOCK_RECURSION
+  if (attr && attr->type == PTHREAD_MUTEX_RECURSIVE) mutex->enableRecursion();
+#else
+  if (attr && attr->type == PTHREAD_MUTEX_RECURSIVE) return -1;
+#endif
   return 0;
 }
 
@@ -350,9 +386,29 @@ inline int fibre_barrier_wait(fibre_barrier_t *barrier) {
   return barrier->wait() ? PTHREAD_BARRIER_SERIAL_THREAD : 0;
 }
 
+/** @brief Initialize the fastmutex attributes object. (`pthread_mutexattr_init`) */
+inline int fibre_fastmutexattr_init(fibre_fastmutexattr_t *attr) {
+  return 0;
+}
+
+/** @brief Destroy the fastmutex attributes object. (`pthread_mutexattr_destroy`) */
+inline int fibre_fastmutexattr_destroy(fibre_fastmutexattr_t *attr) {
+  return 0;
+}
+
+/** @brief Set the fastmutex type attribute. (`pthread_mutexattr_settype`) */
+inline int fibre_fastmutexattr_settype(fibre_fastmutexattr_t *attr, int type) {
+  attr->type = type;
+  return 0;
+}
+
 /** @brief Initialize mutex lock. (`pthread_mutex_init`) */
 inline int fibre_fastmutex_init(fibre_fastmutex_t *restrict mutex, const fibre_fastmutexattr_t *restrict attr) {
-  RASSERT0(attr == nullptr);
+#if TESTING_LOCK_RECURSION
+  if (attr && attr->type == PTHREAD_MUTEX_RECURSIVE) mutex->enableRecursion();
+#else
+  if (attr && attr->type == PTHREAD_MUTEX_RECURSIVE) return -1;
+#endif
   return 0;
 }
 
