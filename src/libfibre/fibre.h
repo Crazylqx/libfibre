@@ -32,11 +32,11 @@ static struct _Bootstrapper {
 // EventScope.h pulls in everything else
 #include "libfibre/EventScope.h"
 
-typedef TaskLock      FibreMutex;
-typedef TaskCondition FibreCondition;
-typedef TaskSemaphore FibreSemaphore;
-typedef TaskLockRW    FibreLockRW;
-typedef TaskBarrier   FibreBarrier;
+typedef Mutex<WorkerLock>           FibreMutex;
+typedef Condition<>                 FibreCondition;
+typedef Semaphore<WorkerLock,false> FibreSemaphore;
+typedef LockRW<WorkerLock>          FibreLockRW;
+typedef Barrier<WorkerLock>         FibreBarrier;
 
 typedef Fibre*         fibre_t;
 typedef FibreMutex     fibre_mutex_t;
@@ -45,8 +45,7 @@ typedef FibreSemaphore fibre_sem_t;
 typedef FibreLockRW    fibre_rwlock_t;
 typedef FibreBarrier   fibre_barrier_t;
 
-typedef FastMutex   fast_mutex_t;
-typedef Condition<> fast_cond_t;
+typedef FastMutex      fibre_fastmutex_t;
 
 struct fibre_attr_t {
   size_t stackSize;
@@ -66,8 +65,7 @@ struct fibre_condattr_t {};
 struct fibre_rwlockattr_t {};
 struct fibre_barrierattr_t {};
 
-struct fast_mutexattr_t {};
-struct fast_condattr_t {};
+struct fibre_fastmutexattr_t {};
 
 #ifdef __GNUC__
 #define restrict __restrict__
@@ -353,68 +351,45 @@ inline int fibre_barrier_wait(fibre_barrier_t *barrier) {
 }
 
 /** @brief Initialize mutex lock. (`pthread_mutex_init`) */
-inline int fast_mutex_init(fast_mutex_t *restrict mutex, const fast_mutexattr_t *restrict attr) {
+inline int fibre_fastmutex_init(fibre_fastmutex_t *restrict mutex, const fibre_fastmutexattr_t *restrict attr) {
   RASSERT0(attr == nullptr);
   return 0;
 }
 
 /** @brief Destroy mutex lock. (`pthread_mutex_destroy`) */
-inline int fast_mutex_destroy(fast_mutex_t *mutex) {
+inline int fibre_fastmutex_destroy(fibre_fastmutex_t *mutex) {
   return 0;
 }
 
 /** @brief Acquire mutex lock. Block, if necessary. (`pthread_mutex_lock`) */
-inline int fast_mutex_lock(fast_mutex_t *mutex) {
+inline int fibre_fastmutex_lock(fibre_fastmutex_t *mutex) {
   mutex->acquire();
   return 0;
 }
 
 /** @brief Perform non-blocking attempt to acquire mutex lock. (`pthread_mutex_trylock`) */
-inline int fast_mutex_trylock(fast_mutex_t *mutex) {
+inline int fibre_fastmutex_trylock(fibre_fastmutex_t *mutex) {
   return mutex->tryAcquire() ? 0 : EBUSY;
 }
 
 /** @brief Release mutex lock. Block, if necessary. (`pthread_mutex_unlock`) */
-inline int fast_mutex_unlock(fast_mutex_t *mutex) {
+inline int fibre_fastmutex_unlock(fibre_fastmutex_t *mutex) {
   mutex->release();
   return 0;
 }
 
-/** @brief Initialize condition variable. (`pthread_cond_init`) */
-inline int fast_cond_init(fast_cond_t *restrict cond, const fast_condattr_t *restrict attr) {
-  RASSERT0(attr == nullptr);
-  return 0;
-}
-
-/** @brief Destroy condition variable. (`pthread_cond_init`) */
-inline int fast_cond_destroy(fast_cond_t *cond) {
-  return 0;
-}
-
-/** @brief Wait on condition variable. (`pthread_cond_wait`) */
-inline int fast_cond_wait(fast_cond_t *restrict cond, fast_mutex_t *restrict mutex) {
+/** @brief Wait on condition variable using fast mutex. (`pthread_cond_wait`) */
+inline int fibre_fastcond_wait(fibre_cond_t *restrict cond, fibre_fastmutex_t *restrict mutex) {
   cond->wait(*mutex);
   mutex->acquire();
   return 0;
 }
 
-/** @brief Perform wait attempt on condition variable with timeout. (`pthread_cond_timedwait`) */
-inline int fast_cond_timedwait(fast_cond_t *restrict cond, fast_mutex_t *restrict mutex, const struct timespec *restrict abstime) {
+/** @brief Perform wait attempt on condition variable with timeout using fast mutex. (`pthread_cond_timedwait`) */
+inline int fibre_fastcond_timedwait(fibre_cond_t *restrict cond, fibre_fastmutex_t *restrict mutex, const struct timespec *restrict abstime) {
   int retcode = cond->wait(*mutex, *abstime) ? 0 : ETIMEDOUT;
   mutex->acquire();
   return retcode;
-}
-
-/** @brief Signal one waiting fibre on condition variable. (`pthread_cond_signal`) */
-inline int fast_cond_signal(fast_cond_t *cond) {
-  cond->signal();
-  return 0;
-}
-
-/** @brief Signal all waiting fibres on condition variable. (`pthread_cond_broadcast`) */
-inline int fast_cond_broadcast(fast_cond_t *cond) {
-  cond->signal<true>();
-  return 0;
 }
 
 #endif /* _fibre_h_ */

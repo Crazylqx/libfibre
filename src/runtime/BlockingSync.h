@@ -390,14 +390,14 @@ public:
   void release() { return V(); }
 };
 
-template<typename Lock, bool OwnerLock, bool Fifo, typename BQ = BlockingQueue>
+template<typename Lock, bool Fifo, typename BQ = BlockingQueue>
 class LockedMutex {
   Lock lock;
   StackContext* owner;
   BQ bq;
 
 protected:
-  template<typename... Args>
+  template<bool OwnerLock, typename... Args>
   bool internalAcquire(const Args&... args) {
     StackContext* cs = Context::CurrStack();
     if (OwnerLock && cs == owner) return true;
@@ -420,8 +420,8 @@ public:
   bool test() const { return owner != nullptr; }
 
   template<typename... Args>
-  bool acquire(const Args&... args) { return internalAcquire(args...); }
-  bool tryAcquire() { return acquire(false); }
+  bool acquire(const Args&... args) { return internalAcquire<false>(args...); }
+  bool tryAcquire() { return acquire<false>(false); }
 
   void release() {
     ScopedLock<Lock> al(lock);
@@ -435,7 +435,7 @@ public:
   }
 };
 
-template<typename Semaphore, bool OwnerLock, size_t SpinStart, size_t SpinEnd, size_t SpinCount>
+template<typename Semaphore, size_t SpinStart, size_t SpinEnd, size_t SpinCount>
 class SpinMutex {
   StackContext* owner;
   Semaphore sem;
@@ -452,7 +452,7 @@ class SpinMutex {
   }
 
 protected:
-  template<typename... Args>
+  template<bool OwnerLock, typename... Args>
   bool internalAcquire(const Args&... args) {
     StackContext* cs = Context::CurrStack();
     if (OwnerLock && cs == owner) return true;
@@ -479,7 +479,7 @@ public:
   bool test() const { return owner != nullptr; }
 
   template<typename... Args>
-  bool acquire(const Args&... args) { return internalAcquire(args...); }
+  bool acquire(const Args&... args) { return internalAcquire<false>(args...); }
   bool tryAcquire() { return acquire(false); }
 
   void release() {
@@ -499,7 +499,7 @@ public:
 
   template<typename... Args>
   size_t acquire(const Args&... args) {
-    if (BaseMutex::internalAcquire(args...)) return ++counter; else return 0;
+    if (BaseMutex::template internalAcquire<true>(args...)) return ++counter; else return 0;
   }
   size_t tryAcquire() { return acquire(false); }
 
@@ -510,21 +510,21 @@ public:
   }
 };
 
-template<typename Lock, bool OwnerLock = false>
+template<typename Lock>
 #if TESTING_MUTEX_FIFO
-class Mutex : public LockedMutex<Lock, OwnerLock, true> {};
+class Mutex : public LockedMutex<Lock, true> {};
 #elif TESTING_MUTEX_BARGING
-class Mutex : public LockedMutex<Lock, OwnerLock, false> {};
+class Mutex : public LockedMutex<Lock, false> {};
 #elif TESTING_MUTEX_SPIN
-class Mutex : public SpinMutex<Semaphore<Lock, true>, OwnerLock, 4, 1024, 16> {};
+class Mutex : public SpinMutex<Semaphore<Lock, true>, 4, 1024, 16> {};
 #else
-class Mutex : public SpinMutex<Semaphore<Lock, true>, OwnerLock, 0, 0, 0> {};
+class Mutex : public SpinMutex<Semaphore<Lock, true>, 0, 0, 0> {};
 #endif
 
 #if TESTING_MUTEX_SPIN
-typedef SpinMutex<BinaryBenaphore<LimitedSemaphore>,false, 4, 1024, 16> FastMutex;
+typedef SpinMutex<BinaryBenaphore<LimitedSemaphore>, 4, 1024, 16> FastMutex;
 #else
-typedef SpinMutex<BinaryBenaphore<LimitedSemaphore>,false, 0, 0, 0> FastMutex;
+typedef SpinMutex<BinaryBenaphore<LimitedSemaphore>, 0, 0, 0> FastMutex;
 #endif
 
 // simple blocking RW lock: release alternates; new readers block when writer waits -> no starvation
@@ -720,12 +720,5 @@ public:
   bool post()   { ScopedLock<Lock> al(lock); return Baseclass::post(); }
   void detach() { ScopedLock<Lock> al(lock); Baseclass::detach(); }
 };
-
-typedef Mutex<WorkerLock>           TaskLock;
-typedef Condition<>                 TaskCondition;
-typedef Semaphore<WorkerLock,false> TaskSemaphore;
-typedef Semaphore<WorkerLock,true>  TaskBinarySemaphore;
-typedef LockRW<WorkerLock>          TaskLockRW;
-typedef Barrier<WorkerLock>         TaskBarrier;
 
 #endif /* _BlockingSync_h_ */

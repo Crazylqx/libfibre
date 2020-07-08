@@ -28,25 +28,24 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-// A vector for FDs works well here in principle, because POSIX guarantees lowest-numbered FDs:
-// http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
-// A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
-
 /**
  An EventScope object holds a set of Clusters and provides a common I/O
  scope.  Multiple EventScope objects can be used to take advantage of
  partitioned kernel file descriptor tables on Linux.
 */
 class EventScope {
+  // A vector for FDs works well here in principle, because POSIX guarantees lowest-numbered FDs:
+  // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
+  // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
   struct SyncSem {
-    TaskLock            mtx;
-    TaskBinarySemaphore sem;
+    FastMutex                  mtx;
+    Semaphore<WorkerLock,true> sem;
   };
   struct SyncFD {
     SyncSem RD;
     SyncSem WR;
 #if TESTING_LAZY_FD_REGISTRATION
-    TaskLock lock;
+    FastMutex lock;
     BasePoller* poller;
     size_t      status;
     SyncFD() : poller(nullptr), status(0) {}
@@ -166,7 +165,7 @@ private:
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
     if ((fdsync.status & target) == target) return false; // outside of lock: faster, but double regs possible...
-    ScopedLock<TaskLock> sl(fdsync.lock);
+    ScopedLock<FastMutex> sl(fdsync.lock);
     RASSERT0((bool)fdsync.status == (bool)fdsync.poller)
     fdsync.status |= target;
 #endif
@@ -206,7 +205,7 @@ public:
     RASSERT0(fdsync.RD.sem.empty());
     RASSERT0(fdsync.WR.sem.empty());
 #if TESTING_LAZY_FD_REGISTRATION
-    ScopedLock<TaskLock> sl(fdsync.lock);
+    ScopedLock<FastMutex> sl(fdsync.lock);
     fdsync.status = 0;
     if (RemoveFromPollSet) {              // only called from lfConnect w/ TESTING_LAZY_FD_REGISTRATION
       RASSERT0(fdsync.poller)
@@ -236,7 +235,7 @@ public:
   void blockPollFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     masterPoller->setupPollFD(fd, true);  // reset using ONESHOT to reduce polling
-    ScopedLock<TaskLock> sl(fdSyncVector[fd].RD.mtx);
+    ScopedLock<FastMutex> sl(fdSyncVector[fd].RD.mtx);
     fdSyncVector[fd].RD.sem.P();
   }
 
@@ -261,7 +260,7 @@ public:
   void block(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    ScopedLock<TaskLock> sl(sync.mtx);
+    ScopedLock<FastMutex> sl(sync.mtx);
     sync.sem.P();
   }
 
@@ -314,7 +313,7 @@ public:
     }
 #endif
     SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    ScopedLock<TaskLock> sl(sync.mtx);
+    ScopedLock<FastMutex> sl(sync.mtx);
     for (;;) {
       sync.sem.P();
       ret = iofunc(fd, a...);
