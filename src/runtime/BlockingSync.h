@@ -360,6 +360,32 @@ public:
   }
 };
 
+class FastFifoMutex {
+  volatile size_t counter;
+  LimitedSemaphore sem;
+
+public:
+  FastFifoMutex() : counter(0) {}
+  bool test() { return counter > 0; }
+
+  bool acquire() {
+    if (__atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST) == 1) return true;
+    return sem.P();
+  }
+
+  bool tryAcquire() {
+    size_t c = counter;
+    return (c == 0) && __atomic_compare_exchange_n(&counter, &c, c+1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+  }
+
+  template<bool DirectSwitch = false>
+  void release() {
+    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) == 0) return;
+    StackContext* next = sem.V<false>();
+    next->resume<DirectSwitch>();
+  }
+};
+
 template<typename SemType>
 class BinaryBenaphore : public Benaphore<SemType> {
   using Benaphore<SemType>::counter;
@@ -376,8 +402,8 @@ public:
 
   template<bool Enqueue = true>
   StackContext* V() {
+    ssize_t c = counter;
     for (;;) {
-      ssize_t c = counter;
       if (c == 1) return nullptr;
       if (__atomic_compare_exchange_n(&counter, &c, c+1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
         if (c == 0) return nullptr;
@@ -421,7 +447,7 @@ public:
 
   template<typename... Args>
   bool acquire(const Args&... args) { return internalAcquire<false>(args...); }
-  bool tryAcquire() { return acquire<false>(false); }
+  bool tryAcquire() { return acquire(false); }
 
   void release() {
     ScopedLock<Lock> al(lock);

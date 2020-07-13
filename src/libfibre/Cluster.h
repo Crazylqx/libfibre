@@ -27,15 +27,15 @@ to execute fibres.  It also manages I/O pollers and provides a
 stop-the-world pause mechanism.
 */
 class Cluster : public Scheduler {
-  EventScope&    scope;
+  EventScope& scope;
 
 #if TESTING_CLUSTER_POLLER_FIBRE
   typedef PollerFibre  PollerType;
 #else
   typedef PollerThread PollerType;
 #endif
-  PollerType*    pollVec;
-  size_t         pollCount;
+  PollerType* pollVec;
+  size_t      pollCount;
 
   BaseProcessor*              pauseProc;
   Semaphore<WorkerLock,false> pauseSem;

@@ -48,8 +48,8 @@ typedef FibreBarrier   fibre_barrier_t;
 typedef OwnerMutex<FibreMutex> fibre_mutex_t;
 typedef OwnerMutex<FastMutex>  fibre_fastmutex_t;
 #else
-typedef FibreMutex     fibre_mutex_t;
-typedef FastMutex      fibre_fastmutex_t;
+typedef FibreMutex fibre_mutex_t;
+typedef FastMutex  fibre_fastmutex_t;
 #endif
 
 struct fibre_attr_t {
