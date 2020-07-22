@@ -16,6 +16,7 @@
 ******************************************************************************/
 #include "libfibre/Cluster.h"
 
+#include <csignal>  // sigaltstack
 #include <limits.h> // PTHREAD_STACK_MIN
 
 namespace Context {
@@ -66,9 +67,19 @@ void installFake(EventScope* es, _friend<BaseThreadPoller>) {
 
 Cluster::Worker::~Worker() {
   if (maintenanceFibre) delete maintenanceFibre;
+#ifdef SPLIT_STACK
+  if (sigStack) delete [] sigStack;
+#endif
 }
 
 inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
+#ifdef SPLIT_STACK
+  worker->sigStack = new char[SIGSTKSZ];
+  stack_t ss = { .ss_sp = worker->sigStack, .ss_flags = 0, .ss_size = SIGSTKSZ };
+  SYSCALL(sigaltstack(&ss, nullptr));
+  int off = 0; // do not block signals (blocking signals is slow!)
+  __splitstack_block_signals(&off, nullptr);
+#endif
   worker->sysThreadId = pthread_self();
   Context::install(fibre, worker, this, &scope, _friend<Cluster>());
   worker->maintenanceFibre = new Fibre(*worker);

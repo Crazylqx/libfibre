@@ -47,7 +47,10 @@ class Cluster : public Scheduler {
   struct Worker : public BaseProcessor {
     pthread_t sysThreadId;
     Fibre*    maintenanceFibre;
-    Worker(Cluster& c) : BaseProcessor(c), maintenanceFibre(nullptr) { c.Scheduler::addProcessor(*this); }
+    char*     sigStack; // only used with split stacks
+    Worker(Cluster& c) : BaseProcessor(c), maintenanceFibre(nullptr), sigStack(nullptr) {
+      c.Scheduler::addProcessor(*this);
+    }
     ~Worker();
     void setIdleLoop(Fibre* f) { BaseProcessor::idleStack = f; }
     void runIdleLoop()         { BaseProcessor::idleLoop(); }

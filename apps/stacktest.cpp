@@ -27,6 +27,7 @@ void f1main(int* result) {
 
 int f2real(int j) {
   cout << "j: " << j << endl;
+  if (j > 10000) Fibre::exit();
   Fibre::yield();
   int y = random() % 1024;
   int test = y;

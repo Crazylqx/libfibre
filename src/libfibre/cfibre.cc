@@ -17,6 +17,9 @@
 #include "libfibre/fibre.h"
 #include "libfibre/cfibre.h"
 
+#include <sys/uio.h>      // readv, writev
+#include <sys/sendfile.h> // sendfile
+
 struct _cfibre_t         : public Fibre {};
 struct _cfibre_sem_t     : public fibre_sem_t {};
 struct _cfibre_mutex_t   : public fibre_mutex_t {};
@@ -33,7 +36,8 @@ struct _cfibre_barrierattr_t : public fibre_barrierattr_t {};
 struct _cfibre_fastmutex_t     : public fibre_fastmutex_t {};
 struct _cfibre_fastmutexattr_t : public fibre_fastmutexattr_t {};
 
-struct _cfibre_cluster_t : public Cluster {};
+struct _cfibre_cluster_t    : public Cluster {};
+struct _cfibre_eventscope_t : public EventScope {};
 
 extern "C" void cfibre_init() {
   FibreInit();
@@ -55,7 +59,7 @@ extern "C" int cfibre_cluster_destroy(cfibre_cluster_t* cluster) {
 }
 
 extern "C" cfibre_cluster_t cfibre_cluster_self() {
-  return &reinterpret_cast<_cfibre_cluster_t&>(Context::CurrCluster());
+  return reinterpret_cast<_cfibre_cluster_t*>(&Context::CurrCluster());
 }
 
 extern "C" int cfibre_add_worker(cfibre_cluster_t cluster, pthread_t* tid, void (*init_routine) (void *), void *arg) {
@@ -71,6 +75,14 @@ extern "C" int cfibre_pause(cfibre_cluster_t cluster) {
 extern "C" int cfibre_resume(cfibre_cluster_t cluster) {
   cluster->resume();
   return 0;
+}
+
+extern "C" cfibre_eventscope_t cfibre_clone(void (*mainFunc)(void *), void* mainArg) {
+  return reinterpret_cast<_cfibre_eventscope_t*>(EventScope::clone(mainFunc, mainArg));
+}
+
+extern "C" cfibre_eventscope_t cfibre_es_self(void) {
+  return reinterpret_cast<_cfibre_eventscope_t*>(&Context::CurrEventScope());
 }
 
 extern "C" int cfibre_attr_init(cfibre_attr_t *attr) {
@@ -99,6 +111,14 @@ extern "C" int cfibre_attr_setstacksize(cfibre_attr_t *attr, size_t stacksize) {
 
 extern "C" int cfibre_attr_getstacksize(const cfibre_attr_t *attr, size_t *stacksize) {
   return fibre_attr_getstacksize(*attr, stacksize);
+}
+
+extern "C" int cfibre_attr_setguardsize(cfibre_attr_t *attr, size_t guardsize) {
+  return fibre_attr_setguardsize(*attr, guardsize);
+}
+
+extern "C" int cfibre_attr_getguardsize(const cfibre_attr_t *attr, size_t *guardsize) {
+  return fibre_attr_getguardsize(*attr, guardsize);
 }
 
 extern "C" int cfibre_attr_setdetachstate(cfibre_attr_t *attr, int detachstate) {
@@ -137,8 +157,20 @@ extern "C" int cfibre_join(cfibre_t thread, void **retval) {
   return fibre_join(thread, retval);
 }
 
+extern "C" int cfibre_detach(cfibre_t thread) {
+  return fibre_detach(thread);
+}
+
+extern "C" void cfibre_exit() {
+  fibre_exit();
+}
+
 extern "C" cfibre_t cfibre_self(void) {
   return (cfibre_t)fibre_self();
+}
+
+extern "C" int cfibre_equal(cfibre_t thread1, cfibre_t thread2) {
+  return fibre_equal(thread1, thread2);
 }
 
 extern "C" int cfibre_yield(void) {
@@ -385,6 +417,14 @@ extern "C" int cfibre_dup(int fd) {
   return lfDup(fd);
 }
 
+extern "C" int cfibre_pipe(int pipefd[2]) {
+  return lfPipe(pipefd);
+}
+
+extern "C" int cfibre_pipe2(int pipefd[2], int flags) {
+  return lfPipe(pipefd, flags);
+}
+
 extern "C" int cfibre_close(int fd) {
   return lfClose(fd);
 }
@@ -405,6 +445,10 @@ extern "C" ssize_t cfibre_write(int fildes, const void *buf, size_t nbyte) {
   return lfOutput(write, fildes, buf, nbyte);
 }
 
+extern "C" ssize_t cfibre_writev(int fildes, const struct iovec *iov, int iovcnt) {
+  return lfOutput(writev, fildes, iov, iovcnt);
+}
+
 extern "C" ssize_t cfibre_recv(int socket, void *buffer, size_t length, int flags) {
   return lfInput(recv, socket, buffer, length, flags);
 }
@@ -420,6 +464,20 @@ extern "C" ssize_t cfibre_recvmsg(int socket, struct msghdr *message, int flags)
 extern "C" ssize_t cfibre_read(int fildes, void *buf, size_t nbyte) {
   return lfInput(read, fildes, buf, nbyte);
 }
+
+extern "C" ssize_t cfibre_readv(int fildes, const struct iovec *iov, int iovcnt) {
+  return lfInput(readv, fildes, iov, iovcnt);
+}
+
+#if __FreeBSD__
+extern "C" int cfibre_sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *hdtr, off_t *sbytes, int flags) {
+  return lfOutput(sendfile, fd, s, offset, nbytes, hdtr, sbytes, flags);
+}
+#else
+extern "C" ssize_t cfibre_sendfile(int out_fd, int in_fd, off_t *offset, size_t count) {
+  return lfOutput(sendfile, out_fd, in_fd, offset, count);
+}
+#endif
 
 extern "C" void cfibre_suspendFD(int fd) {
   Context::CurrEventScope().suspendFD(fd);

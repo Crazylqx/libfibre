@@ -486,12 +486,12 @@ int main(int argc, char* argv[]) {
 
   // set up alarm
 #if !defined __U_CPLUSPLUS__
-  timer_t timer;
   struct sigaction sa;
   sa.sa_handler = alarmHandler;
-  sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_RESTART;
+  sigemptyset(&sa.sa_mask);
   SYSCALL(sigaction(SIGALRM, &sa, 0));
+  timer_t timer;
   SYSCALL(timer_create(CLOCK_REALTIME, nullptr, &timer));
   itimerspec tval = { {1,0}, {1,0} };
 #endif

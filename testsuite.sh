@@ -91,7 +91,17 @@ function run_3() {
 	run_memcached 3
 }
 
-for ((e=0;e<4;e+=1)); do
+function prep_4() {
+	sed -i -e 's/DYNSTACK=.*/DYNSTACK=1/' Makefile.config
+}
+
+function run_4() {
+	echo -n "STACKTEST: "
+	apps/stacktest > stacktest.out && echo SUCCESS || echo FAILURE
+	rm -f stacktest.out
+}
+
+for ((e=0;e<=4;e+=1)); do
 	addon=$(prep_$e)
 	pre $addon
 	run_$e

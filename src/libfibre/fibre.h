@@ -54,11 +54,13 @@ typedef FastMutex  fibre_fastmutex_t;
 
 struct fibre_attr_t {
   size_t stackSize;
+  size_t guardSize;
   bool detached;
   bool background;
   Cluster* cluster;
   void init() {
     stackSize = defaultStackSize;
+    guardSize = defaultStackGuard;
     detached = false;
     background = false;
     cluster = &Context::CurrCluster();
@@ -67,7 +69,7 @@ struct fibre_attr_t {
 
 enum {
   FIBRE_MUTEX_RECURSIVE = PTHREAD_MUTEX_RECURSIVE,
-  FIBRE_MUTEX_DEFAULT = PTHREAD_MUTEX_DEFAULT
+  FIBRE_MUTEX_DEFAULT   = PTHREAD_MUTEX_DEFAULT
 };
 
 struct fibre_mutexattr_t {
@@ -115,6 +117,18 @@ inline int fibre_attr_getstacksize(const fibre_attr_t *attr, size_t *stacksize) 
   return 0;
 }
 
+/** @brief Set guard size attribute for fibre creation. (`pthread_attr_setguardsize`) */
+inline int fibre_attr_setguardsize(fibre_attr_t *attr, size_t guardsize) {
+  attr->guardSize = guardsize;
+  return 0;
+}
+
+/** @brief Get guard size attribute for fibre creation. (`pthread_attr_getguardsize`) */
+inline int fibre_attr_getguardsize(const fibre_attr_t *attr, size_t *guardsize) {
+  *guardsize = attr->guardSize;
+  return 0;
+}
+
 /** @brief Set detach attribute for fibre creation. (`pthread_attr_setdetachstate`) */
 inline int fibre_attr_setdetachstate(fibre_attr_t *attr, int detachstate) {
   attr->detached = detachstate;
@@ -157,7 +171,7 @@ inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *(*start
   if (!attr) {
     f = new Fibre;
   } else {
-    f = new Fibre(*attr->cluster, attr->stackSize, attr->background);
+    f = new Fibre(*attr->cluster, attr->stackSize, attr->background, attr->guardSize);
     if (attr->detached) f->detach();
   }
   *thread = f->run(start_routine, arg);
@@ -171,9 +185,25 @@ inline int fibre_join(fibre_t thread, void **retval) {
   return 0;
 }
 
+/** @brief Detach fibre. (`pthread_detach`) */
+inline int fibre_detach(fibre_t thread) {
+  thread->detach();
+  return 0;
+}
+
+inline void fibre_exit() __noreturn;
+inline void fibre_exit() {
+  Fibre::exit();
+}
+
 /** @brief Obtain fibre ID of currently running fibre. (`pthread_self`) */
 inline fibre_t fibre_self(void) {
   return CurrFibre();
+}
+
+/** @brief Compare fibre IDs. (`pthread_equal`) */
+inline int fibre_equal(fibre_t thread1, fibre_t thread2) {
+  return thread1 == thread2;
 }
 
 /** @brief Voluntarily yield execution. (`pthread_yield`) */

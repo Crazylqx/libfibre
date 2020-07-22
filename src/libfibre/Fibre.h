@@ -23,17 +23,21 @@
 #include "runtime/BlockingSync.h"
 #include "runtime-glue/RuntimeContext.h"
 
+#include <cxxabi.h>
 #include <sys/mman.h>
 
 #ifdef SPLIT_STACK
+extern "C" void __splitstack_block_signals(int* next, int* prev);
+extern "C" void __splitstack_block_signals_context(void *context[10], int* next, int* prev);
 extern "C" void __splitstack_getcontext(void *context[10]);
 extern "C" void __splitstack_setcontext(void *context[10]);
 extern "C" void *__splitstack_makecontext(size_t, void *context[10], size_t *);
 extern "C" void __splitstack_releasecontext(void *context[10]);
-static const size_t defaultStackSize =  2 * pagesize<1>();
+static const size_t defaultStackSize  =  2 * pagesize<1>();
+static const size_t defaultStackGuard =  0 * pagesize<1>();
 #else
-static const size_t defaultStackSize = 16 * pagesize<1>();
-static const size_t stackProtection  =  1 * pagesize<1>();
+static const size_t defaultStackSize  = 16 * pagesize<1>();
+static const size_t defaultStackGuard =  1 * pagesize<1>();
 #endif
 
 #if TESTING_ENABLE_DEBUGGING
@@ -45,38 +49,41 @@ class Cluster;
 
 /** A Fibre object represents an independent execution context backed by a stack. */
 class Fibre : public StackContext {
-  FloatingPointFlags fp;        // FP context
-  size_t stackSize;             // stack size
+  FloatingPointFlags fp;       // FP context
+  size_t stackSize;            // stack size (including guard)
 #ifdef SPLIT_STACK
-  void* splitStackContext[10];  // memory for split-stack context
+  void* splitStackContext[10]; // memory for split-stack context
 #else
-  vaddr stackBottom;            // bottom of allocated memory for stack
+  vaddr stackBottom;           // bottom of allocated memory for stack (including guard)
 #endif
-  SyncPoint<WorkerLock> done;   // synchronization (join) at destructor
+  SyncPoint<WorkerLock> done;  // synchronization (join) at destructor
 
-  size_t stackAlloc(size_t size) {
+  size_t stackAlloc(size_t size, size_t guard) {
 #ifdef SPLIT_STACK
     vaddr stackBottom = (vaddr)__splitstack_makecontext(size, splitStackContext, &size);
+    int off = 0; // do not block signals (blocking signals is slow!)
+    __splitstack_block_signals_context(splitStackContext, &off, nullptr);
 #else
-    // check that requested size is a multiple of page size
-    RASSERT(aligned(size, stackProtection), size);
+    // check that requested size/guard is a multiple of page size
+    RASSERT(aligned(size, pagesize<1>()), size);
+    RASSERT(aligned(guard, pagesize<1>()), guard);
     // reserve/map size + protection
-    ptr_t ptr = mmap(0, size + stackProtection, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
+    size += guard;
+    ptr_t ptr = mmap(0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
     RASSERT0(ptr != MAP_FAILED);
     // set up protection page
-    SYSCALL(mprotect(ptr, stackProtection, PROT_NONE));
-    stackBottom = vaddr(ptr) + stackProtection;
+    if (guard) SYSCALL(mprotect(ptr, guard, PROT_NONE));
+    stackBottom = vaddr(ptr);
 #endif
     StackContext::initStackPointer(stackBottom + size);
     return size;
   }
 
   void stackFree() {
-    if (!stackSize) return;
 #ifdef SPLIT_STACK
-    __splitstack_releasecontext(splitStackContext);
+    if (stackSize) __splitstack_releasecontext(splitStackContext);
 #else
-    SYSCALL(munmap(ptr_t(stackBottom - stackProtection), stackSize + stackProtection));
+    if (stackSize) SYSCALL(munmap(ptr_t(stackBottom), stackSize));
 #endif
   }
 
@@ -101,12 +108,12 @@ class Fibre : public StackContext {
 
 public:
   /** Constructor. */
-  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), size_t size = defaultStackSize, bool background = false)
-  : StackContext(sched, background), stackSize(stackAlloc(size)) { initDebug(); }
+  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), size_t size = defaultStackSize, bool background = false, size_t guard = defaultStackGuard)
+  : StackContext(sched, background), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
   /** Constructor setting affinity to processor. */
-  Fibre(BaseProcessor &sp, size_t size = defaultStackSize)
-  : StackContext(sp, true), stackSize(stackAlloc(size)) { initDebug(); }
+  Fibre(BaseProcessor &sp, size_t size = defaultStackSize, size_t guard = defaultStackGuard)
+  : StackContext(sp, true), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
   /** Constructor to immediately start fibre with `func(arg)`. */
   Fibre(funcvoid1_t func, ptr_t arg, bool background = false)
@@ -127,6 +134,11 @@ public:
   void join() { done.wait(); }
   /** Detach fibre (no waiting for join synchronization). */
   void detach() { done.detach(); }
+  /** Exit fibre (with join, if not detached). */
+  static void exit() __noreturn {
+    abi::__forced_unwind* dummy = nullptr;
+    throw dummy;
+  }
 
   // callback from StackContext via Runtime after final context switch
   void destroy(_friend<StackContext>) {

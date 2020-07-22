@@ -22,10 +22,15 @@
  Additionally, all routines in fibre.h are available as corresponding 'cfibre' version.
  */
 
-#include <time.h>       // struct timespec
-#include <unistd.h>     // useconds_t
-#include <sys/socket.h> // socket types
-#include <pthread.h>
+#include <time.h>         // struct timespec
+#include <unistd.h>       // read, write, useconds_t
+#include <sys/types.h>    // socket types (FreeBSD)
+#include <sys/socket.h>   // socket interface
+#if __linux__
+#include <sys/sendfile.h> // sendfile (Linux)
+#endif
+#include <sys/uio.h>      // readv, writev
+#include <pthread.h>      // pthread_t
 
 typedef struct _cfibre_t*         cfibre_t;
 typedef struct _cfibre_sem_t*     cfibre_sem_t;
@@ -43,7 +48,11 @@ typedef struct _cfibre_barrierattr_t* cfibre_barrierattr_t;
 typedef struct _cfibre_fastmutex_t*     cfibre_fastmutex_t;
 typedef struct _cfibre_fastmutexattr_t* cfibre_fastmutexattr_t;
 
-typedef struct _cfibre_cluster_t* cfibre_cluster_t;
+typedef struct _cfibre_cluster_t*    cfibre_cluster_t;
+typedef struct _cfibre_eventscope_t* cfibre_eventscope_t;
+
+static const int CFIBRE_MUTEX_RECURSIVE = PTHREAD_MUTEX_RECURSIVE;
+static const int CFIBRE_MUTEX_DEFAULT   = PTHREAD_MUTEX_DEFAULT;
 
 #ifdef __cplusplus
 extern "C" {
@@ -69,6 +78,11 @@ int cfibre_pause(cfibre_cluster_t cluster);
 /** @brief Resume processors in specified Cluster. */
 int cfibre_resume(cfibre_cluster_t cluster);
 
+/** @brief Create new event scope. */
+cfibre_eventscope_t cfibre_eventscope_clone(void (*mainFunc) (void *), void* mainArg);
+/** @brief Obtain current event scope. */
+cfibre_eventscope_t cfibre_eventscope_self(void);
+
 /** @brief Read OS-level `errno` variable (special routine due to TLS). */
 int cfibre_get_errno(void);
 /** @brief Write OS-level `errno` variable (special routine due to TLS). */
@@ -78,6 +92,8 @@ int cfibre_attr_init(cfibre_attr_t *attr);
 int cfibre_attr_destroy(cfibre_attr_t *attr);
 int cfibre_attr_setstacksize(cfibre_attr_t *attr, size_t stacksize);
 int cfibre_attr_getstacksize(const cfibre_attr_t *attr, size_t *stacksize);
+int cfibre_attr_setguardsize(cfibre_attr_t *attr, size_t guardsize);
+int cfibre_attr_getguardsize(const cfibre_attr_t *attr, size_t *guardsize);
 int cfibre_attr_setdetachstate(cfibre_attr_t *attr, int detachstate);
 int cfibre_attr_getdetachstate(const cfibre_attr_t *attr, int *detachstate);
 int cfibre_attr_setbackground(cfibre_attr_t *attr, int background);
@@ -87,7 +103,10 @@ int cfibre_attr_getcluster(const cfibre_attr_t *attr, cfibre_cluster_t *cluster)
 
 int cfibre_create(cfibre_t *thread, const cfibre_attr_t *attr, void *(*start_routine) (void *), void *arg);
 int cfibre_join(cfibre_t thread, void **retval);
+int cfibre_detach(cfibre_t thread);
+void cfibre_exit() __attribute__((__noreturn__));
 cfibre_t cfibre_self(void);
+int cfibre_equal(cfibre_t thread1, cfibre_t thread2);
 int cfibre_yield(void);
 int cfibre_migrate(cfibre_cluster_t cluster);
 
@@ -158,6 +177,10 @@ int cfibre_accept4(int socket, struct sockaddr *restrict address, socklen_t *res
 int cfibre_connect(int socket, const struct sockaddr *address, socklen_t address_len);
 /** @brief Clone file descriptor. (`dup`). */
 int cfibre_dup(int fildes);
+/** @brief Create pipe. (`pipe`). */
+int cfibre_pipe(int pipefd[2]);
+/** @brief Create pipe. (`pipe2`). */
+int cfibre_pipe2(int pipefd[2], int flags);
 /** @brief Close file descriptor. (`close`). */
 int cfibre_close(int fildes);
 /** @brief Output via socket. (`send`). */
@@ -168,6 +191,8 @@ ssize_t cfibre_sendto(int socket, const void *message, size_t length, int flags,
 ssize_t cfibre_sendmsg(int socket, const struct msghdr *message, int flags);
 /** @brief Output via socket/file. (`write`). */
 ssize_t cfibre_write(int fildes, const void *buf, size_t nbyte);
+/** @brief Output via socket/file. (`writev`). */
+ssize_t cfibre_writev(int fildes, const struct iovec *iov, int iovcnt);
 /** @brief Receive via socket. (`recv`). */
 ssize_t cfibre_recv(int socket, void *buffer, size_t length, int flags);
 /** @brief Receive via socket. (`recvfrom`). */
@@ -176,6 +201,15 @@ ssize_t cfibre_recvfrom(int socket, void *restrict buffer, size_t length, int fl
 ssize_t cfibre_recvmsg(int socket, struct msghdr *message, int flags);
 /** @brief Receive via socket/file. (`read`). */
 ssize_t cfibre_read(int fildes, void *buf, size_t nbyte);
+/** @brief Receive via socket/file. (`readv`). */
+ssize_t cfibre_readv(int fildes, const struct iovec *iov, int iovcnt);
+
+/** @brief Transmit file via socket. (`sendfile`). */
+#if __FreeBSD__
+int cfibre_sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *hdtr, off_t *sbytes, int flags);
+#else
+ssize_t cfibre_sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
+#endif
 
 /** @brief temporarily halt event handling for FD */
 void cfibre_suspendFD(int fd);

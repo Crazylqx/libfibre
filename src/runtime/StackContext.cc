@@ -95,7 +95,7 @@ void StackContext::resumeDirect() {
 extern "C" void invokeStack(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) {
   CHECK_PREEMPTION(0);
   RuntimeEnablePreemption();
-  func(arg1, arg2, arg3);
+  RuntimeStartStack(func, arg1, arg2, arg3);
   RuntimeDisablePreemption();
   StackContext::terminate();
 }

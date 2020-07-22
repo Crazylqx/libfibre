@@ -19,6 +19,12 @@
 
 #include "libfibre/Fibre.h"
 
+inline void RuntimeStartStack(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) {
+  try {
+    func(arg1, arg2, arg3);
+  } catch (abi::__forced_unwind*) {}
+}
+
 inline void RuntimePreStackSwitch(StackContext& currStack, StackContext& nextStack, _friend<StackContext> fs) {
   Fibre& currFibre = reinterpret_cast<Fibre&>(currStack);
   Fibre& nextFibre = reinterpret_cast<Fibre&>(nextStack);

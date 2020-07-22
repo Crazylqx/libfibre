@@ -22,6 +22,7 @@
 #include "libfibre/Fibre.h"
 #include "libfibre/Cluster.h"
 
+#include <fcntl.h>        // O_NONBLOCK
 #include <limits.h>       // PTHREAD_STACK_MIN
 #include <unistd.h>       // close
 #include <sys/resource.h> // getrlimit
@@ -45,7 +46,7 @@ class EventScope {
     SyncSem RD;
     SyncSem WR;
 #if TESTING_LAZY_FD_REGISTRATION
-    FastMutex lock;
+    FastMutex   lock;
     BasePoller* poller;
     size_t      status;
     SyncFD() : poller(nullptr), status(0) {}
@@ -103,7 +104,7 @@ class EventScope {
 public:
   ConnectionStats* stats;
 
-  /** Bootstrap a new event scope, e.g., after a suitable call to `clone()` or `pthread_create()`. */
+  /** Create an event scope during bootstrap. */
   static EventScope* bootstrap(size_t pollerCount = 1, size_t workerCount = 1) {
     EventScope* es = new EventScope(pollerCount);
     es->mainFibre = es->mainCluster->registerWorker(_friend<EventScope>());
@@ -410,6 +411,15 @@ inline int lfDup(int fd) {
   int ret = dup(fd);
   if (ret < 0) return ret;
   Context::CurrEventScope().registerFD(ret);
+  return ret;
+}
+
+/** @brief Create pipe. */
+inline int lfPipe(int pipefd[2], int flags = 0) {
+  int ret = pipe2(pipefd, flags | O_NONBLOCK);
+  if (ret < 0) return ret;
+  Context::CurrEventScope().registerFD(pipefd[0]);
+  Context::CurrEventScope().registerFD(pipefd[1]);
   return ret;
 }
 
