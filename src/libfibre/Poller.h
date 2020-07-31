@@ -48,16 +48,13 @@ public:
 protected:
 #if __FreeBSD__
   typedef struct kevent EventType;
-  typedef struct kevent WakeType;
 #else // __linux__ below
   typedef epoll_event   EventType;
-  typedef int           WakeType;
 #endif
 
   static const int maxPoll = 1024;
   EventType     events[maxPoll];
   int           pollFD;
-  WakeType      waker;
 
   EventScope&   eventScope;
   volatile bool pollTerminate;
@@ -72,36 +69,18 @@ protected:
 
   inline void notifyAll(int evcnt);
 
-  void wakeUp() {
-#if __FreeBSD__
-    EV_SET(&waker, 0, EVFILT_USER, EV_ENABLE, NOTE_TRIGGER, 0, 0);
-    SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
-#else // __linux__ below
-    uint64_t val = 1;
-    val = SYSCALL_EQ(write(waker, &val, sizeof(val)), sizeof(val));
-    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD, " via ", waker);
-#endif
-  }
-
 public:
   BasePoller(EventScope& es, const char* n = "BasePoller") : eventScope(es), pollTerminate(false) {
     stats = new PollerStats(this, n);
 #if __FreeBSD__
     pollFD = SYSCALLIO(kqueue());
-    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " create ", pollFD);
-    EV_SET(&waker, 0, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, 0);
-    SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
 #else // __linux__ below
     pollFD = SYSCALLIO(epoll_create1(EPOLL_CLOEXEC));
-    waker = SYSCALLIO(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)); // binary semaphore semantics w/o EFD_SEMAPHORE
-    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " create ", pollFD, " and ", waker);
-    setupFD(waker, Input);
 #endif
+    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " create ", pollFD);
   }
+
   ~BasePoller() {
-#if __linux__
-    SYSCALL(close(waker));
-#endif
     SYSCALL(close(pollFD));
   }
 
@@ -157,12 +136,28 @@ protected:
   static inline void pollLoop(T& This);
 
 public:
-  ~BaseThreadPoller() {
-    pollTerminate = true;
-    wakeUp(); // use self-pipe trick to terminate poll loop
-    SYSCALL(pthread_join(pollThread, nullptr));
-  }
   pthread_t getSysThreadId() { return pollThread; }
+
+  void terminate(_friend<EventScope>) {
+    pollTerminate = true;
+#if __FreeBSD__
+    struct kevent waker;
+    EV_SET(&waker, 0, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, 0);
+    SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
+    EV_SET(&waker, 0, EVFILT_USER, EV_ENABLE, NOTE_TRIGGER, 0, 0);
+    SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
+    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD);
+    SYSCALL(pthread_join(pollThread, nullptr));
+#else // __linux__ below
+    int waker = SYSCALLIO(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)); // binary semaphore semantics w/o EFD_SEMAPHORE
+    setupFD(waker, Input);
+    uint64_t val = 1;
+    val = SYSCALL_EQ(write(waker, &val, sizeof(val)), sizeof(val));
+    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD, " via ", waker);
+    SYSCALL(pthread_join(pollThread, nullptr));
+    SYSCALL(close(waker));
+#endif
+  }
 };
 
 class PollerFibre : public BasePoller {
