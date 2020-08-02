@@ -1,6 +1,7 @@
 #include "fibre.h"
 
 #include <iostream>
+#include <sys/wait.h> // waitpid
 
 using namespace std;
 
@@ -48,7 +49,12 @@ static void f3main() {
 
 int main(int argc, char** argv) {
   FibreInit();
-  cout << "Hello world" << endl;
+  pid_t p = SYSCALL(FibreFork());
+  cout << "Hello world " << getpid() << endl;
+  if (p) {
+    SYSCALL(waitpid(p, nullptr, 0));
+    cout << "Child " << p << " finished" << endl;
+  }
   Time ct;
   SYSCALL(clock_gettime(CLOCK_REALTIME, &ct));
   cout << ct.tv_sec << '.' << ct.tv_nsec << endl;

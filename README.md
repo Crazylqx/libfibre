@@ -27,9 +27,11 @@ In addition, the following students (in alphabetical order) have helped with var
 
 - Qin An (FreeBSD/kqueue)
 - Bilal Akhtar (gdb extension)
-- Peng Chen (split stack support)
+- Peng Chen (split stack)
+- Peiran Hong (API/Apache)
 - Wen Shi (gdb extension)
-- Shuangyi Tong (multiple event scopes)
+- Shuangyi Tong (event scopes)
+- Gan Wang (API/Apache)
 
  All bugs are mine though. ;-)
 

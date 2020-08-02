@@ -73,6 +73,7 @@ class EventScope {
   ~EventScope() {
     delete mainFibre;
     delete mainCluster;
+    masterPoller->terminate(_friend<EventScope>());
     delete masterPoller;
     delete[] fdSyncVector;
   }
@@ -125,6 +126,28 @@ public:
     return es;
   }
 
+  void preFork() {
+    // TODO: assert globalClusterCount == 1
+    // TODO: test for other fibres?
+    RASSERT0(CurrFibre() == mainFibre);
+    RASSERT0(timerQueue.empty());
+    RASSERT0(diskCluster == nullptr);
+    mainCluster->preFork(_friend<EventScope>());
+  }
+
+  void postFork() {
+    new (stats) ConnectionStats(this);
+    timerQueue.reinit();
+    delete masterPoller;
+    masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
+    mainCluster->postFork1(_friend<EventScope>());
+    for (int f = 0; f < fdCount; f += 1) {
+      RASSERT(fdSyncVector[f].RD.sem.empty(), f);
+      RASSERT(fdSyncVector[f].WR.sem.empty(), f);
+    }
+    mainCluster->postFork2(_friend<EventScope>());
+  }
+
   /** Wait for the main routine of a cloned event scope. */
   void join() { mainFibre->join(); }
 
@@ -172,7 +195,9 @@ private:
 #endif
 
 #if TESTING_PROCESSOR_POLLER
-    BasePoller& cp = Cluster ? Context::CurrCluster().getPoller(fd) : Context::CurrPoller();
+    BasePoller& cp = Cluster
+      ? static_cast<BasePoller&>(Context::CurrCluster().getPoller(fd))
+      : static_cast<BasePoller&>(Context::CurrPoller());
 #else
     BasePoller& cp = Context::CurrCluster().getPoller(fd);
 #endif

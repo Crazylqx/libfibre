@@ -32,6 +32,10 @@
 #include <sys/uio.h>      // readv, writev
 #include <pthread.h>      // pthread_t
 
+#ifndef __LIBFIBRE__
+#define __LIBFIBRE__ 1
+#endif
+
 typedef struct _cfibre_t*         cfibre_t;
 typedef struct _cfibre_sem_t*     cfibre_sem_t;
 typedef struct _cfibre_mutex_t*   cfibre_mutex_t;
@@ -62,6 +66,9 @@ extern "C" {
 void cfibre_init();
 /** @brief Alternative bootstrap routine. */
 void cfibre_init_n(size_t pollerCount, size_t workerCount);
+
+/** @brief Fork process (with restrictions) and re-initialize runtime in child process (`fork`). */
+pid_t cfibre_fork();
 
 /** @brief Create Cluster */
 int cfibre_cluster_create(cfibre_cluster_t* cluster);

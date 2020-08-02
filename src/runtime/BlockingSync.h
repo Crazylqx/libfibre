@@ -43,6 +43,9 @@ public:
 
   TimerQueue() { stats = new TimerStats(this); }
 
+  bool empty() const { return queue.empty(); }
+  void reinit() { new (stats) TimerStats(this); }
+
   Handle insert(BaseTimer& bt, const Time& relTimeout, const Time& absTimeout) {
     ScopedLock<WorkerLock> al(lock);
     Handle ret = queue.insert( {absTimeout, &bt} ); // set up timeout

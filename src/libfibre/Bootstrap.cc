@@ -91,6 +91,13 @@ EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
   return EventScope::bootstrap(pollerCount, workerCount);
 }
 
+pid_t FibreFork() {
+  Context::CurrEventScope().preFork();
+  pid_t ret = fork();
+  if (ret == 0) Context::CurrEventScope().postFork(); // child: clean up runtime system
+  return ret;
+}
+
 // ******************** GLOBAL HELPERS ********************
 
 int _SysErrno() {

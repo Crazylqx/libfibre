@@ -93,6 +93,31 @@ public:
     delete [] pollVec;
   }
 
+  void preFork(_friend<EventScope>) {
+    ScopedLock<WorkerLock> sl(ringLock);
+    RASSERT(ringCount == 1, ringCount);
+  }
+
+  void postFork1(_friend<EventScope>) {
+    new (stats) ClusterStats(this);
+    for (size_t p = 0; p < pollCount; p += 1) {
+      pollVec[p].~PollerType();
+      new (&pollVec[p]) PollerType(scope, stagingProc);
+    }
+#if TESTING_PROCESSOR_POLLER
+    PollerFibre* procPoller = &Context::CurrPoller();
+    procPoller->~PollerFibre();
+    new (procPoller) PollerFibre(Context::CurrEventScope(), Context::CurrProcessor(), false);
+#endif
+  }
+
+  void postFork2(_friend<EventScope>) {
+    start();
+#if TESTING_PROCESSOR_POLLER
+    Context::CurrPoller().start();
+#endif
+  }
+
   // Register curent system thread (pthread) as worker.
   Fibre* registerWorker(_friend<EventScope>);
 

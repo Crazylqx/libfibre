@@ -47,6 +47,10 @@ extern "C" void cfibre_init_n(size_t pollerCount, size_t workerCount) {
   FibreInit(pollerCount, workerCount);
 }
 
+extern "C" pid_t cfibre_fork() {
+  return FibreFork();
+}
+
 extern "C" int cfibre_cluster_create(cfibre_cluster_t* cluster) {
   *cluster = new _cfibre_cluster_t;
   return 0;

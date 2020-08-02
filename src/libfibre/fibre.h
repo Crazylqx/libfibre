@@ -94,6 +94,9 @@ struct fibre_fastmutexattr_t {
 /** @brief Bootstrap routine should be called early in main(). */
 extern EventScope* FibreInit(size_t pollerCount = 1, size_t workerCount = 1);
 
+/** @brief Fork process (with restrictions) and re-initialize runtime in child process (`fork`). */
+extern pid_t FibreFork();
+
 /** @brief Initialize attributes for fibre creation (`pthread_attr_init`). */
 inline int fibre_attr_init(fibre_attr_t *attr) {
   attr->init();

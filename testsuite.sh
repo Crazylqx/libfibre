@@ -64,16 +64,16 @@ function run_0() {
 }
 
 function prep_1() {
-	sed -i -e 's/.*TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
-	echo memcached
+	sed -i -e 's/DYNSTACK=.*/DYNSTACK=1/' Makefile.config
 }
 
 function run_1() {
-	run_memcached 1
+	echo -n "STACKTEST: "
+	apps/stacktest > stacktest.out && echo SUCCESS || echo FAILURE
 }
 
 function prep_2() {
-	sed -i -e 's/.*TESTING_LAZY_FD_REGISTRATION.*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -82,8 +82,7 @@ function run_2() {
 }
 
 function prep_3() {
-	sed -i -e 's/.*TESTING_LAZY_FD_REGISTRATION.*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
-	sed -i -e 's/.*TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_CLUSTER_POLLER_FIBRE.*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -92,16 +91,26 @@ function run_3() {
 }
 
 function prep_4() {
-	sed -i -e 's/DYNSTACK=.*/DYNSTACK=1/' Makefile.config
+	sed -i -e 's/.*#define TESTING_LAZY_FD_REGISTRATION.*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	echo memcached
 }
 
 function run_4() {
-	echo -n "STACKTEST: "
-	apps/stacktest > stacktest.out && echo SUCCESS || echo FAILURE
-	rm -f stacktest.out
+	run_memcached 4
 }
 
-for ((e=0;e<=4;e+=1)); do
+function prep_5() {
+	sed -i -e 's/.*#define TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_CLUSTER_POLLER_FIBRE.*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_LAZY_FD_REGISTRATION.*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	echo memcached
+}
+
+function run_5() {
+	run_memcached 5
+}
+
+for ((e=0;e<=5;e+=1)); do
 	addon=$(prep_$e)
 	pre $addon
 	run_$e
