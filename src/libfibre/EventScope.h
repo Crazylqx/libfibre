@@ -325,14 +325,14 @@ public:
 #endif
   }
 
-  template<bool Input, bool Yield, typename T, class... Args>
+  template<bool Input, bool Yield, bool Cluster, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (Yield) Fibre::yield();
     T ret = iofunc(fd, a...);
     if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
 #if TESTING_LAZY_FD_REGISTRATION
-    if (internalRegisterFD<Input,!Input,false>(fd, true)) {
+    if (internalRegisterFD<Input,!Input,Cluster>(fd, true)) {
       Fibre::yield();
       T ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
@@ -352,13 +352,13 @@ public:
 /** @brief Generic input wrapper. User-level-block if file descriptor not ready for reading. */
 template<typename T, class... Args>
 inline T lfInput( T (*readfunc)(int, Args...), int fd, Args... a) {
-  return Context::CurrEventScope().syncIO<true,true>(readfunc, fd, a...); // yield before read
+  return Context::CurrEventScope().syncIO<true,true,false>(readfunc, fd, a...); // yield before read
 }
 
 /** @brief Generic output wrapper. User-level-block if file descriptor not ready for writing. */
 template<typename T, class... Args>
 inline T lfOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
-  return Context::CurrEventScope().syncIO<false,false>(writefunc, fd, a...); // no yield before write
+  return Context::CurrEventScope().syncIO<false,false,false>(writefunc, fd, a...); // no yield before write
 }
 
 /** @brief Generic wrapper for I/O that cannot be polled. Fibre is migrated to disk cluster for execution. */
@@ -414,7 +414,7 @@ inline int lfListen(int fd, int backlog) {
 
 /** @brief Accept new connection. New file descriptor registered for I/O events. */
 inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
-  int ret = Context::CurrEventScope().syncIO<true,false>(accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK);
+  int ret = Context::CurrEventScope().syncIO<true,false,true>(accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK);
   if (ret < 0) return ret;
   Context::CurrEventScope().stats->srvconn.count();
   Context::CurrEventScope().registerFD(ret);
