@@ -304,6 +304,9 @@ public:
   template<typename... Args>
   bool P(const Args&... args) { lock.acquire(); return internalP(false, args...); }
 
+  template<typename... Args>
+  bool P_yield(const Args&... args) { lock.acquire(); return internalP(true, args...); }
+
   bool tryP() { return P(false); }
 
   template<typename Lock2>
@@ -311,11 +314,6 @@ public:
     lock.acquire();
     l.release();
     return internalP(false);
-  }
-
-  bool P_yield(bool yield) {
-    lock.acquire();
-    return internalP(yield);
   }
 
   void P_fake(size_t c = 1) {
@@ -394,14 +392,19 @@ class BinaryBenaphore : public Benaphore<SemType> {
   using Benaphore<SemType>::counter;
   using Benaphore<SemType>::sem;
 
+  bool internalP(bool yield, bool wait) {
+    if (!wait) return Benaphore<SemType>::tryP();
+    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) sem.P();
+    else if (yield) StackContext::yield();
+    return true;
+  }
+
 public:
   BinaryBenaphore(ssize_t c) : Benaphore<SemType>(c) {}
 
-  bool P(bool wait = true) {
-    if (!wait) return Benaphore<SemType>::tryP();
-    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) sem.P();
-    return true;
-  }
+  bool P(bool wait = true) { return internalP(false, wait); }
+
+  bool P_yield(bool wait = true) { return internalP(true, wait); }
 
   template<bool Enqueue = true>
   StackContext* V() {

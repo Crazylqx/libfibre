@@ -14,7 +14,7 @@
 //#define TESTING_PLACEMENT_STAGING     1 // load-based staging vs. round-robin placement
 //#define TESTING_IDLE_SPIN         65536 // spin before idle loop
 //#define TESTING_HALT_SPIN         65536 // spin before halting worker thread/core
-//#define TESTING_MUTEX_FIFO            1 // use fifo/baton mutex
+//#define TESTING_MUTEX_FIFO            1 // use baton-passing fifo mutex
 //#define TESTING_MUTEX_BARGING         1 // use blocking/barging mutex
 //#define TESTING_MUTEX_SPIN            1 // spin before block in non-fifo mutex
 

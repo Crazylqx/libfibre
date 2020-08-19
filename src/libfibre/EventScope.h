@@ -39,7 +39,7 @@ class EventScope {
   // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
   // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
   struct SyncSem {
-    FastMutex                  mtx;
+    Mutex<FastMutex>           mtx;
     Semaphore<WorkerLock,true> sem;
   };
   struct SyncFD {
@@ -261,7 +261,7 @@ public:
   void blockPollFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     masterPoller->setupPollFD(fd, true);  // reset using ONESHOT to reduce polling
-    ScopedLock<FastMutex> sl(fdSyncVector[fd].RD.mtx);
+    ScopedLock<Mutex<FastMutex>> sl(fdSyncVector[fd].RD.mtx);
     fdSyncVector[fd].RD.sem.P();
   }
 
@@ -286,7 +286,7 @@ public:
   void block(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    ScopedLock<FastMutex> sl(sync.mtx);
+    ScopedLock<Mutex<FastMutex>> sl(sync.mtx);
     sync.sem.P();
   }
 
@@ -338,14 +338,14 @@ public:
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
     }
 #endif
+    Fibre::yield();
     SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    ScopedLock<FastMutex> sl(sync.mtx);
+    ScopedLock<Mutex<FastMutex>> sl(sync.mtx);
     for (;;) {
-      sync.sem.P();
       ret = iofunc(fd, a...);
-      if (ret >= 0 || !TestEAGAIN<Input>()) break;
+      if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
+      sync.sem.P_yield();
     }
-    return ret;
   }
 };
 
