@@ -210,24 +210,6 @@ public:
   bool empty() const { return queue.empty(); }
 
   template<typename Lock>
-  void reset(Lock& lock) {
-    RASSERT0(lock.test());
-    StackContext* s = queue.front();
-    while (s != queue.edge()) {
-      ResumeInfo* ri = s->raceResume();
-      StackContext* ns = FlexStackList::next(*s);
-      if (ri) {
-        ri->cancelTimer();
-        FlexStackList::remove(*s);
-        DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(s), " clear/resume from ", FmtHex(&queue));
-        s->resume();
-      }
-      s = ns;
-    }
-    lock.release();
-    while (!empty()) Pause();     // wait for timed out events to disappear
-  }
-  template<typename Lock>
   bool block(Lock& lock, bool wait = true) {
     if (wait) {
       BlockingInfo<Lock> bi(lock);
@@ -268,13 +250,28 @@ public:
     }
     return nullptr;
   }
+
+  void reset() {                  // not concurrency-safe; better hold lock
+    StackContext* s = queue.front();
+    while (s != queue.edge()) {
+      ResumeInfo* ri = s->raceResume();
+      StackContext* ns = FlexStackList::next(*s);
+      if (ri) {
+        ri->cancelTimer();
+        FlexStackList::remove(*s);
+        DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(s), " clear/resume from ", FmtHex(&queue));
+        s->resume();
+      }
+      s = ns;
+    }
+  }
 };
 
 template<typename Lock, bool Binary, typename BQ = BlockingQueue>
 class Semaphore {
 protected:
   Lock lock;
-  ssize_t counter;
+  volatile ssize_t counter;
   BQ bq;
 
   template<typename... Args>
@@ -290,15 +287,24 @@ protected:
 public:
   explicit Semaphore(ssize_t c = 0) : counter(c) {}
   // baton passing requires serialization at destruction
-  ~Semaphore() { ScopedLock<Lock> sl(lock); }
-  bool empty() { return bq.empty(); }
-  bool open() { return counter >= 1; }
+  ~Semaphore() { destroy(); }
   ssize_t getValue() { return counter; }
 
-  void reset(ssize_t c = 0) {
-    lock.acquire();
+  void init(ssize_t c = 0) {
+    ScopedLock<Lock> al(lock);
+    RASSERT0(bq.empty());
     counter = c;
-    bq.reset(lock);
+  }
+
+  void destroy() {
+    ScopedLock<Lock> al(lock);
+    bq.reset();
+  }
+
+  void reinit(ssize_t c = 0) {
+    ScopedLock<Lock> al(lock);
+    bq.reset();
+    counter = c;
   }
 
   template<typename... Args>
@@ -331,15 +337,15 @@ public:
     else counter += 1;
     return nullptr;
   }
-
-  void release() { return V(); }
 };
 
 // limited: no concurrent invocations of V() allowed!
 class LimitedSemaphore : public BaseSuspender {
   FlexStackMPSC queue;
+
 public:
-  LimitedSemaphore(ssize_t c = 0) { RASSERT(c == 0, c); }
+  explicit LimitedSemaphore(ssize_t c = 0) { RASSERT(c == 0, c); }
+
   bool P() {
     StackContext* cs = Context::CurrStack();
     queue.push(*cs);
@@ -347,6 +353,7 @@ public:
     BaseSuspender::doSuspend(*cs);
     return true;
   }
+
   template<bool Enqueue = true>
   StackContext* V() {
     StackContext* next;
@@ -362,12 +369,11 @@ public:
 };
 
 class FastFifoMutex {
-  volatile size_t counter;
+  size_t counter;
   LimitedSemaphore sem;
 
 public:
   FastFifoMutex() : counter(0) {}
-  bool test() { return counter > 0; }
 
   bool acquire() {
     if (__atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST) == 1) return true;
@@ -400,7 +406,7 @@ class BinaryBenaphore : public Benaphore<SemType> {
   }
 
 public:
-  BinaryBenaphore(ssize_t c) : Benaphore<SemType>(c) {}
+  explicit BinaryBenaphore(ssize_t c) : Benaphore<SemType>(c) {}
 
   bool P(bool wait = true) { return internalP(false, wait); }
 
@@ -418,8 +424,6 @@ public:
       }
     }
   }
-
-  void release() { return V(); }
 };
 
 template<typename Lock, bool Fifo, typename BQ = BlockingQueue>
@@ -448,8 +452,19 @@ protected:
 public:
   LockedMutex() : owner(nullptr) {}
   // baton passing requires serialization at destruction
-  ~LockedMutex() { if (!Fifo) return; ScopedLock<Lock> sl(lock); }
-  bool test() const { return owner != nullptr; }
+  ~LockedMutex() { destroy(); }
+
+  void init() {
+    ScopedLock<Lock> al(lock);
+    RASSERT0(bq.empty());
+    owner = nullptr;
+  }
+
+  void destroy() {
+    ScopedLock<Lock> al(lock);
+    RASSERT(owner == nullptr, FmtHex(owner));
+    bq.reset();
+  }
 
   template<typename... Args>
   bool acquire(const Args&... args) { return internalAcquire<false>(args...); }
@@ -508,7 +523,18 @@ protected:
 
 public:
   SpinMutex() : owner(nullptr), sem(1) {}
-  bool test() const { return owner != nullptr; }
+
+  void init() {
+    StackContext* old = __atomic_exchange_n(&owner, nullptr, __ATOMIC_SEQ_CST);
+    RASSERT(old == nullptr, FmtHex(old));
+    sem.init(1);
+  }
+
+  void destroy() {
+    StackContext* old = __atomic_exchange_n(&owner, nullptr, __ATOMIC_SEQ_CST);
+    RASSERT(old == nullptr, FmtHex(old));
+    sem.destroy();
+  }
 
   template<typename... Args>
   bool acquire(const Args&... args) { return internalAcquire<false>(args...); }
@@ -530,6 +556,12 @@ class OwnerMutex : private BaseMutex {
 public:
   OwnerMutex() : counter(0), recursion(false) {}
   void enableRecursion() { recursion = true; }
+
+  void init() {
+    BaseMutex::init();
+    counter = 0;
+    recursion = false;
+  }
 
   template<typename... Args>
   size_t acquire(const Args&... args) {
@@ -600,6 +632,20 @@ class LockRW {
 public:
   LockRW() : state(0) {}
 
+  void init() {
+    ScopedLock<Lock> al(lock);
+    RASSERT0(bqR.empty());
+    RASSERT0(bqW.empty());
+    state = 0;
+  }
+
+  void destroy() {
+    ScopedLock<Lock> al(lock);
+    RASSERT(state == 0, state);
+    bqR.reset();
+    bqW.reset();
+  }
+
   template<typename... Args>
   bool acquireRead(const Args&... args) { return internalAR(args...); }
   bool tryAcquireRead() { return acquireRead(false); }
@@ -631,14 +677,21 @@ class Barrier {
   size_t counter;
   BQ bq;
 public:
-  Barrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t); }
-  void reset(size_t t = 1) {
-    RASSERT0(t);
-    lock.acquire();
+  explicit Barrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
+
+  void init(size_t t = 1) {
+    RASSERT0(t > 0)
+    ScopedLock<Lock> al(lock);
+    RASSERT0(bq.empty())
     target = t;
     counter = 0;
-    bq.reset(lock);
   }
+
+  void destroy() {
+    ScopedLock<Lock> al(lock);
+    bq.reset();
+  }
+
   bool wait() {
     lock.acquire();
     counter += 1;
@@ -658,14 +711,17 @@ public:
 template<typename BQ = BlockingQueue>
 class Condition {
   BQ bq;
+
 public:
-  bool empty() { return bq.empty(); }
-  template<typename Lock>
-  void reset(Lock& lock) { bq.reset(lock); }
+  void init() { RASSERT0(bq.empty()); }
+  void destroy() { bq.reset(); }
+
   template<typename Lock>
   bool wait(Lock& lock) { return bq.block(lock); }
+
   template<typename Lock>
   bool wait(Lock& lock, const Time& timeout) { return bq.block(lock, timeout); }
+
   template<bool Broadcast = false>
   void signal() { while (bq.unblock() && Broadcast); }
 };
@@ -685,10 +741,11 @@ protected:
 
 public:
   static const State Invalid = Dummy; // dummy bit never set (for ManagedArray)
-  SynchronizedFlag(State s = Running) : state(s) {}
-  void reset()          { state = Running; }
+  explicit SynchronizedFlag(State s = Running) : state(s) {}
   bool posted()   const { return state == Posted; }
   bool detached() const { return state == Detached; }
+
+  void init() { state = Running; }
 
   bool wait(Lock& lock) {             // returns false, if detached
     if (state == Running) {
@@ -721,7 +778,7 @@ public:
 template<typename Runner, typename Result, typename Lock>
 class Joinable : public SynchronizedFlag<Lock> {
   using Baseclass = SynchronizedFlag<Lock>;
-protected:
+
   union {
     Runner* runner;
     Result  result;
@@ -752,7 +809,7 @@ class SyncPoint : public SynchronizedFlag<Lock> {
   Lock lock;
 public:
   SyncPoint(State s = Baseclass::Running) : Baseclass(s) {}
-  void reset()  { ScopedLock<Lock> al(lock); Baseclass::reset(); }
+  void init()   { ScopedLock<Lock> al(lock); Baseclass::init(); }
   bool wait()   { ScopedLock<Lock> al(lock); return Baseclass::wait(lock); }
   bool post()   { ScopedLock<Lock> al(lock); return Baseclass::post(); }
   void detach() { ScopedLock<Lock> al(lock); Baseclass::detach(); }

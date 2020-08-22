@@ -142,8 +142,8 @@ public:
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
     mainCluster->postFork1(_friend<EventScope>());
     for (int f = 0; f < fdCount; f += 1) {
-      RASSERT(fdSyncVector[f].RD.sem.empty(), f);
-      RASSERT(fdSyncVector[f].WR.sem.empty(), f);
+      RASSERT(fdSyncVector[f].RD.sem.getValue() >= 0, f);
+      RASSERT(fdSyncVector[f].WR.sem.getValue() >= 0, f);
     }
     mainCluster->postFork2(_friend<EventScope>());
   }
@@ -228,8 +228,8 @@ public:
   void deregisterFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
-    RASSERT0(fdsync.RD.sem.empty());
-    RASSERT0(fdsync.WR.sem.empty());
+    fdsync.RD.sem.reinit();
+    fdsync.WR.sem.reinit();
 #if TESTING_LAZY_FD_REGISTRATION
     ScopedLock<FastMutex> sl(fdsync.lock);
     fdsync.status = 0;

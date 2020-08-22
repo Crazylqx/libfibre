@@ -33,7 +33,6 @@ protected:
   volatile bool locked;
 public:
   BinaryLock() : locked(false) {}
-  bool test() const { return locked; }
   bool tryAcquire() {
     if (locked) return false;
     return !__atomic_test_and_set(&locked, __ATOMIC_SEQ_CST);
@@ -61,7 +60,6 @@ class BinaryOwnerLock {
   size_t counter;
 public:
   BinaryOwnerLock() : owner(noOwner), counter(0) {}
-  bool test() const { return owner != noOwner; }
   size_t tryAcquire(T caller) {
     if (owner != caller) {
       if (owner != noOwner) return 0;
@@ -99,7 +97,6 @@ class TicketLock {
   size_t ticket;
 public:
   TicketLock() : serving(0), ticket(0) {}
-  bool test() const { return serving != ticket; }
   bool tryAcquire() {
     if (serving != ticket) return false;
     size_t tryticket = serving;
@@ -129,7 +126,6 @@ private:
   Node* volatile tail;
 public:
   MCSLock() : tail(nullptr) {}
-  bool test() const { return tail != nullptr; }
   bool tryAcquire(Node& n) {
     n.next = nullptr;
     return ((tail == nullptr) && _CAS(&tail, (Node*)nullptr, &n, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));

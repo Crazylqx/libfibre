@@ -51,11 +51,6 @@ public:
   void release() {
     SYSCALL(pthread_mutex_unlock(&mutex));
   }
-  bool test() {
-    if (!tryAcquire()) return true;
-    release();
-    return false;
-  }
 };
 
 class OsCondition {

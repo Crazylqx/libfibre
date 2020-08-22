@@ -225,13 +225,13 @@ inline int fibre_migrate(Cluster *cluster) {
 /** @brief Initialize semaphore object. (`sem_init`) */
 inline int fibre_sem_init(fibre_sem_t *sem, int pshared, unsigned int value) {
   RASSERT0(pshared == 0);
-  sem->reset(value);
+  sem->init(value);
   return 0;
 }
 
 /** @brief Destroy semaphore object. (`sem_destroy`) */
 inline int fibre_sem_destroy(fibre_sem_t *sem) {
-  sem->reset();
+  sem->destroy();
   return 0;
 }
 
@@ -281,6 +281,7 @@ inline int fibre_mutexattr_settype(fibre_mutexattr_t *attr, int type) {
 
 /** @brief Initialize mutex lock. (`pthread_mutex_init`) */
 inline int fibre_mutex_init(fibre_mutex_t *restrict mutex, const fibre_mutexattr_t *restrict attr) {
+  mutex->init();
 #if TESTING_LOCK_RECURSION
   if (attr && attr->type == PTHREAD_MUTEX_RECURSIVE) mutex->enableRecursion();
 #else
@@ -291,6 +292,7 @@ inline int fibre_mutex_init(fibre_mutex_t *restrict mutex, const fibre_mutexattr
 
 /** @brief Destroy mutex lock. (`pthread_mutex_destroy`) */
 inline int fibre_mutex_destroy(fibre_mutex_t *mutex) {
+  mutex->destroy();
   return 0;
 }
 
@@ -319,11 +321,13 @@ inline int fibre_mutex_unlock(fibre_mutex_t *mutex) {
 /** @brief Initialize condition variable. (`pthread_cond_init`) */
 inline int fibre_cond_init(fibre_cond_t *restrict cond, const fibre_condattr_t *restrict attr) {
   RASSERT0(attr == nullptr);
+  cond->init();
   return 0;
 }
 
 /** @brief Destroy condition variable. (`pthread_cond_init`) */
 inline int fibre_cond_destroy(fibre_cond_t *cond) {
+  cond->destroy();
   return 0;
 }
 
@@ -356,11 +360,13 @@ inline int fibre_cond_broadcast(fibre_cond_t *cond) {
 /** @brief Initialize rw-lock. (`pthread_rwlock_init`) */
 inline int fibre_rwlock_init(fibre_rwlock_t *restrict rwlock, const fibre_rwlockattr_t *restrict attr) {
   RASSERT0(attr == nullptr);
+  rwlock->init();
   return 0;
 }
 
 /** @brief Destroy rw-lock. (`pthread_rwlock_init`) */
 inline int fibre_rwlock_destroy(fibre_rwlock_t *rwlock) {
+  rwlock->destroy();
   return 0;
 }
 
@@ -405,12 +411,13 @@ inline int fibre_rwlock_unlock(fibre_rwlock_t *rwlock){
 /** @brief Initialize barrier. (`pthread_barrier_init`) */
 inline int fibre_barrier_init(fibre_barrier_t *restrict barrier, const fibre_barrierattr_t *restrict attr, unsigned count) {
   RASSERT0(attr == nullptr);
-  barrier->reset(count);
+  barrier->init(count);
   return 0;
 }
 
 /** @brief Destroy barrier. (`pthread_barrier_destroy`) */
 inline int fibre_barrier_destroy(fibre_barrier_t *barrier) {
+  barrier->destroy();
   return 0;
 }
 

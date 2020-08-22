@@ -24,16 +24,10 @@ class Benaphore {
 protected:
   volatile ssize_t counter;
   SemType sem;
-public:
-  Benaphore(ssize_t c = 0) : counter(c), sem(0) {}
-  bool empty() { return counter >= 0; }
-  bool open() { return counter > 0; }
-  ssize_t getValue() { return counter; }
 
-  void reset(ssize_t c = 0) {
-    counter = c;
-    sem.reset(0);
-  }
+public:
+  explicit Benaphore(ssize_t c = 0) : counter(c), sem(0) {}
+  ssize_t getValue() { return counter; }
 
   bool P() {
     if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) sem.P();
@@ -57,8 +51,6 @@ public:
   void V() {
     if (__atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 1) sem.V();
   }
-
-  void release() { return V(); }
 };
 
 #endif /* _Benaphore_h_ */
