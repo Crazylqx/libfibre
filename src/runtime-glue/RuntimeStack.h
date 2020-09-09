@@ -22,7 +22,7 @@
 inline void RuntimeStartStack(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) {
   try {
     func(arg1, arg2, arg3);
-  } catch (abi::__forced_unwind*) {}
+  } catch (Fibre::ExitException*) {}
 }
 
 inline void RuntimePreStackSwitch(StackContext& currStack, StackContext& nextStack, _friend<StackContext> fs) {

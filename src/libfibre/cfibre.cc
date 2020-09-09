@@ -18,7 +18,9 @@
 #include "libfibre/cfibre.h"
 
 #include <sys/uio.h>      // readv, writev
+#if ! __FreeBSD__
 #include <sys/sendfile.h> // sendfile
+#endif
 
 struct _cfibre_t         : public Fibre {};
 struct _cfibre_sem_t     : public fibre_sem_t {};

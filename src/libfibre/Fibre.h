@@ -23,8 +23,7 @@
 #include "runtime/BlockingSync.h"
 #include "runtime-glue/RuntimeContext.h"
 
-#include <cxxabi.h>
-#include <sys/mman.h>
+#include <sys/mman.h> // mmap, munmap, mprotect
 
 #ifdef SPLIT_STACK
 extern "C" void __splitstack_block_signals(int* next, int* prev);
@@ -107,6 +106,8 @@ class Fibre : public StackContext {
   }
 
 public:
+  struct ExitException {};
+
   /** Constructor. */
   Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), size_t size = defaultStackSize, bool background = false, size_t guard = defaultStackGuard)
   : StackContext(sched, background), stackSize(stackAlloc(size, guard)) { initDebug(); }
@@ -136,7 +137,7 @@ public:
   void detach() { done.detach(); }
   /** Exit fibre (with join, if not detached). */
   static void exit() __noreturn {
-    abi::__forced_unwind* dummy = nullptr;
+    ExitException* dummy = nullptr;
     throw dummy;
   }
 

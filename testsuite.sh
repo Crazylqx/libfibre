@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 [ $(id -u) -eq 0 ] && exec su -l kos -c "$0 $*"
 
 if [ $(git diff | wc -l) -ne 0 ] && [ "$1" != "-f" ]; then
@@ -6,28 +6,40 @@ if [ $(git diff | wc -l) -ne 0 ] && [ "$1" != "-f" ]; then
 	exit 1
 fi
 
-count=$(expr $(nproc) / 4)
-clbot1=0
-cltop1=$(expr $count - 1)
-clbot2=$(expr $count \* 2)
-cltop2=$(expr $(expr $count \* 3) - 1)
-svbot=$count
-svtop=$(expr $(expr $count + $count) - 1)
-
-echo server cores: $svbot-$svtop
-echo client cores: $clbot1-$cltop1,$clbot2-$cltop2
+if [ "$(uname -s)" = "FreeBSD" ]; then
+	MAKE=gmake
+	count=$(expr $(sysctl kern.smp.cpus|cut -c16- || echo 1) / 4)
+	[ $count -gt 0 ] || count=1
+else
+	MAKE=make
+	count=$(expr $(nproc) / 4)
+	[ $count -gt 0 ] || count=1
+	clbot1=0
+	cltop1=$(expr $count - 1)
+	clbot2=$(expr $count \* 2)
+	cltop2=$(expr $(expr $count \* 3) - 1)
+	svbot=$count
+	svtop=$(expr $(expr $count + $count) - 1)
+	echo server cores: $svbot-$svtop
+	echo client cores: $clbot1-$cltop1,$clbot2-$cltop2
+	TASKSET_SERVER="taskset -c $svbot-$svtop"
+	TASKSET_CLIENT="taskset -c $clbot1-$cltop1,$clbot2-$cltop2"
+	PERF_SERVER="perf stat -p \$(pidof memcached)"
+fi
 
 function pre() {
-	make clean all || exit 1
+	[ "$1" = "skip" ] && return
+	$MAKE clean all || exit 1
 	[ "$1" = "memcached" ] || return
 	FPATH=$PWD
 	cd memcached; ./configure2.sh $FPATH; cd -
-	make -C memcached all -j $(nproc) || exit 1
+	$MAKE -C memcached all -j $count || exit 1
 }
 
 function post() {
-	[ "$1" = "memcached" ] && make -C memcached distclean
-	make clean
+	[ "$1" = "memcached" ] && $MAKE -C memcached distclean
+	$MAKE clean
+	git checkout Makefile.config
 	git checkout src/runtime/testoptions.h
 	git checkout src/runtime-glue/testoptions.h
 }
@@ -35,14 +47,14 @@ function post() {
 function run_memcached() {
 	touch memcached.running
 	while [ -f memcached.running ]; do
-		taskset -c $svbot-$svtop memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24
+		$TASKSET_SERVER memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24
 		sleep 1
 	done | tee memcached.server.$1.out &
 	for ((i=0;i<5;i+=1)); do
 		sleep 3
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --loadonly
 		echo LOADED
-		perf stat -p $(pidof memcached) taskset -c $clbot1-$cltop1,$clbot2-$cltop2 timeout 30 \
+		eval $PERF_SERVER $TASKSET_CLIENT timeout 30 \
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --noload -i fb_ia -u0.5 -c25 -d1 -t10 -T32
 		[ $? -eq 0 ] && killall memcached || {
 			rm -f memcached.running
@@ -64,10 +76,12 @@ function run_0() {
 }
 
 function prep_1() {
+	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
 	sed -i -e 's/DYNSTACK=.*/DYNSTACK=1/' Makefile.config
 }
 
 function run_1() {
+	[ "$(uname -s)" = "FreeBSD" ] && return
 	echo -n "STACKTEST: "
 	apps/stacktest > stacktest.out && echo SUCCESS || echo FAILURE
 }
