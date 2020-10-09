@@ -490,7 +490,7 @@ public:
   }
 };
 
-template<typename Semaphore, size_t SpinStart, size_t SpinEnd, size_t SpinCount>
+template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount>
 class SpinMutex {
   StackContext* owner;
   Semaphore sem;
@@ -513,12 +513,12 @@ protected:
     if (OwnerLock && cs == owner) return true;
     RASSERT(cs != owner, FmtHex(cs), FmtHex(owner));
     if (tryOnly(args...)) return tryLock(cs);
-    size_t cnt = 0;
-    size_t spin = SpinStart;
+    int cnt = 0;
+    int spin = SpinStart;
     for (;;) {
       if (tryLock(cs)) return true;
       if (cnt < SpinCount) {
-        for (size_t i = 0; i < spin; i += 1) Pause();
+        for (int i = 0; i < spin; i += 1) Pause();
         if (spin < SpinEnd) spin += spin;
         else cnt += 1;
       } else {

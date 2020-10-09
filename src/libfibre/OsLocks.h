@@ -24,7 +24,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-template<size_t SpinStart, size_t SpinEnd, size_t SpinCount>
+template<int SpinStart, int SpinEnd, int SpinCount>
 class OsLock {
   pthread_mutex_t mutex;
   friend class OsCondition;
@@ -37,10 +37,10 @@ public:
     return pthread_mutex_trylock(&mutex) == 0;
   }
   void acquire() {
-    for (size_t cnt = 0; cnt < SpinCount; cnt += 1) {
-      for (size_t spin = SpinStart; spin <= SpinEnd; spin += spin) {
+    for (int cnt = 0; cnt < SpinCount; cnt += 1) {
+      for (int spin = SpinStart; spin <= SpinEnd; spin += spin) {
         if fastpath(tryAcquire()) return;
-        for (size_t i = 0; i < spin; i += 1) Pause();
+        for (int i = 0; i < spin; i += 1) Pause();
       }
     }
     SYSCALL(pthread_mutex_lock(&mutex));
