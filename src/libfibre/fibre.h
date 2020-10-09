@@ -215,6 +215,18 @@ inline int fibre_yield(void) {
   return 0;
 }
 
+/** @brief Park fibre (indefinite sleep). */
+inline int fibre_park() {
+  ParkSuspender::suspend();
+  return 0;
+}
+
+/** @brief Wake up parked fibre. */
+inline int fibre_unpark(fibre_t thread) {
+  thread->resume();
+  return 0;
+}
+
 /** @brief Migrate fibre to a different cluster. */
 inline int fibre_migrate(Cluster *cluster) {
   RASSERT0(cluster);

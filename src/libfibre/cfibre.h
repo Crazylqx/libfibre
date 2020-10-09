@@ -115,6 +115,8 @@ void cfibre_exit() __attribute__((__noreturn__));
 cfibre_t cfibre_self(void);
 int cfibre_equal(cfibre_t thread1, cfibre_t thread2);
 int cfibre_yield(void);
+int cfibre_park(void);
+int cfibre_unpark(cfibre_t thread);
 int cfibre_migrate(cfibre_cluster_t cluster);
 
 int cfibre_sem_init(cfibre_sem_t *sem, int pshared, unsigned int value);

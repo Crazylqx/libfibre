@@ -183,6 +183,14 @@ extern "C" int cfibre_yield(void) {
   return fibre_yield();
 }
 
+extern "C" int cfibre_park(void) {
+  return fibre_park();
+}
+
+extern "C" int cfibre_unpark(cfibre_t thread) {
+  return fibre_unpark(thread);
+}
+
 extern "C" int cfibre_migrate(cfibre_cluster_t cluster) {
   return fibre_migrate(cluster);
 }

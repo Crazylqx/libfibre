@@ -80,12 +80,20 @@ public:
 
 class BaseSuspender {
 protected:
-  void prepareSuspend() {
+  static void prepareSuspend() {
     RuntimeDisablePreemption();
   }
-  void doSuspend(StackContext& cs) {
+  static void doSuspend(StackContext& cs) {
     cs.suspend(_friend<BaseSuspender>());
     RuntimeEnablePreemption();
+  }
+};
+
+class ParkSuspender : public BaseSuspender {
+public:
+  static void suspend(StackContext& stack = *Context::CurrStack()) {
+    prepareSuspend();
+    return doSuspend(stack);
   }
 };
 
@@ -349,8 +357,8 @@ public:
   bool P() {
     StackContext* cs = Context::CurrStack();
     queue.push(*cs);
-    BaseSuspender::prepareSuspend();
-    BaseSuspender::doSuspend(*cs);
+    prepareSuspend();
+    doSuspend(*cs);
     return true;
   }
 
