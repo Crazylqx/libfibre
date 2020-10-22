@@ -19,6 +19,23 @@
 
 #include "runtime/Basics.h"
 #include "runtime/ScopedLocks.h"
+
+extern "C" {
+#include "errnoname/errnoname.h"
+}
+#define SYSCALL_HAVE_ERRNONAME 1
+
+// errno is TLS, so must not be inlined
+// see, for example, http://www.crystalclearsoftware.com/soc/coroutine/coroutine/coroutine_thread.html
+extern int _SysErrno() __no_inline;
+extern int& _SysErrnoSet() __no_inline;
+#define SYSCALL_HAVE_SYSERRNO 1
+
+extern void _SYSCALLabort() __noreturn;
+extern void _SYSCALLabortLock();
+extern void _SYSCALLabortUnlock();
+#define	SYSCALL_HAVE_ABORT 1
+
 #include "libfibre/syscall_macro.h"
 
 #include <pthread.h>
