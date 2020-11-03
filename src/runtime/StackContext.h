@@ -150,9 +150,12 @@ public:
   // if suspended (runState == 0), resume
   template<bool DirectSwitch = false>
   void resume() {
-    if (__atomic_fetch_add( &runState, 1, __ATOMIC_RELAXED ) == 0) {
+    size_t prev = __atomic_fetch_add(&runState, 1, __ATOMIC_RELAXED);
+    if (prev == 0) {
       if (DirectSwitch) resumeDirect();
       else resumeInternal();
+    } else {
+      RASSERT(prev == 1, prev);
     }
   }
 

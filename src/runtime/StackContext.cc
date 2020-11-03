@@ -69,8 +69,9 @@ void StackContext::postResume(StackContext* prevStack) {
 // if resumption already triggered -> resume right away
 void StackContext::postSuspend(StackContext* prevStack) {
   CHECK_PREEMPTION(0);
-  // check if previous stack is already resumed?
-  if (__atomic_sub_fetch( &prevStack->runState, 1, __ATOMIC_RELAXED ) > 0) prevStack->resumeInternal();
+  size_t prev = __atomic_fetch_sub(&prevStack->runState, 1, __ATOMIC_RELAXED);
+  if (prev == 2) prevStack->resumeInternal(); // previous stack already resumed
+  else RASSERT(prev == 1, prev);
 }
 
 // destroy stack
