@@ -12,7 +12,7 @@
 //#define TESTING_LOCKED_READYQUEUE     1 // locked vs. lock-free ready queue
 #define TESTING_NEMESIS_READYQUEUE    1 // lock-free: nemesis vs. stub-based MPSC
 //#define TESTING_PLACEMENT_STAGING     1 // load-based staging vs. round-robin placement
-//#define TESTING_IDLE_SPIN         65536 // spin before idle loop
+//#define TESTING_IDLE_SPIN         65536 // spin before entering idle loop
 //#define TESTING_HALT_SPIN         65536 // spin before halting worker thread/core
 //#define TESTING_MUTEX_FIFO            1 // use baton-passing fifo mutex
 //#define TESTING_MUTEX_BARGING         1 // use blocking/barging mutex

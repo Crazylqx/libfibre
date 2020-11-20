@@ -29,6 +29,7 @@ static struct _Bootstrapper {
   ~_Bootstrapper();
 } _lfBootstrap;
 
+#include "runtime/SpinLocks.h"
 // EventScope.h pulls in everything else
 #include "libfibre/EventScope.h"
 
@@ -43,6 +44,7 @@ typedef FibreCondition fibre_cond_t;
 typedef FibreSemaphore fibre_sem_t;
 typedef FibreLockRW    fibre_rwlock_t;
 typedef FibreBarrier   fibre_barrier_t;
+typedef SpinBarrier    spin_barrier_t;
 
 #if TESTING_LOCK_RECURSION
 typedef OwnerMutex<FibreMutex> fibre_mutex_t;
@@ -79,6 +81,7 @@ struct fibre_mutexattr_t {
 struct fibre_condattr_t {};
 struct fibre_rwlockattr_t {};
 struct fibre_barrierattr_t {};
+struct spin_barrierattr_t {};
 
 struct fibre_fastmutexattr_t {
   int type;
@@ -435,6 +438,24 @@ inline int fibre_barrier_destroy(fibre_barrier_t *barrier) {
 
 /** @brief Wait on barrier. Block, if necessary. (`pthread_barrier_wait`) */
 inline int fibre_barrier_wait(fibre_barrier_t *barrier) {
+  return barrier->wait() ? PTHREAD_BARRIER_SERIAL_THREAD : 0;
+}
+
+/** @brief Initialize barrier. (`pthread_barrier_init`) */
+inline int spin_barrier_init(spin_barrier_t *restrict barrier, const spin_barrierattr_t *restrict attr, unsigned count) {
+  RASSERT0(attr == nullptr);
+  barrier->init(count);
+  return 0;
+}
+
+/** @brief Destroy barrier. (`pthread_barrier_destroy`) */
+inline int spin_barrier_destroy(spin_barrier_t *barrier) {
+  barrier->destroy();
+  return 0;
+}
+
+/** @brief Wait on barrier. Block, if necessary. (`pthread_barrier_wait`) */
+inline int spin_barrier_wait(spin_barrier_t *barrier) {
   return barrier->wait() ? PTHREAD_BARRIER_SERIAL_THREAD : 0;
 }
 

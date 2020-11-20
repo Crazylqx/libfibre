@@ -109,13 +109,13 @@ bool BaseProcessor::addReadyStack(StackContext& s) {
 #endif
 
 StackContext& BaseProcessor::scheduleFull(_friend<StackContext>) {
-#if TESTING_LOADBALANCING
 #if TESTING_IDLE_SPIN
   static const size_t SpinMax = TESTING_IDLE_SPIN;
 #else
   static const size_t SpinMax = 1;
 #endif
   for (size_t i = 0; i < SpinMax; i += 1) {
+#if TESTING_LOADBALANCING
 #if TESTING_OPTIMISTIC_ISRS
     StackContext* nextStack = scheduleInternal();
     if (nextStack) {
@@ -131,14 +131,14 @@ StackContext& BaseProcessor::scheduleFull(_friend<StackContext>) {
       }
     }
 #endif
-  }
 #else /* TESTING_LOADBALANCING */
-  if (readyCount.tryP()) {
-    StackContext* nextStack = tryLocal();
-    RASSERT0(nextStack);
-    return *nextStack;
-  }
+    if (readyCount.tryP()) {
+      StackContext* nextStack = tryLocal();
+      RASSERT0(nextStack);
+      return *nextStack;
+    }
 #endif
+  }
   return *idleStack;
 }
 

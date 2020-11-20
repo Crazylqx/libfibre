@@ -464,7 +464,7 @@ public:
 };
 
 // https://doi.org/10.1109/CCGRID.2006.31, similar to MCS lock
-// note that modifications to 'head' need to be integratd with basic MCS operations in this particular way
+// note that modifications to 'head' need to be integrated with basic MCS operations in this particular way
 // pop() inherits the potential stall from MCS queue's next() (see base class above)
 template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveQueueNemesis : public IntrusiveQueueMCS<T,NUM,CNT,LT> {
 
@@ -489,12 +489,12 @@ public:
   template<bool Peeked = false>
   T* pop() {
     if (!head) return nullptr;
-    T* elem = head;                                 // return head;
+    T* elem = head;                                           // return head
     if (elem->link[NUM].vnext) {
       head = elem->link[NUM].vnext;
     } else {
-      head = nullptr; // head must be set to nullptr first, before potential modification of tail
-      T* next = IntrusiveQueueMCS<T,NUM,CNT,LT>::next(*elem);
+      head = nullptr; // store nullptr in head before potential modification of tail in next()
+      T* next = IntrusiveQueueMCS<T,NUM,CNT,LT>::next(*elem); // memory sync in next()
       if (next) head = next;
     }
     IntrusiveQueueMCS<T,NUM,CNT,LT>::clear(*elem);

@@ -63,10 +63,10 @@ namespace Runtime {
 #define RCHECK0(expr)          { if slowpath(!(expr)) { Runtime::Assert::lock(); Runtime::Assert::print( " CHECK: " #expr " in " __FILE__ ":", __LINE__, __func__);                                      Runtime::Assert::printl(); Runtime::Assert::unlock(); } }
 #define RCHECK(expr, args...)  { if slowpath(!(expr)) { Runtime::Assert::lock(); Runtime::Assert::print( " CHECK: " #expr " in " __FILE__ ":", __LINE__, __func__); Runtime::Assert::print(" - ", args); Runtime::Assert::printl(); Runtime::Assert::unlock(); } }
 #else
-#define RASSERT0(expr)
-#define RASSERT(expr, args...)
-#define RCHECK0(expr)
-#define RCHECK(expr, args...)
+#define RASSERT0(expr)         if (expr) {}
+#define RASSERT(expr, args...) if (expr) {}
+#define RCHECK0(expr)          if (expr) {}
+#define RCHECK(expr, args...)  if (expr) {}
 #endif
 
 #endif /* _Assertions_h_ */

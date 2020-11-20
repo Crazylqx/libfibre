@@ -173,4 +173,23 @@ public:
   }
 } __caligned;
 
+// simple spinning barrier for testing
+class SpinBarrier {
+  size_t target;
+  volatile size_t counter;
+public:
+  explicit SpinBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
+  void init(size_t t = 1) {
+    target = t;
+    counter = 0;
+  }
+  bool wait() {
+    size_t cnt = __atomic_fetch_add(&counter, 1, __ATOMIC_SEQ_CST);
+    size_t tgt = cnt + target - (cnt % target);
+    while (counter < tgt) Pause();
+    return true;
+  }
+  void destroy() {}
+} __caligned;
+
 #endif /* _SpinLocks_h_ */

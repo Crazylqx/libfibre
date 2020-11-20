@@ -136,10 +136,7 @@ public:
   /** Detach fibre (no waiting for join synchronization). */
   void detach() { done.detach(); }
   /** Exit fibre (with join, if not detached). */
-  static void exit() __noreturn {
-    ExitException* dummy = nullptr;
-    throw dummy;
-  }
+  static void exit() __noreturn;
 
   // callback from StackContext via Runtime after final context switch
   void destroy(_friend<StackContext>) {
