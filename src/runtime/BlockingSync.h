@@ -550,8 +550,8 @@ public:
 
   void release() {
     RASSERT(owner == Context::CurrStack(), FmtHex(owner));
-    StackContext* next = sem.template V<false>();
-    __atomic_store_n(&owner, nullptr, __ATOMIC_RELAXED); // memory sync via sem.V()
+    owner = nullptr;
+    StackContext* next = sem.template V<false>(); // memory sync via sem.V()
     if (next) next->resume();
   }
 };

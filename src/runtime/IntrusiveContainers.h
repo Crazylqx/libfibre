@@ -492,6 +492,7 @@ public:
     T* elem = head;                                           // return head
     if (elem->link[NUM].vnext) {
       head = elem->link[NUM].vnext;
+      MemoryFence();                                          // force memory sync
     } else {
       head = nullptr; // store nullptr in head before potential modification of tail in next()
       T* next = IntrusiveQueueMCS<T,NUM,CNT,LT>::next(*elem); // memory sync in next()
