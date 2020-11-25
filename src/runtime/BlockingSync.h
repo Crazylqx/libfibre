@@ -19,6 +19,7 @@
 
 #include "runtime/Benaphore.h"
 #include "runtime/Debug.h"
+#include "runtime/SpinLocks.h"
 #include "runtime/Stats.h"
 #include "runtime/StackContext.h"
 #include "runtime-glue/RuntimeContext.h"
@@ -347,7 +348,7 @@ public:
   }
 };
 
-// limited: no concurrent invocations of V() allowed!
+// limited: maximum value 0, no concurrent invocations of V()
 class LimitedSemaphore : public BaseSuspender {
   FlexStackMPSC queue;
 
@@ -373,6 +374,19 @@ public:
     if (!Enqueue) return next;
     next->resume();
     return nullptr;
+  }
+};
+
+// limited: maximum value 0
+template<typename Lock>
+class LockedLimitedSemaphore : public LimitedSemaphore {
+  Lock lock;
+public:
+  explicit LockedLimitedSemaphore(ssize_t c = 0) : LimitedSemaphore(c) {}
+  template<bool Enqueue = true>
+  StackContext* V() {
+    ScopedLock<Lock> sl(lock);
+    return LimitedSemaphore::V<Enqueue>();
   }
 };
 
@@ -422,15 +436,15 @@ public:
 
   template<bool Enqueue = true>
   StackContext* V() {
-    ssize_t c = counter;
-    for (;;) {
-      if (c == 1) return nullptr;
-      if (__atomic_compare_exchange_n(&counter, &c, c+1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
-        if (c == 0) return nullptr;
-        RASSERT(c < 0, c);
-        return sem.template V<Enqueue>();
+    ssize_t c = __atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST);
+    if (c < 1) return sem.template V<Enqueue>();
+    while (c > 1) {
+      if (__atomic_compare_exchange_n(&counter, &c, c-1, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+        c = counter;
+        Pause();
       }
     }
+    return nullptr;
   }
 };
 
@@ -599,9 +613,9 @@ class Mutex : public SpinMutex<Semaphore<Lock, true>, 0, 0, 0> {};
 #endif
 
 #if TESTING_MUTEX_SPIN
-typedef SpinMutex<BinaryBenaphore<LimitedSemaphore>, 4, 1024, 16> FastMutex;
+typedef SpinMutex<BinaryBenaphore<LockedLimitedSemaphore<BinaryLock<>>>, 4, 1024, 16> FastMutex;
 #else
-typedef SpinMutex<BinaryBenaphore<LimitedSemaphore>, 0, 0, 0> FastMutex;
+typedef SpinMutex<BinaryBenaphore<LockedLimitedSemaphore<BinaryLock<>>>, 0, 0, 0> FastMutex;
 #endif
 
 // simple blocking RW lock: release alternates; new readers block when writer waits -> no starvation
