@@ -493,6 +493,10 @@ extern "C" ssize_t cfibre_sendfile(int out_fd, int in_fd, off_t *offset, size_t 
 }
 #endif
 
+extern "C" int cfibre_fcntl(int fildes, int cmd, int flags) {
+  return lfFcntl(fildes, cmd, flags);
+}
+
 extern "C" void cfibre_suspendFD(int fd) {
   Context::CurrEventScope().suspendFD(fd);
 }

@@ -220,6 +220,9 @@ int cfibre_sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *
 ssize_t cfibre_sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
 #endif
 
+/** @brief Set socket flags (`fcntl`). */
+int cfibre_fcntl(int fildes, int cmd, int flags);
+
 /** @brief temporarily halt event handling for FD */
 void cfibre_suspendFD(int fd);
 /** @brief resume event handling for FD */

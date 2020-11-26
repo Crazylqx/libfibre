@@ -45,11 +45,14 @@ class EventScope {
   struct SyncFD {
     SyncSem RD;
     SyncSem WR;
+    bool nonblocking;
 #if TESTING_LAZY_FD_REGISTRATION
     FastMutex   lock;
     BasePoller* poller;
     size_t      status;
-    SyncFD() : poller(nullptr), status(0) {}
+    SyncFD() : nonblocking(false), poller(nullptr), status(0) {}
+#else
+    SyncFD() : nonblocking(false) {}
 #endif
   } *fdSyncVector;
 
@@ -230,6 +233,7 @@ public:
     SyncFD& fdsync = fdSyncVector[fd];
     fdsync.RD.sem.reinit();
     fdsync.WR.sem.reinit();
+    fdsync.nonblocking = false;
 #if TESTING_LAZY_FD_REGISTRATION
     ScopedLock<FastMutex> sl(fdsync.lock);
     fdsync.status = 0;
@@ -328,6 +332,7 @@ public:
   template<bool Input, bool Yield, bool Cluster, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
     RASSERT0(fd >= 0 && fd < fdCount);
+    if (fdSyncVector[fd].nonblocking) return iofunc(fd, a...);
     if (Yield) Fibre::yield();
     T ret = iofunc(fd, a...);
     if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
@@ -346,6 +351,20 @@ public:
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
       sync.sem.yieldP();
     }
+  }
+
+  int fcntl(int fildes, int cmd, int flags) {
+    bool NB = flags & O_NONBLOCK;
+    flags |= O_NONBLOCK; // internally, all sockets need to be nonblocking
+    int ret = ::fcntl(fildes, cmd, flags);
+    if (ret != -1) {
+      if (NB) {
+        fdSyncVector[fildes].nonblocking = true;
+      } else {
+        fdSyncVector[fildes].nonblocking = false;
+      }
+    }
+    return ret;
   }
 };
 
@@ -446,6 +465,10 @@ inline int lfPipe(int pipefd[2], int flags = 0) {
   Context::CurrEventScope().registerFD(pipefd[0]);
   Context::CurrEventScope().registerFD(pipefd[1]);
   return ret;
+}
+
+inline int lfFcntl(int fildes, int cmd, int flags) {
+  return Context::CurrEventScope().fcntl(fildes, cmd, flags);
 }
 
 /** @brief Close file descriptor. */
