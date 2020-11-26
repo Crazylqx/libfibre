@@ -318,20 +318,17 @@ public:
 
   template<typename... Args>
   bool P(const Args&... args) { lock.acquire(); return internalP(false, args...); }
-
-  template<typename... Args>
-  bool P_yield(const Args&... args) { lock.acquire(); return internalP(true, args...); }
-
-  bool tryP() { return P(false); }
+  bool tryP()                 { lock.acquire(); return internalP(false,false); }
+  bool yieldP()               { lock.acquire(); return internalP(true); }
 
   template<typename Lock2>
-  bool P_unlock(Lock2& l) {
+  bool unlockP(Lock2& l) {
     lock.acquire();
     l.release();
     return internalP(false);
   }
 
-  void P_fake(size_t c = 1) {
+  void fakeP(size_t c = 1) {
     ScopedLock<Lock> al(lock);
     if (Binary) counter = 0;
     else counter -= c;
@@ -415,30 +412,30 @@ public:
   }
 };
 
-template<typename SemType>
-class BinaryBenaphore : public Benaphore<SemType> {
+template<typename SemType, bool Binary = false>
+class StackBenaphore : public Benaphore<SemType> {
   using Benaphore<SemType>::counter;
   using Benaphore<SemType>::sem;
 
-  bool internalP(bool yield, bool wait) {
-    if (!wait) return Benaphore<SemType>::tryP();
+  bool internalP(bool yield) {
     if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) sem.P();
     else if (yield) StackContext::yield();
     return true;
   }
 
 public:
-  explicit BinaryBenaphore(ssize_t c) : Benaphore<SemType>(c) {}
+  explicit StackBenaphore(ssize_t c) : Benaphore<SemType>(c) {}
 
-  bool P(bool wait = true) { return internalP(false, wait); }
-
-  bool P_yield(bool wait = true) { return internalP(true, wait); }
+  bool P()          { return internalP(false); }
+  bool tryP()       { return Benaphore<SemType>::tryP(); }
+  bool yieldP()     { return internalP(true); }
+  bool P(bool wait) { return wait ? P() : tryP(); }
 
   template<bool Enqueue = true>
   StackContext* V() {
     ssize_t c = __atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST);
     if (c < 1) return sem.template V<Enqueue>();
-    while (c > 1) {
+    while (Binary && c > 1) {
       if (__atomic_compare_exchange_n(&counter, &c, c-1, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
         c = counter;
         Pause();
@@ -613,9 +610,9 @@ class Mutex : public SpinMutex<Semaphore<Lock, true>, 0, 0, 0> {};
 #endif
 
 #if TESTING_MUTEX_SPIN
-typedef SpinMutex<BinaryBenaphore<LockedLimitedSemaphore<BinaryLock<>>>, 4, 1024, 16> FastMutex;
+typedef SpinMutex<StackBenaphore<LockedLimitedSemaphore<BinaryLock<>>,true>, 4, 1024, 16> FastMutex;
 #else
-typedef SpinMutex<BinaryBenaphore<LockedLimitedSemaphore<BinaryLock<>>>, 0, 0, 0> FastMutex;
+typedef SpinMutex<StackBenaphore<LockedLimitedSemaphore<BinaryLock<>>,true>, 0, 0, 0> FastMutex;
 #endif
 
 // simple blocking RW lock: release alternates; new readers block when writer waits -> no starvation

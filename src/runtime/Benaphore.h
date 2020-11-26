@@ -39,9 +39,9 @@ public:
     return (c >= 1) && __atomic_compare_exchange_n(&counter, &c, c-1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
   }
 
-  bool P_unlock(Benaphore<SemType>& l) {
+  bool unlockP(Benaphore<SemType>& l) {
     if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) {
-      sem.P_unlock(l.sem);
+      sem.unlockP(l.sem);
     } else {
       l.sem.V();
     }

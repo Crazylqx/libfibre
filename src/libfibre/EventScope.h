@@ -272,8 +272,8 @@ public:
 
   void suspendFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].RD.sem.P_fake();
-    fdSyncVector[fd].WR.sem.P_fake();
+    fdSyncVector[fd].RD.sem.fakeP();
+    fdSyncVector[fd].WR.sem.fakeP();
   }
 
   void resumeFD(int fd) {
@@ -344,7 +344,7 @@ public:
     for (;;) {
       ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
-      sync.sem.P_yield();
+      sync.sem.yieldP();
     }
   }
 };
