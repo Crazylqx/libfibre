@@ -39,8 +39,8 @@ class EventScope {
   // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
   // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
   struct SyncSem {
-    Mutex<FastMutex>           mtx;
-    Semaphore<WorkerLock,true> sem;
+    Mutex<FastMutex>                 mtx;
+    LockedSemaphore<WorkerLock,true> sem;
   };
   struct SyncFD {
     SyncSem RD;
@@ -231,8 +231,8 @@ public:
   void deregisterFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
-    fdsync.RD.sem.reinit();
-    fdsync.WR.sem.reinit();
+    fdsync.RD.sem.init();
+    fdsync.WR.sem.init();
     fdsync.nonblocking = false;
 #if TESTING_LAZY_FD_REGISTRATION
     ScopedLock<FastMutex> sl(fdsync.lock);

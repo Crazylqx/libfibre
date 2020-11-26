@@ -43,7 +43,6 @@ public:
   typedef typename std::multimap<Time,BaseTimer*>::iterator Handle;
 
   TimerQueue() { stats = new TimerStats(this); }
-
   bool empty() const { return queue.empty(); }
   void reinit() { new (stats) TimerStats(this); }
 
@@ -277,7 +276,7 @@ public:
 };
 
 template<typename Lock, bool Binary, typename BQ = BlockingQueue>
-class Semaphore {
+class LockedSemaphore {
 protected:
   Lock lock;
   volatile ssize_t counter;
@@ -294,27 +293,14 @@ protected:
   }
 
 public:
-  explicit Semaphore(ssize_t c = 0) : counter(c) {}
-  // baton passing requires serialization at destruction
-  ~Semaphore() { destroy(); }
-  ssize_t getValue() { return counter; }
-
-  void init(ssize_t c = 0) {
+  explicit LockedSemaphore(ssize_t c = 0) : counter(c) {}
+  ~LockedSemaphore() { destroy(); }
+  void init(ssize_t c = 0) { new (this) LockedSemaphore(c); }
+  void destroy() { // baton passing requires serialization at destruction
     ScopedLock<Lock> al(lock);
     RASSERT0(bq.empty());
-    counter = c;
   }
-
-  void destroy() {
-    ScopedLock<Lock> al(lock);
-    bq.reset();
-  }
-
-  void reinit(ssize_t c = 0) {
-    ScopedLock<Lock> al(lock);
-    bq.reset();
-    counter = c;
-  }
+  ssize_t getValue() { return counter; }
 
   template<typename... Args>
   bool P(const Args&... args) { lock.acquire(); return internalP(false, args...); }
@@ -345,14 +331,19 @@ public:
   }
 };
 
-// limited: maximum value 0, no concurrent invocations of V()
-class LimitedSemaphore : public BaseSuspender {
-  FlexStackMPSC queue;
+template<typename Lock = DummyLock>
+class LimitedSemaphore0 : public BaseSuspender {
+  Lock lock;
+  FlexStackQueueMPSC queue;
 
 public:
-  explicit LimitedSemaphore(ssize_t c = 0) { RASSERT(c == 0, c); }
+  explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
+  ~LimitedSemaphore0() { destroy(); }
+  void init(ssize_t c = 0) { new (this) LimitedSemaphore0(c); }
+  void destroy() { RASSERT0(queue.empty()); }
 
-  bool P() {
+  bool P(bool wait = true) {
+    RASSERT0(wait);
     StackContext* cs = Context::CurrStack();
     queue.push(*cs);
     prepareSuspend();
@@ -360,88 +351,95 @@ public:
     return true;
   }
 
-  template<bool Enqueue = true>
+  template<bool Enqueue = true, bool DirectSwitch = false>
   StackContext* V() {
+    ScopedLock<Lock> sl(lock);
     StackContext* next;
     for (;;) {
       next = queue.pop();
       if (next) break;
       Pause();
     }
-    if (!Enqueue) return next;
-    next->resume();
-    return nullptr;
+    if (Enqueue) next->resume<DirectSwitch>();
+    return next;
   }
 };
 
-// limited: maximum value 0
-template<typename Lock>
-class LockedLimitedSemaphore : public LimitedSemaphore {
+// NOTE: on queue after P and before V
+template<typename Lock = DummyLock>
+class LimitedSemaphore1 : public BaseSuspender {
   Lock lock;
-public:
-  explicit LockedLimitedSemaphore(ssize_t c = 0) : LimitedSemaphore(c) {}
-  template<bool Enqueue = true>
-  StackContext* V() {
-    ScopedLock<Lock> sl(lock);
-    return LimitedSemaphore::V<Enqueue>();
-  }
-};
-
-class FastFifoMutex {
-  size_t counter;
-  LimitedSemaphore sem;
+  FlexStackQueueNemesis queue;
 
 public:
-  FastFifoMutex() : counter(0) {}
+  explicit LimitedSemaphore1(ssize_t c = 1) { RASSERT(c == 1, c); }
+  ~LimitedSemaphore1() { destroy(); }
+  void init(ssize_t c = 1) { new (this) LimitedSemaphore1(c); }
+  void destroy() { RASSERT0(queue.empty()); }
 
-  bool acquire() {
-    if (__atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST) == 1) return true;
-    return sem.P();
-  }
-
-  bool tryAcquire() {
-    size_t c = counter;
-    return (c == 0) && __atomic_compare_exchange_n(&counter, &c, c+1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
-  }
-
-  template<bool DirectSwitch = false>
-  void release() {
-    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) == 0) return;
-    StackContext* next = sem.V<false>();
-    next->resume<DirectSwitch>();
-  }
-};
-
-template<typename SemType, bool Binary = false>
-class StackBenaphore : public Benaphore<SemType> {
-  using Benaphore<SemType>::counter;
-  using Benaphore<SemType>::sem;
-
-  bool internalP(bool yield) {
-    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) sem.P();
-    else if (yield) StackContext::yield();
+  bool P(bool wait = true) {
+    RASSERT0(wait);
+    StackContext* cs = Context::CurrStack();
+    if (queue.push(*cs)) {
+      prepareSuspend();
+      doSuspend(*cs);
+    }
     return true;
   }
 
-public:
-  explicit StackBenaphore(ssize_t c) : Benaphore<SemType>(c) {}
+  template<bool Enqueue = true, bool DirectSwitch = false>
+  StackContext* V() {
+    ScopedLock<Lock> sl(lock);
+    StackContext* next = nullptr;
+    queue.pop(next);
+    if (!next) return nullptr;
+    if (Enqueue) next->resume<DirectSwitch>();
+    return next;
+  }
+};
 
-  bool P()          { return internalP(false); }
-  bool tryP()       { return Benaphore<SemType>::tryP(); }
-  bool yieldP()     { return internalP(true); }
+class SimpleMutex0 {
+  Benaphore<> ben;
+  LimitedSemaphore0<> sem;
+public:
+  SimpleMutex0() : sem(0) {}
+  bool acquire()    { return ben.P() || sem.P(); }
+  bool tryAcquire() { return ben.tryP(); }
+  void release()    { if (!ben.V()) sem.V(); }
+};
+
+class SimpleMutex1 {
+  LimitedSemaphore1<> sem;
+public:
+  SimpleMutex1() : sem(1) {}
+  bool acquire() { return sem.P(); }
+  void release() { sem.V(); }
+};
+
+template<typename Semaphore, bool Binary = false>
+class StackContextBenaphore {
+  Benaphore<Binary> ben;
+  Semaphore sem;
+
+public:
+  explicit StackContextBenaphore(ssize_t c) : ben(c), sem(0) {}
+  void init(ssize_t c) { new (this) StackContextBenaphore(c); }
+  void destroy() { sem.destroy();  }
+
+  bool P()          { return ben.P() || sem.P(); }
+  bool tryP()       { return ben.tryP(); }
   bool P(bool wait) { return wait ? P() : tryP(); }
+
+  bool yieldP() {
+    if (!ben.P()) return sem.P();
+    StackContext::yield();
+    return true;
+  }
 
   template<bool Enqueue = true>
   StackContext* V() {
-    ssize_t c = __atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST);
-    if (c < 1) return sem.template V<Enqueue>();
-    while (Binary && c > 1) {
-      if (__atomic_compare_exchange_n(&counter, &c, c-1, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
-        c = counter;
-        Pause();
-      }
-    }
-    return nullptr;
+    if (ben.V()) return nullptr;
+    return sem.template V<Enqueue>();
   }
 };
 
@@ -470,19 +468,12 @@ protected:
 
 public:
   LockedMutex() : owner(nullptr) {}
-  // baton passing requires serialization at destruction
   ~LockedMutex() { destroy(); }
-
-  void init() {
-    ScopedLock<Lock> al(lock);
-    RASSERT0(bq.empty());
-    owner = nullptr;
-  }
-
-  void destroy() {
+  void init() { new (this) LockedMutex; }
+  void destroy() { // baton passing requires serialization at destruction
     ScopedLock<Lock> al(lock);
     RASSERT(owner == nullptr, FmtHex(owner));
-    bq.reset();
+    RASSERT0(bq.empty());
   }
 
   template<typename... Args>
@@ -542,16 +533,10 @@ protected:
 
 public:
   SpinMutex() : owner(nullptr), sem(1) {}
-
-  void init() {
-    StackContext* old = __atomic_exchange_n(&owner, nullptr, __ATOMIC_SEQ_CST);
-    RASSERT(old == nullptr, FmtHex(old));
-    sem.init(1);
-  }
-
+  ~SpinMutex() { RASSERT(owner == nullptr, FmtHex(owner)); }
+  void init() { new (this) SpinMutex; }
   void destroy() {
-    StackContext* old = __atomic_exchange_n(&owner, nullptr, __ATOMIC_SEQ_CST);
-    RASSERT(old == nullptr, FmtHex(old));
+    RASSERT(owner == nullptr, FmtHex(owner));
     sem.destroy();
   }
 
@@ -599,25 +584,31 @@ public:
 };
 
 template<typename Lock>
+class Semaphore : public LockedSemaphore<Lock, false> {
+public:
+  Semaphore(size_t c = 0) : LockedSemaphore<Lock, false>(c) {}
+};
+
+template<typename Lock>
 #if TESTING_MUTEX_FIFO
 class Mutex : public LockedMutex<Lock, true> {};
 #elif TESTING_MUTEX_BARGING
 class Mutex : public LockedMutex<Lock, false> {};
 #elif TESTING_MUTEX_SPIN
-class Mutex : public SpinMutex<Semaphore<Lock, true>, 4, 1024, 16> {};
+class Mutex : public SpinMutex<LockedSemaphore<Lock, true>, 4, 1024, 16> {};
 #else
-class Mutex : public SpinMutex<Semaphore<Lock, true>, 0, 0, 0> {};
+class Mutex : public SpinMutex<LockedSemaphore<Lock, true>, 0, 0, 0> {};
 #endif
 
 #if TESTING_MUTEX_SPIN
-typedef SpinMutex<StackBenaphore<LockedLimitedSemaphore<BinaryLock<>>,true>, 4, 1024, 16> FastMutex;
+typedef SpinMutex<StackContextBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 4, 1024, 16> FastMutex;
 #else
-typedef SpinMutex<StackBenaphore<LockedLimitedSemaphore<BinaryLock<>>,true>, 0, 0, 0> FastMutex;
+typedef SpinMutex<StackContextBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 0, 0, 0> FastMutex;
 #endif
 
 // simple blocking RW lock: release alternates; new readers block when writer waits -> no starvation
 template<typename Lock, typename BQ = BlockingQueue>
-class LockRW {
+class LockedRW {
   Lock lock;
   ssize_t state;                    // -1 writer, 0 open, >0 readers
   BQ bqR;
@@ -649,20 +640,14 @@ class LockRW {
   }
 
 public:
-  LockRW() : state(0) {}
-
-  void init() {
-    ScopedLock<Lock> al(lock);
-    RASSERT0(bqR.empty());
-    RASSERT0(bqW.empty());
-    state = 0;
-  }
-
+  LockedRW() : state(0) {}
+  ~LockedRW() { destroy(); }
+  void init() { new (this) LockedRW; }
   void destroy() {
     ScopedLock<Lock> al(lock);
     RASSERT(state == 0, state);
-    bqR.reset();
-    bqW.reset();
+    RASSERT0(bqR.empty());
+    RASSERT0(bqW.empty());
   }
 
   template<typename... Args>
@@ -690,25 +675,18 @@ public:
 
 // simple blocking barrier
 template<typename Lock, typename BQ = BlockingQueue>
-class Barrier {
+class LockedBarrier {
   Lock lock;
   size_t target;
   size_t counter;
   BQ bq;
 public:
-  explicit Barrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
-
-  void init(size_t t = 1) {
-    RASSERT0(t > 0)
-    ScopedLock<Lock> al(lock);
-    RASSERT0(bq.empty())
-    target = t;
-    counter = 0;
-  }
-
+  explicit LockedBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
+  ~LockedBarrier() { destroy(); }
+  void init(size_t t = 1) { new (this) LockedBarrier(t); }
   void destroy() {
     ScopedLock<Lock> al(lock);
-    bq.reset();
+    RASSERT0(bq.empty())
   }
 
   bool wait() {
@@ -732,8 +710,9 @@ class Condition {
   BQ bq;
 
 public:
-  void init() { RASSERT0(bq.empty()); }
-  void destroy() { bq.reset(); }
+  ~Condition() { destroy(); }
+  void init() { new (this) Condition; }
+  void destroy() { RASSERT0(bq.empty()); }
 
   template<typename Lock>
   bool wait(Lock& lock) { return bq.block(lock); }

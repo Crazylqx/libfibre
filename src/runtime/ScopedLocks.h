@@ -17,6 +17,11 @@
 #ifndef _ScopedLocks_h_
 #define _ScopedLocks_h_ 1
 
+struct DummyLock {
+  void acquire() {}
+  void release() {}
+};
+
 template <typename Lock>
 class ScopedLock {
   Lock& lk;

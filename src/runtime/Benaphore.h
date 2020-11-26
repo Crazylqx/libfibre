@@ -17,39 +17,40 @@
 #ifndef _Benaphore_h_
 #define _Benaphore_h_ 1
 
+#include "runtime/Assertions.h"
 #include <sys/types.h> // ssize_t
 
-template<typename SemType>
+template<bool Binary = false>
 class Benaphore {
 protected:
   volatile ssize_t counter;
-  SemType sem;
 
 public:
-  explicit Benaphore(ssize_t c = 0) : counter(c), sem(0) {}
-  ssize_t getValue() { return counter; }
+  explicit Benaphore(ssize_t c = 0) : counter(c) {}
+  ssize_t getValue() const { return counter; }
 
-  bool P() {
-    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) sem.P();
-    return true;
+  bool P() { // true: success (no blocking needed)
+    return __atomic_fetch_sub(&counter, 1, __ATOMIC_SEQ_CST) > 0;
   }
 
-  bool tryP() {
+  bool tryP() { // true: success
     ssize_t c = counter;
     return (c >= 1) && __atomic_compare_exchange_n(&counter, &c, c-1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
   }
 
-  bool unlockP(Benaphore<SemType>& l) {
-    if (__atomic_sub_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 0) {
-      sem.unlockP(l.sem);
-    } else {
-      l.sem.V();
+  bool V() { // true: success (no resume needed)
+    if (!Binary) return __atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST) > 0;
+    for (ssize_t c = 0;;) {
+      if (__atomic_compare_exchange_n(&counter, &c, c+1, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+        if (c == 0) return true;
+        RASSERT(c < 0, c);
+        return false;
+      } else {
+        if (c == 1) return true;
+        RASSERT(c < 1, c);
+        Pause();
+      }
     }
-    return true;
-  }
-
-  void V() {
-    if (__atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST) < 1) sem.V();
   }
 };
 

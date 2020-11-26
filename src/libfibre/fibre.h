@@ -33,11 +33,11 @@ static struct _Bootstrapper {
 // EventScope.h pulls in everything else
 #include "libfibre/EventScope.h"
 
-typedef Mutex<WorkerLock>           FibreMutex;
-typedef Condition<>                 FibreCondition;
-typedef Semaphore<WorkerLock,false> FibreSemaphore;
-typedef LockRW<WorkerLock>          FibreLockRW;
-typedef Barrier<WorkerLock>         FibreBarrier;
+typedef Mutex<WorkerLock>         FibreMutex;
+typedef Condition<>               FibreCondition;
+typedef Semaphore<WorkerLock>     FibreSemaphore;
+typedef LockedRW<WorkerLock>      FibreLockRW;
+typedef LockedBarrier<WorkerLock> FibreBarrier;
 
 typedef Fibre*         fibre_t;
 typedef FibreCondition fibre_cond_t;

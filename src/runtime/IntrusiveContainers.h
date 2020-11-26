@@ -18,6 +18,7 @@
 #define _IntrusiveContainer_h_ 1
 
 #include "runtime/Basics.h"
+#include "runtime/LockFreeQueues.h"
 
 template<typename T,size_t CNT=1> class SingleLink;
 template<typename T,size_t CNT=1> class DoubleLink;
@@ -26,17 +27,14 @@ template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> cla
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> class IntrusiveQueue;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=DoubleLink<T,CNT>> class IntrusiveRing;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=DoubleLink<T,CNT>> class IntrusiveList;
-template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> class IntrusiveQueueMCS;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> class IntrusiveQueueNemesis;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>,bool Blocking=false> class IntrusiveQueueStub;
 
 template<typename T,size_t CNT> class SingleLink {
   template<typename,size_t,size_t,typename> friend class IntrusiveStack;
   template<typename,size_t,size_t,typename> friend class IntrusiveQueue;
-  template<typename,size_t,size_t,typename> friend class IntrusiveMCS;
   template<typename,size_t,size_t,typename> friend class IntrusiveQueueNemesis;
   template<typename,size_t,size_t,typename,bool> friend class IntrusiveQueueStub;
-  friend class BlockingLock;
   struct {
     union {
       T* next;
@@ -56,10 +54,8 @@ template<typename T,size_t CNT> class DoubleLink {
   template<typename,size_t,size_t,typename> friend class IntrusiveQueue;
   template<typename,size_t,size_t,typename> friend class IntrusiveRing;
   template<typename,size_t,size_t,typename> friend class IntrusiveList;
-  template<typename,size_t,size_t,typename> friend class IntrusiveQueueMCS;
   template<typename,size_t,size_t,typename> friend class IntrusiveQueueNemesis;
   template<typename,size_t,size_t,typename,bool> friend class IntrusiveQueueStub;
-  friend class BlockingLock;
   struct {
     union {
       T* next;
@@ -125,13 +121,6 @@ public:
     head = last->link[NUM].next;
     clear(*last);
     return last;
-  }
-
-  void transferFrom(IntrusiveStack& es, size_t& count) {
-    if (es.empty()) return;
-    T* first = es.front();
-    T* last = es.pop(count);
-    push(*first, *last);
   }
 };
 
@@ -201,28 +190,6 @@ public:
     if (tail == last) tail = nullptr;
     clear(*last);
     return last;
-  }
-
-  T* popAll() {
-    RASSERT(!empty(), FmtHex(this));
-    T* last = tail;
-    head = tail = nullptr;
-    clear(*last);
-    return last;
-  }
-
-  void transferFrom(IntrusiveQueue& eq, size_t& count) {
-    if (eq.empty()) return;
-    T* first = eq.front();
-    T* last = eq.pop(count);
-    push(*first, *last);
-  }
-
-  void transferAllFrom(IntrusiveQueue& eq) {
-    if (eq.empty()) return;
-    T* first = eq.front();
-    T* last = eq.popAll();
-    push(*first, *last);
   }
 };
 
@@ -389,118 +356,6 @@ public:
 
   T* pop_front() { RASSERT(!empty(), FmtHex(this)); return remove(*front()); }
   T* pop_back()  { RASSERT(!empty(), FmtHex(this)); return remove(*back()); }
-
-  void transferFrom(IntrusiveList& el, size_t& count) {
-    if (el.empty()) return;
-    T* first = el.front();
-    T* last = el.remove(*first, count);
-    splice_back(*first, *last);
-  }
-
-  void transferAllFrom(IntrusiveList& el) {
-    if (el.empty()) return;
-    T* first = el.front();
-    T* last = el.removeAll();
-    splice_back(*first, *last);
-  }
-};
-
-// https://doi.org/10.1145/103727.103729
-// the MCS queue can be used to construct an MCS lock or the Nemesis queue
-// next() might stall, if the queue contains one element and the producer of a second elements waits before setting 'prev->vnext'
-template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveQueueMCS {
-  static_assert(NUM < CNT, "NUM >= CNT");
-
-protected:
-  T* volatile tail;
-
-public:
-  IntrusiveQueueMCS() : tail(nullptr) {}
-  bool empty() const { return tail == nullptr; }
-
-  static void clear(T& elem) {
-#if TESTING_ENABLE_ASSERTIONS
-    elem.link[NUM].vnext = nullptr;
-#endif
-  }
-
-  bool tryPushEmpty(T& first, T& last) {
-    if (!empty()) return false;
-#if !TESTING_ENABLE_ASSERTIONS
-    last.link[NUM].vnext = nullptr;
-#endif
-    T* expected = nullptr;
-    return  __atomic_compare_exchange_n(&tail, &expected, &last, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
-  }
-
-  bool tryPushEmpty(T& elem) { return tryPushEmpty(elem, elem); }
-
-  bool push(T& first, T& last) {
-#if !TESTING_ENABLE_ASSERTIONS
-    last.link[NUM].vnext = nullptr;
-#endif
-    // make sure writes to 'vnext' are not reordered with this update
-    T* prev = __atomic_exchange_n(&tail, &last, __ATOMIC_SEQ_CST); // swing tail to last of new element(s)
-    if (!prev) return true;
-    prev->link[NUM].vnext = &first;
-    return false;
-  }
-
-  bool push(T& elem) { return push(elem, elem); }
-
-  T* next(T& elem) {
-    T* expected = &elem;
-    if (__atomic_compare_exchange_n(&tail, &expected, nullptr, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return nullptr;
-    while (!elem.link[NUM].vnext) Pause();         // producer in push()
-    return elem.link[NUM].vnext;
-  }
-
-  bool transferAllFrom(IntrusiveQueue<T,NUM,CNT,LT>& eq) {
-    if (eq.empty()) return false;
-    T* first = eq.front();
-    T* last = eq.popAll();
-    return push(*first, *last);
-  }
-};
-
-// https://doi.org/10.1109/CCGRID.2006.31, similar to MCS lock
-// note that modifications to 'head' need to be integrated with basic MCS operations in this particular way
-// pop() inherits the potential stall from MCS queue's next() (see base class above)
-template<typename T, size_t NUM, size_t CNT, typename LT> class IntrusiveQueueNemesis : public IntrusiveQueueMCS<T,NUM,CNT,LT> {
-
-  T* volatile head;
-
-public:
-  IntrusiveQueueNemesis() : head(nullptr) {}
-
-  bool push(T& first, T& last) {
-    if (IntrusiveQueueMCS<T,NUM,CNT,LT>::push(first, last)) {
-      head = &first;
-      return true;
-    } else {
-      return false;
-    }
-  }
-
-  bool push(T& elem) { return push(elem, elem); }
-
-  T* peek() const { return head; }
-
-  template<bool Peeked = false>
-  T* pop() {
-    if (!head) return nullptr;
-    T* elem = head;                                           // return head
-    if (elem->link[NUM].vnext) {
-      head = elem->link[NUM].vnext;
-      MemoryFence();                                          // force memory sync
-    } else {
-      head = nullptr; // store nullptr in head before potential modification of tail in next()
-      T* next = IntrusiveQueueMCS<T,NUM,CNT,LT>::next(*elem); // memory sync in next()
-      if (next) head = next;
-    }
-    IntrusiveQueueMCS<T,NUM,CNT,LT>::clear(*elem);
-    return elem;
-  }
 };
 
 // http://doc.cat-v.org/inferno/concurrent_gc/concurrent_gc.pdf
@@ -529,9 +384,9 @@ template<typename T, size_t NUM, size_t CNT, typename LT, bool Blocking> class I
   bool checkStub() {
     if (head == stub) {                             // if current front chunk is empty
       if (Blocking) {                               // BLOCKING:
-        LT* expected = stub;                        //   check if tail also points at stub -> empty?
-        LT* xchg = (LT*)(uintptr_t(expected) | 1);  //   if yes, mark queue empty
-        bool empty = __atomic_compare_exchange_n((LT**)&tail, &expected, xchg, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+        T* expected = stub;                         //   check if tail also points at stub -> empty?
+        T* xchg = (T*)(uintptr_t(expected) | 1);    //   if yes, mark queue empty
+        bool empty = __atomic_compare_exchange_n((T**)&tail, &expected, xchg, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
         if (empty) return false;                    //   queue is empty and is marked now
         if (uintptr_t(expected) & 1) return false;  //   queue is empty and was marked before
       } else {                                      // NONBLOCKING:
@@ -549,6 +404,7 @@ public:
     head = tail = stub->link[NUM].vnext = stub->link[NUM].prev = stub;
     if (Blocking) tail = (T*)(uintptr_t(tail) | 1);      // mark queue empty
   }
+  bool empty() const { return (head == stub && tail == stub); }
 
   bool push(T& first, T& last) {
 #if !TESTING_ENABLE_ASSERTIONS
@@ -587,6 +443,12 @@ public:
     T* last = eq.popAll();
     return push(*first, *last);
   }
+};
+
+template<typename T, size_t NUM, size_t CNT, typename LT> struct IntrusiveQueueNemesis {
+  static_assert(NUM < CNT, "NUM >= CNT");
+  static inline T* volatile& Next(T& elem) { return elem.link[NUM].vnext; }
+  typedef QueueNemesis<T,Next> Queue;
 };
 
 #endif /* _IntrusiveContainer_h_ */
