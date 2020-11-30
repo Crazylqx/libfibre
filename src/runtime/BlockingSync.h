@@ -292,12 +292,16 @@ protected:
 public:
   explicit LockedSemaphore(ssize_t c = 0) : counter(c) {}
   ~LockedSemaphore() { destroy(); }
-  void init(ssize_t c = 0) { new (this) LockedSemaphore(c); }
+  void reinit(ssize_t c = 0) {
+    ScopedLock<Lock> al(lock);
+    RASSERT0(bq.empty());
+    counter = c;
+  }
   void destroy() { // baton passing requires serialization at destruction
     ScopedLock<Lock> al(lock);
     RASSERT0(bq.empty());
   }
-  ssize_t getValue() { return counter; }
+  ssize_t getValue() const { return counter; }
 
   template<typename... Args>
   bool P(const Args&... args) { lock.acquire(); return internalP(false, args...); }
@@ -354,7 +358,6 @@ protected:
 public:
   LockedMutex() : owner(nullptr) {}
   ~LockedMutex() { destroy(); }
-  void init() { new (this) LockedMutex; }
   void destroy() { // baton passing requires serialization at destruction
     ScopedLock<Lock> al(lock);
     RASSERT(owner == nullptr, FmtHex(owner));
@@ -387,7 +390,6 @@ class LockedBarrier {
 public:
   explicit LockedBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
   ~LockedBarrier() { destroy(); }
-  void init(size_t t = 1) { new (this) LockedBarrier(t); }
   void destroy() {
     ScopedLock<Lock> al(lock);
     RASSERT0(bq.empty())
@@ -444,7 +446,6 @@ class LockedRWLock {
 public:
   LockedRWLock() : state(0) {}
   ~LockedRWLock() { destroy(); }
-  void init() { new (this) LockedRWLock; }
   void destroy() {
     ScopedLock<Lock> al(lock);
     RASSERT(state == 0, state);
@@ -483,7 +484,6 @@ class LimitedSemaphore0 {
 public:
   explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
   ~LimitedSemaphore0() { destroy(); }
-  void init(ssize_t c = 0) { new (this) LimitedSemaphore0(c); }
   void destroy() { RASSERT0(queue.empty()); }
 
   bool P(bool wait = true) {
@@ -517,7 +517,6 @@ class LimitedSemaphore1 {
 public:
   explicit LimitedSemaphore1(ssize_t c = 1) { RASSERT(c == 1, c); }
   ~LimitedSemaphore1() { destroy(); }
-  void init(ssize_t c = 1) { new (this) LimitedSemaphore1(c); }
   void destroy() { RASSERT0(queue.empty()); }
 
   bool P(bool wait = true) {
@@ -598,7 +597,6 @@ protected:
 public:
   SpinMutex() : owner(nullptr), sem(1) {}
   ~SpinMutex() { RASSERT(owner == nullptr, FmtHex(owner)); }
-  void init() { new (this) SpinMutex; }
   void destroy() {
     RASSERT(owner == nullptr, FmtHex(owner));
     sem.destroy();
@@ -623,13 +621,8 @@ class OwnerMutex : private BaseMutex {
 
 public:
   OwnerMutex() : counter(0), recursion(false) {}
+  void destroy() { BaseMutex::destroy(); }
   void enableRecursion() { recursion = true; }
-
-  void init() {
-    BaseMutex::init();
-    counter = 0;
-    recursion = false;
-  }
 
   template<typename... Args>
   size_t acquire(const Args&... args) {
@@ -654,7 +647,6 @@ class Condition {
 
 public:
   ~Condition() { destroy(); }
-  void init() { new (this) Condition; }
   void destroy() { RASSERT0(bq.empty()); }
 
   template<typename Lock>
@@ -685,8 +677,6 @@ public:
   explicit SynchronizedFlag(State s = Running) : state(s) {}
   bool posted()   const { return state == Posted; }
   bool detached() const { return state == Detached; }
-
-  void init() { state = Running; }
 
   bool wait(Lock& lock) {             // returns false, if detached
     if (state == Running) {
@@ -750,7 +740,6 @@ class SyncPoint : public SynchronizedFlag<Lock> {
   Lock lock;
 public:
   SyncPoint(State s = Baseclass::Running) : Baseclass(s) {}
-  void init()   { ScopedLock<Lock> al(lock); Baseclass::init(); }
   bool wait()   { ScopedLock<Lock> al(lock); return Baseclass::wait(lock); }
   bool post()   { ScopedLock<Lock> al(lock); return Baseclass::post(); }
   void detach() { ScopedLock<Lock> al(lock); Baseclass::detach(); }
@@ -763,7 +752,6 @@ class StackContextBenaphore {
 
 public:
   explicit StackContextBenaphore(ssize_t c) : ben(c), sem(0) {}
-  void init(ssize_t c) { new (this) StackContextBenaphore(c); }
   void destroy() { sem.destroy();  }
 
   bool P()          { return ben.P() || sem.P(); }
@@ -793,7 +781,6 @@ class FastBarrier : public BaseSuspender {
 public:
   explicit FastBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
   ~FastBarrier() { destroy(); }
-  void init(size_t t = 1) { new (this) FastBarrier(t); }
   void destroy() { RASSERT0(queue.empty()); }
   bool wait() {
     // There's a race between counter and queue.  A thread can be in a

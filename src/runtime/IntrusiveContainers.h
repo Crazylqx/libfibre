@@ -27,13 +27,13 @@ template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> cla
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> class IntrusiveQueue;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=DoubleLink<T,CNT>> class IntrusiveRing;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=DoubleLink<T,CNT>> class IntrusiveList;
-template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> class IntrusiveQueueNemesis;
+template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>> struct IntrusiveQueueNemesis;
 template<typename T,size_t NUM=0,size_t CNT=1,typename LT=SingleLink<T,CNT>,bool Blocking=false> class IntrusiveQueueStub;
 
 template<typename T,size_t CNT> class SingleLink {
   template<typename,size_t,size_t,typename> friend class IntrusiveStack;
   template<typename,size_t,size_t,typename> friend class IntrusiveQueue;
-  template<typename,size_t,size_t,typename> friend class IntrusiveQueueNemesis;
+  template<typename,size_t,size_t,typename> friend struct IntrusiveQueueNemesis;
   template<typename,size_t,size_t,typename,bool> friend class IntrusiveQueueStub;
   struct {
     union {
@@ -54,7 +54,7 @@ template<typename T,size_t CNT> class DoubleLink {
   template<typename,size_t,size_t,typename> friend class IntrusiveQueue;
   template<typename,size_t,size_t,typename> friend class IntrusiveRing;
   template<typename,size_t,size_t,typename> friend class IntrusiveList;
-  template<typename,size_t,size_t,typename> friend class IntrusiveQueueNemesis;
+  template<typename,size_t,size_t,typename> friend struct IntrusiveQueueNemesis;
   template<typename,size_t,size_t,typename,bool> friend class IntrusiveQueueStub;
   struct {
     union {
@@ -91,7 +91,7 @@ public:
 
   static T*       next(      T& elem) { return elem.link[NUM].next; }
   static const T* next(const T& elem) { return elem.link[NUM].next; }
-  static bool     test(const T& elem) { return elem.link[NUM].next; }
+  static bool     test(const T& elem) { return elem.link[NUM].vnext; }
 
   void push(T& first, T& last) {
     RASSERT(!test(last), FmtHex(&first));
@@ -151,7 +151,7 @@ public:
 
   static T*       next(      T& elem) { return elem.link[NUM].next; }
   static const T* next(const T& elem) { return elem.link[NUM].next; }
-  static bool     test(const T& elem) { return elem.link[NUM].next; }
+  static bool     test(const T& elem) { return elem.link[NUM].vnext; }
 
   void push(T& first, T& last) {
     RASSERT(!test(last), FmtHex(&first));
@@ -237,7 +237,7 @@ public:
   static const T* next(const T& elem) { return elem.link[NUM].next; }
   static T*       prev(      T& elem) { return elem.link[NUM].prev; }
   static const T* prev(const T& elem) { return elem.link[NUM].prev; }
-  static bool     test(const T& elem) { return elem.link[NUM].next && elem.link[NUM].prev; }
+  static bool     test(const T& elem) { return elem.link[NUM].vnext && elem.link[NUM].prev; }
 
   static void close(T& first, T& last) {
     first.link[NUM].prev = &last;

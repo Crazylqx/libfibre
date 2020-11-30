@@ -59,7 +59,7 @@ public:
   Node* next(Node& elem) {
     Node* expected = &elem;
     if (__atomic_compare_exchange_n(&tail, &expected, nullptr, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return nullptr;
-    while (!Next(elem)) Pause();         // producer in push()
+    while (!Next(elem)) Pause();               // producer in push()
     return Next(elem);
   }
 };
@@ -83,10 +83,10 @@ public:
 
   Node* pop(Node*& next) {
     if (!head) return nullptr;
-    Node* elem = head;                                           // return head
+    Node* elem = head;                         // return head
     if (Next(*elem)) {
       head = next = Next(*elem);
-      MemoryFence();                                          // force memory sync
+      MemoryFence();                           // force memory sync
     } else {
       head = nullptr; // store nullptr in head before potential modification of tail in next()
       next = QueueMCS<Node,Next>::next(*elem); // memory sync in next()

@@ -242,7 +242,7 @@ inline int fibre_migrate(Cluster *cluster) {
 /** @brief Initialize semaphore object. (`sem_init`) */
 inline int fibre_sem_init(fibre_sem_t *sem, int pshared, unsigned int value) {
   RASSERT0(pshared == 0);
-  sem->init(value);
+  new (sem) fibre_sem_t(value);
   return 0;
 }
 
@@ -298,7 +298,7 @@ inline int fibre_mutexattr_settype(fibre_mutexattr_t *attr, int type) {
 
 /** @brief Initialize mutex lock. (`pthread_mutex_init`) */
 inline int fibre_mutex_init(fibre_mutex_t *restrict mutex, const fibre_mutexattr_t *restrict attr) {
-  mutex->init();
+  new (mutex) fibre_mutex_t;
 #if TESTING_LOCK_RECURSION
   if (attr && attr->type == PTHREAD_MUTEX_RECURSIVE) mutex->enableRecursion();
 #else
@@ -338,7 +338,7 @@ inline int fibre_mutex_unlock(fibre_mutex_t *mutex) {
 /** @brief Initialize condition variable. (`pthread_cond_init`) */
 inline int fibre_cond_init(fibre_cond_t *restrict cond, const fibre_condattr_t *restrict attr) {
   RASSERT0(attr == nullptr);
-  cond->init();
+  new (cond) fibre_cond_t;
   return 0;
 }
 
@@ -377,7 +377,7 @@ inline int fibre_cond_broadcast(fibre_cond_t *cond) {
 /** @brief Initialize rw-lock. (`pthread_rwlock_init`) */
 inline int fibre_rwlock_init(fibre_rwlock_t *restrict rwlock, const fibre_rwlockattr_t *restrict attr) {
   RASSERT0(attr == nullptr);
-  rwlock->init();
+  new (rwlock) fibre_rwlock_t;
   return 0;
 }
 
@@ -428,7 +428,7 @@ inline int fibre_rwlock_unlock(fibre_rwlock_t *rwlock){
 /** @brief Initialize barrier. (`pthread_barrier_init`) */
 inline int fibre_barrier_init(fibre_barrier_t *restrict barrier, const fibre_barrierattr_t *restrict attr, unsigned count) {
   RASSERT0(attr == nullptr);
-  barrier->init(count);
+  new (barrier) fibre_barrier_t(count);
   return 0;
 }
 
@@ -446,7 +446,7 @@ inline int fibre_barrier_wait(fibre_barrier_t *barrier) {
 /** @brief Initialize barrier. (`pthread_barrier_init`) */
 inline int spin_barrier_init(spin_barrier_t *restrict barrier, const spin_barrierattr_t *restrict attr, unsigned count) {
   RASSERT0(attr == nullptr);
-  barrier->init(count);
+  new (barrier) spin_barrier_t(count);
   return 0;
 }
 
@@ -464,7 +464,7 @@ inline int spin_barrier_wait(spin_barrier_t *barrier) {
 /** @brief Initialize barrier. (`pthread_barrier_init`) */
 inline int fast_barrier_init(fast_barrier_t *restrict barrier, const fast_barrierattr_t *restrict attr, unsigned count) {
   RASSERT0(attr == nullptr);
-  barrier->init(count);
+  new (barrier) fast_barrier_t(count);
   return 0;
 }
 
@@ -497,6 +497,7 @@ inline int fibre_fastmutexattr_settype(fibre_fastmutexattr_t *attr, int type) {
 
 /** @brief Initialize mutex lock. (`pthread_mutex_init`) */
 inline int fibre_fastmutex_init(fibre_fastmutex_t *restrict mutex, const fibre_fastmutexattr_t *restrict attr) {
+  new (mutex) fibre_fastmutex_t;
 #if TESTING_LOCK_RECURSION
   if (attr && attr->type == PTHREAD_MUTEX_RECURSIVE) mutex->enableRecursion();
 #else

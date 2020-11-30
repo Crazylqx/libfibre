@@ -231,8 +231,8 @@ public:
   void deregisterFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
-    fdsync.RD.sem.init();
-    fdsync.WR.sem.init();
+    fdsync.RD.sem.reinit();
+    fdsync.WR.sem.reinit();
     fdsync.nonblocking = false;
 #if TESTING_LAZY_FD_REGISTRATION
     ScopedLock<FastMutex> sl(fdsync.lock);
