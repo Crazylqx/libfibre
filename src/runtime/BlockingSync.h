@@ -30,7 +30,6 @@
 #include <map>
 
 class BaseTimer;
-class TimerQueue;
 
 // DEADLOCK AVOIDANCE RULE: acquire Timer lock while BlockingQueue lock held, but not vice versa!
 
@@ -87,14 +86,20 @@ protected:
     cs.suspend(_friend<BaseSuspender>());
     RuntimeEnablePreemption();
   }
+public:
+  static void park(StackContext& stack = *Context::CurrStack()) {
+    prepareSuspend();
+    doSuspend(stack);
+  }
 };
 
-class ParkSuspender : public BaseSuspender {
-public:
-  static void suspend(StackContext& stack = *Context::CurrStack()) {
-    prepareSuspend();
-    return doSuspend(stack);
+class ResumeInfo {
+protected:
+  void setupResumeRace(StackContext& cs) {
+    cs.setupResumeRace(*this, _friend<ResumeInfo>());
   }
+public:
+  virtual void cancelTimer() {}
 };
 
 class TimeoutInfo : public virtual BaseSuspender, public BaseTimer {
@@ -110,15 +115,6 @@ public:
     DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(&stack), " timed out");
     stack.resume();
   }
-};
-
-class ResumeInfo {
-protected:
-  void setupResumeRace(StackContext& cs) {
-    cs.setupResumeRace(*this, _friend<ResumeInfo>());
-  }
-public:
-  virtual void cancelTimer() {}
 };
 
 template<typename Lock>
@@ -331,118 +327,6 @@ public:
   }
 };
 
-template<typename Lock = DummyLock>
-class LimitedSemaphore0 : public BaseSuspender {
-  Lock lock;
-  FlexStackQueueMPSC queue;
-
-public:
-  explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
-  ~LimitedSemaphore0() { destroy(); }
-  void init(ssize_t c = 0) { new (this) LimitedSemaphore0(c); }
-  void destroy() { RASSERT0(queue.empty()); }
-
-  bool P(bool wait = true) {
-    RASSERT0(wait);
-    StackContext* cs = Context::CurrStack();
-    queue.push(*cs);
-    prepareSuspend();
-    doSuspend(*cs);
-    return true;
-  }
-
-  template<bool Enqueue = true, bool DirectSwitch = false>
-  StackContext* V() {
-    ScopedLock<Lock> sl(lock);
-    StackContext* next;
-    for (;;) {
-      next = queue.pop();
-      if (next) break;
-      Pause();
-    }
-    if (Enqueue) next->resume<DirectSwitch>();
-    return next;
-  }
-};
-
-// NOTE: on queue after P and before V
-template<typename Lock = DummyLock>
-class LimitedSemaphore1 : public BaseSuspender {
-  Lock lock;
-  FlexStackQueueNemesis queue;
-
-public:
-  explicit LimitedSemaphore1(ssize_t c = 1) { RASSERT(c == 1, c); }
-  ~LimitedSemaphore1() { destroy(); }
-  void init(ssize_t c = 1) { new (this) LimitedSemaphore1(c); }
-  void destroy() { RASSERT0(queue.empty()); }
-
-  bool P(bool wait = true) {
-    RASSERT0(wait);
-    StackContext* cs = Context::CurrStack();
-    if (queue.push(*cs)) {
-      prepareSuspend();
-      doSuspend(*cs);
-    }
-    return true;
-  }
-
-  template<bool Enqueue = true, bool DirectSwitch = false>
-  StackContext* V() {
-    ScopedLock<Lock> sl(lock);
-    StackContext* next = nullptr;
-    queue.pop(next);
-    if (!next) return nullptr;
-    if (Enqueue) next->resume<DirectSwitch>();
-    return next;
-  }
-};
-
-class SimpleMutex0 {
-  Benaphore<> ben;
-  LimitedSemaphore0<> sem;
-public:
-  SimpleMutex0() : sem(0) {}
-  bool acquire()    { return ben.P() || sem.P(); }
-  bool tryAcquire() { return ben.tryP(); }
-  void release()    { if (!ben.V()) sem.V(); }
-};
-
-class SimpleMutex1 {
-  LimitedSemaphore1<> sem;
-public:
-  SimpleMutex1() : sem(1) {}
-  bool acquire() { return sem.P(); }
-  void release() { sem.V(); }
-};
-
-template<typename Semaphore, bool Binary = false>
-class StackContextBenaphore {
-  Benaphore<Binary> ben;
-  Semaphore sem;
-
-public:
-  explicit StackContextBenaphore(ssize_t c) : ben(c), sem(0) {}
-  void init(ssize_t c) { new (this) StackContextBenaphore(c); }
-  void destroy() { sem.destroy();  }
-
-  bool P()          { return ben.P() || sem.P(); }
-  bool tryP()       { return ben.tryP(); }
-  bool P(bool wait) { return wait ? P() : tryP(); }
-
-  bool yieldP() {
-    if (!ben.P()) return sem.P();
-    StackContext::yield();
-    return true;
-  }
-
-  template<bool Enqueue = true>
-  StackContext* V() {
-    if (ben.V()) return nullptr;
-    return sem.template V<Enqueue>();
-  }
-};
-
 template<typename Lock, bool Fifo, typename BQ = BlockingQueue>
 class LockedMutex {
   Lock lock;
@@ -490,6 +374,185 @@ public:
       bq.unblock();
     }
   }
+};
+
+// simple blocking barrier
+template<typename Lock, typename BQ = BlockingQueue>
+class LockedBarrier {
+  Lock lock;
+  size_t target;
+  size_t counter;
+  BQ bq;
+public:
+  explicit LockedBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
+  ~LockedBarrier() { destroy(); }
+  void init(size_t t = 1) { new (this) LockedBarrier(t); }
+  void destroy() {
+    ScopedLock<Lock> al(lock);
+    RASSERT0(bq.empty())
+  }
+
+  bool wait() {
+    lock.acquire();
+    counter += 1;
+    if (counter == target) {
+      while (bq.unblock());
+      counter = 0;
+      lock.release();
+      return true;
+    } else {
+      bq.block(lock);
+      return false;
+    }
+  }
+};
+
+// simple blocking RW lock: release alternates; new readers block when writer waits -> no starvation
+template<typename Lock, typename BQ = BlockingQueue>
+class LockedRWLock {
+  Lock lock;
+  ssize_t state;                    // -1 writer, 0 open, >0 readers
+  BQ bqR;
+  BQ bqW;
+
+  template<typename... Args>
+  bool internalAR(const Args&... args) {
+    lock.acquire();
+    if (state < 0 || !bqW.empty()) {
+      if (!bqR.block(lock, args...)) return false;
+      lock.acquire();
+      bqR.unblock();                // waiting readers can barge after writer
+    }
+    state += 1;
+    lock.release();
+    return true;
+  }
+
+  template<typename... Args>
+  bool internalAW(const Args&... args) {
+    lock.acquire();
+    if (state != 0) {
+      if (!bqW.block(lock, args...)) return false;
+      lock.acquire();
+    }
+    state -= 1;
+    lock.release();
+    return true;
+  }
+
+public:
+  LockedRWLock() : state(0) {}
+  ~LockedRWLock() { destroy(); }
+  void init() { new (this) LockedRWLock; }
+  void destroy() {
+    ScopedLock<Lock> al(lock);
+    RASSERT(state == 0, state);
+    RASSERT0(bqR.empty());
+    RASSERT0(bqW.empty());
+  }
+
+  template<typename... Args>
+  bool acquireRead(const Args&... args) { return internalAR(args...); }
+  bool tryAcquireRead() { return acquireRead(false); }
+
+  template<typename... Args>
+  bool acquireWrite(const Args&... args) { return internalAW(args...); }
+  bool tryAcquireWrite() { return acquireWrite(false); }
+
+  void release() {
+    ScopedLock<Lock> al(lock);
+    RASSERT0(state != 0);
+    if (state > 0) {             // reader leaves; if open -> writer next
+      state -= 1;
+      if (state > 0) return;
+      if (!bqW.unblock()) bqR.unblock();
+    } else {                     // writer leaves -> readers next
+      RASSERT0(state == -1);
+      state += 1;
+      if (!bqR.unblock()) bqW.unblock();
+    }
+  }
+};
+
+template<typename Lock = DummyLock>
+class LimitedSemaphore0 {
+  Lock lock;
+  FlexStackQueueMPSC queue;
+
+public:
+  explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
+  ~LimitedSemaphore0() { destroy(); }
+  void init(ssize_t c = 0) { new (this) LimitedSemaphore0(c); }
+  void destroy() { RASSERT0(queue.empty()); }
+
+  bool P(bool wait = true) {
+    RASSERT0(wait);
+    StackContext* cs = Context::CurrStack();
+    queue.push(*cs);
+    BaseSuspender::park();
+    return true;
+  }
+
+  template<bool Enqueue = true, bool DirectSwitch = false>
+  StackContext* V() {
+    ScopedLock<Lock> sl(lock);
+    StackContext* next;
+    for (;;) {
+      next = queue.pop();
+      if (next) break;
+      Pause();
+    }
+    if (Enqueue) next->resume<DirectSwitch>();
+    return next;
+  }
+};
+
+// NOTE: on queue after P and before V
+template<typename Lock = DummyLock>
+class LimitedSemaphore1 {
+  Lock lock;
+  FlexStackQueueNemesis queue;
+
+public:
+  explicit LimitedSemaphore1(ssize_t c = 1) { RASSERT(c == 1, c); }
+  ~LimitedSemaphore1() { destroy(); }
+  void init(ssize_t c = 1) { new (this) LimitedSemaphore1(c); }
+  void destroy() { RASSERT0(queue.empty()); }
+
+  bool P(bool wait = true) {
+    RASSERT0(wait);
+    StackContext* cs = Context::CurrStack();
+    if (queue.push(*cs)) BaseSuspender::park();
+    return true;
+  }
+
+  template<bool Enqueue = true, bool DirectSwitch = false>
+  StackContext* V() {
+    ScopedLock<Lock> sl(lock);
+    StackContext* next = nullptr;
+    queue.pop(next);
+    if (!next) return nullptr;
+    if (Enqueue) next->resume<DirectSwitch>();
+    return next;
+  }
+};
+
+class SimpleMutex0 {
+  Benaphore<> ben;
+  LimitedSemaphore0<> sem;
+public:
+  SimpleMutex0() : sem(0) {}
+  bool acquire()    { return ben.P() || sem.P(); }
+  bool tryAcquire() { return ben.tryP(); }
+  void release()    { if (!ben.V()) sem.V(); }
+};
+
+class SimpleMutex1 {
+  LimitedSemaphore1<> sem;
+public:
+  SimpleMutex1() : sem(1) {}
+  bool acquire() { return sem.P(); }
+  void release() { sem.V(); }
 };
 
 template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount>
@@ -580,127 +643,6 @@ public:
     if (--counter > 0) return counter;
     BaseMutex::release();
     return 0;
-  }
-};
-
-template<typename Lock>
-class Semaphore : public LockedSemaphore<Lock, false> {
-public:
-  Semaphore(size_t c = 0) : LockedSemaphore<Lock, false>(c) {}
-};
-
-template<typename Lock>
-#if TESTING_MUTEX_FIFO
-class Mutex : public LockedMutex<Lock, true> {};
-#elif TESTING_MUTEX_BARGING
-class Mutex : public LockedMutex<Lock, false> {};
-#elif TESTING_MUTEX_SPIN
-class Mutex : public SpinMutex<LockedSemaphore<Lock, true>, 4, 1024, 16> {};
-#else
-class Mutex : public SpinMutex<LockedSemaphore<Lock, true>, 0, 0, 0> {};
-#endif
-
-#if TESTING_MUTEX_SPIN
-typedef SpinMutex<StackContextBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 4, 1024, 16> FastMutex;
-#else
-typedef SpinMutex<StackContextBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 0, 0, 0> FastMutex;
-#endif
-
-// simple blocking RW lock: release alternates; new readers block when writer waits -> no starvation
-template<typename Lock, typename BQ = BlockingQueue>
-class LockedRW {
-  Lock lock;
-  ssize_t state;                    // -1 writer, 0 open, >0 readers
-  BQ bqR;
-  BQ bqW;
-
-  template<typename... Args>
-  bool internalAR(const Args&... args) {
-    lock.acquire();
-    if (state < 0 || !bqW.empty()) {
-      if (!bqR.block(lock, args...)) return false;
-      lock.acquire();
-      bqR.unblock();                // waiting readers can barge after writer
-    }
-    state += 1;
-    lock.release();
-    return true;
-  }
-
-  template<typename... Args>
-  bool internalAW(const Args&... args) {
-    lock.acquire();
-    if (state != 0) {
-      if (!bqW.block(lock, args...)) return false;
-      lock.acquire();
-    }
-    state -= 1;
-    lock.release();
-    return true;
-  }
-
-public:
-  LockedRW() : state(0) {}
-  ~LockedRW() { destroy(); }
-  void init() { new (this) LockedRW; }
-  void destroy() {
-    ScopedLock<Lock> al(lock);
-    RASSERT(state == 0, state);
-    RASSERT0(bqR.empty());
-    RASSERT0(bqW.empty());
-  }
-
-  template<typename... Args>
-  bool acquireRead(const Args&... args) { return internalAR(args...); }
-  bool tryAcquireRead() { return acquireRead(false); }
-
-  template<typename... Args>
-  bool acquireWrite(const Args&... args) { return internalAW(args...); }
-  bool tryAcquireWrite() { return acquireWrite(false); }
-
-  void release() {
-    ScopedLock<Lock> al(lock);
-    RASSERT0(state != 0);
-    if (state > 0) {             // reader leaves; if open -> writer next
-      state -= 1;
-      if (state > 0) return;
-      if (!bqW.unblock()) bqR.unblock();
-    } else {                     // writer leaves -> readers next
-      RASSERT0(state == -1);
-      state += 1;
-      if (!bqR.unblock()) bqW.unblock();
-    }
-  }
-};
-
-// simple blocking barrier
-template<typename Lock, typename BQ = BlockingQueue>
-class LockedBarrier {
-  Lock lock;
-  size_t target;
-  size_t counter;
-  BQ bq;
-public:
-  explicit LockedBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
-  ~LockedBarrier() { destroy(); }
-  void init(size_t t = 1) { new (this) LockedBarrier(t); }
-  void destroy() {
-    ScopedLock<Lock> al(lock);
-    RASSERT0(bq.empty())
-  }
-
-  bool wait() {
-    lock.acquire();
-    counter += 1;
-    if (counter == target) {
-      while (bq.unblock());
-      counter = 0;
-      lock.release();
-      return true;
-    } else {
-      bq.block(lock);
-      return false;
-    }
   }
 };
 
@@ -812,5 +754,55 @@ public:
   bool post()   { ScopedLock<Lock> al(lock); return Baseclass::post(); }
   void detach() { ScopedLock<Lock> al(lock); Baseclass::detach(); }
 };
+
+template<typename Semaphore, bool Binary = false>
+class StackContextBenaphore {
+  Benaphore<Binary> ben;
+  Semaphore sem;
+
+public:
+  explicit StackContextBenaphore(ssize_t c) : ben(c), sem(0) {}
+  void init(ssize_t c) { new (this) StackContextBenaphore(c); }
+  void destroy() { sem.destroy();  }
+
+  bool P()          { return ben.P() || sem.P(); }
+  bool tryP()       { return ben.tryP(); }
+  bool P(bool wait) { return wait ? P() : tryP(); }
+
+  bool yieldP() {
+    if (!ben.P()) return sem.P();
+    StackContext::yield();
+    return true;
+  }
+
+  template<bool Enqueue = true>
+  StackContext* V() {
+    if (ben.V()) return nullptr;
+    return sem.template V<Enqueue>();
+  }
+};
+
+template<typename Lock>
+class Semaphore : public LockedSemaphore<Lock, false> {
+public:
+  Semaphore(size_t c = 0) : LockedSemaphore<Lock, false>(c) {}
+};
+
+template<typename Lock>
+#if TESTING_MUTEX_FIFO
+class Mutex : public LockedMutex<Lock, true> {};
+#elif TESTING_MUTEX_BARGING
+class Mutex : public LockedMutex<Lock, false> {};
+#elif TESTING_MUTEX_SPIN
+class Mutex : public SpinMutex<LockedSemaphore<Lock, true>, 4, 1024, 16> {};
+#else
+class Mutex : public SpinMutex<LockedSemaphore<Lock, true>, 0, 0, 0> {};
+#endif
+
+#if TESTING_MUTEX_SPIN
+typedef SpinMutex<StackContextBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 4, 1024, 16> FastMutex;
+#else
+typedef SpinMutex<StackContextBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 0, 0, 0> FastMutex;
+#endif
 
 #endif /* _BlockingSync_h_ */

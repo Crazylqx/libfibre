@@ -81,7 +81,8 @@ _Bootstrapper::~_Bootstrapper() {
 static struct _Bootstrapper2 {
   _Bootstrapper2() {
 #if TESTING_ENABLE_STATISTICS
-    ioFormatFlags.copyfmt(std::cout); // doing this during _Bootstrapper::_Bootstrapper() is too early
+    // _Bootstrapper::_Bootstrapper() would be too early - before libstdc++ initializations
+    ioFormatFlags.copyfmt(std::cout);
 #endif
   }
 } _lfBootstrap2;

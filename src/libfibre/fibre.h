@@ -36,13 +36,13 @@ static struct _Bootstrapper {
 typedef Mutex<WorkerLock>         FibreMutex;
 typedef Condition<>               FibreCondition;
 typedef Semaphore<WorkerLock>     FibreSemaphore;
-typedef LockedRW<WorkerLock>      FibreLockRW;
+typedef LockedRWLock<WorkerLock>  FibreRWLock;
 typedef LockedBarrier<WorkerLock> FibreBarrier;
 
 typedef Fibre*         fibre_t;
 typedef FibreCondition fibre_cond_t;
 typedef FibreSemaphore fibre_sem_t;
-typedef FibreLockRW    fibre_rwlock_t;
+typedef FibreRWLock    fibre_rwlock_t;
 typedef FibreBarrier   fibre_barrier_t;
 typedef SpinBarrier    spin_barrier_t;
 
@@ -220,7 +220,7 @@ inline int fibre_yield(void) {
 
 /** @brief Park fibre (indefinite sleep). */
 inline int fibre_park() {
-  ParkSuspender::suspend();
+  BaseSuspender::park();
   return 0;
 }
 

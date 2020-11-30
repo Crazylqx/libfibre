@@ -40,6 +40,7 @@ public:
 
   bool V() { // true: success (no resume needed)
     if (!Binary) return __atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST) > 0;
+    // short cut (counter == 1)? no memory synchronization then...
     for (ssize_t c = 0;;) {
       if (__atomic_compare_exchange_n(&counter, &c, c+1, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
         if (c == 0) return true;
