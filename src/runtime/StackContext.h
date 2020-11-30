@@ -75,6 +75,7 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
   bool           affinity;     // affinity prohibits re-staging
 
   size_t      volatile runState;   // runState == 0 => parked
+  ptr_t       volatile resumeMsg;  // send info from resumer to this task
   ResumeInfo* volatile resumeInfo; // race: unblock vs. timeout
 
   StackContext(const StackContext&) = delete;
@@ -138,22 +139,24 @@ public:
 
   // context switching - non-static -> restricted to BaseSuspender
   template<size_t SpinStart = 1, size_t SpinEnd = 0>
-  void suspend(_friend<BaseSuspender>) {
+  ptr_t suspend(_friend<BaseSuspender>) {
     size_t spin = SpinStart;
     while (spin <= SpinEnd) {
       for (size_t i = 0; i < spin; i += 1) Pause();
       // resumed already? skip suspend
       size_t exp = 2;
-      if (__atomic_compare_exchange_n(&runState, &exp, 1, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) return;
+      if (__atomic_compare_exchange_n(&runState, &exp, 1, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return resumeMsg;
       spin += spin;
     }
     suspendInternal();
+    return resumeMsg;
   }
 
   // if suspended (runState == 0), resume
   template<bool DirectSwitch = false>
-  void resume() {
-    size_t prev = __atomic_fetch_add(&runState, 1, __ATOMIC_RELAXED);
+  void resume(ptr_t rmsg = nullptr) {
+    resumeMsg = rmsg;
+    size_t prev = __atomic_fetch_add(&runState, 1, __ATOMIC_SEQ_CST);
     if (prev == 0) {
       if (DirectSwitch) resumeDirect();
       else resumeInternal();
@@ -164,12 +167,12 @@ public:
 
   // set ResumeInfo to facilitate later resume race
   void setupResumeRace(ResumeInfo& ri, _friend<ResumeInfo>) {
-    __atomic_store_n( &resumeInfo, &ri, __ATOMIC_RELAXED );
+    __atomic_store_n( &resumeInfo, &ri, __ATOMIC_SEQ_CST );
   }
 
   // race between different possible resumers -> winner cancels the other
   ResumeInfo* raceResume() {
-    return __atomic_exchange_n( &resumeInfo, nullptr, __ATOMIC_RELAXED );
+    return __atomic_exchange_n( &resumeInfo, nullptr, __ATOMIC_SEQ_CST );
   }
 
   // change resume processor during scheduling

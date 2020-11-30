@@ -45,6 +45,7 @@ typedef FibreSemaphore fibre_sem_t;
 typedef FibreRWLock    fibre_rwlock_t;
 typedef FibreBarrier   fibre_barrier_t;
 typedef SpinBarrier    spin_barrier_t;
+typedef FastBarrier<>  fast_barrier_t;
 
 #if TESTING_LOCK_RECURSION
 typedef OwnerMutex<FibreMutex> fibre_mutex_t;
@@ -82,6 +83,7 @@ struct fibre_condattr_t {};
 struct fibre_rwlockattr_t {};
 struct fibre_barrierattr_t {};
 struct spin_barrierattr_t {};
+struct fast_barrierattr_t {};
 
 struct fibre_fastmutexattr_t {
   int type;
@@ -456,6 +458,24 @@ inline int spin_barrier_destroy(spin_barrier_t *barrier) {
 
 /** @brief Wait on barrier. Block, if necessary. (`pthread_barrier_wait`) */
 inline int spin_barrier_wait(spin_barrier_t *barrier) {
+  return barrier->wait() ? PTHREAD_BARRIER_SERIAL_THREAD : 0;
+}
+
+/** @brief Initialize barrier. (`pthread_barrier_init`) */
+inline int fast_barrier_init(fast_barrier_t *restrict barrier, const fast_barrierattr_t *restrict attr, unsigned count) {
+  RASSERT0(attr == nullptr);
+  barrier->init(count);
+  return 0;
+}
+
+/** @brief Destroy barrier. (`pthread_barrier_destroy`) */
+inline int fast_barrier_destroy(fast_barrier_t *barrier) {
+  barrier->destroy();
+  return 0;
+}
+
+/** @brief Wait on barrier. Block, if necessary. (`pthread_barrier_wait`) */
+inline int fast_barrier_wait(fast_barrier_t *barrier) {
   return barrier->wait() ? PTHREAD_BARRIER_SERIAL_THREAD : 0;
 }
 

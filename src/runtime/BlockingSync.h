@@ -82,14 +82,15 @@ protected:
   static void prepareSuspend() {
     RuntimeDisablePreemption();
   }
-  static void doSuspend(StackContext& cs) {
-    cs.suspend(_friend<BaseSuspender>());
+  static ptr_t doSuspend(StackContext& cs) {
+    ptr_t msg = cs.suspend(_friend<BaseSuspender>());
     RuntimeEnablePreemption();
+    return msg;
   }
 public:
-  static void park(StackContext& stack = *Context::CurrStack()) {
+  static ptr_t park(StackContext& stack = *Context::CurrStack()) {
     prepareSuspend();
-    doSuspend(stack);
+    return doSuspend(stack);
   }
 };
 
@@ -779,6 +780,50 @@ public:
   StackContext* V() {
     if (ben.V()) return nullptr;
     return sem.template V<Enqueue>();
+  }
+};
+
+template<typename Lock = BinaryLock<>>
+class FastBarrier : public BaseSuspender {
+  size_t target;
+  volatile size_t counter;
+  FlexStackQueueMPSC queue;
+  Lock lock;
+
+public:
+  explicit FastBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
+  ~FastBarrier() { destroy(); }
+  void init(size_t t = 1) { new (this) FastBarrier(t); }
+  void destroy() { RASSERT0(queue.empty()); }
+  bool wait() {
+    // There's a race between counter and queue.  A thread can be in a
+    // different position in the queue relative to the counter.  The
+    // notifier is determined by counter, so a thread might notify a group
+    // of other threads, but itself not continue.  However, one thread of
+    // each group must be "special" (PTHREAD_BARRIER_SERIAL_THREAD) with a
+    // different return code.
+    StackContext* cs = Context::CurrStack();
+    queue.push(*cs);
+    bool park = __atomic_add_fetch(&counter, 1, __ATOMIC_RELAXED) % target;
+    if (!park) {
+      __atomic_sub_fetch(&counter, target, __ATOMIC_RELAXED);
+      park = true;
+      ScopedLock<Lock> sl(lock);
+      for (size_t i = 0; i < target; i += 1) {
+        StackContext* next;
+        for (;;) {
+          next = queue.pop();
+          if (next) break;
+          Pause();
+        }
+        // don't suspend/resume self
+        if (next == cs) park = false;
+        // if current thread is not continuing, last of group is notified
+        else next->resume(ptr_t(park && (i == target - 1)));
+      }
+    }
+    if (park) return (bool)BaseSuspender::park();
+    else return true;
   }
 };
 
