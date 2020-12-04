@@ -37,10 +37,10 @@ class Cluster : public Scheduler {
   PollerType* pollVec;
   size_t      pollCount;
 
-  BaseProcessor*        pauseProc;
-  Semaphore<WorkerLock> pauseSem;
-  WorkerSemaphore       confirmSem;
-  WorkerSemaphore       sleepSem;
+  BaseProcessor*              pauseProc;
+  LockedSemaphore<WorkerLock> pauseSem;
+  WorkerSemaphore             confirmSem;
+  WorkerSemaphore             sleepSem;
 
   ClusterStats*  stats;
 

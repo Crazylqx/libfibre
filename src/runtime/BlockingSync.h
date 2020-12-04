@@ -272,21 +272,30 @@ public:
   }
 };
 
-template<typename Lock, bool Binary, typename BQ = BlockingQueue>
+enum SemaphoreResult : size_t { SemaphoreTimeout = 0, SemaphoreSucess = 1, SemaphoreWasOpen = 2 };
+
+template<typename Lock, bool Binary = false, typename BQ = BlockingQueue>
 class LockedSemaphore {
 protected:
   Lock lock;
   volatile ssize_t counter;
   BQ bq;
 
+  void unlock() {}
+
+  template<typename Lock1, typename...Args>
+  void unlock(Lock1& l, Args&... args) {
+    l.release();
+    unlock(args...);
+  }
+
   template<typename... Args>
-  bool internalP(bool yield, const Args&... args) {
+  SemaphoreResult internalP(const Args&... args) {
     // baton passing: counter unchanged, if blocking fails (timeout)
-    if (counter < 1) return bq.block(lock, args...);
+    if (counter < 1) return bq.block(lock, args...) ? SemaphoreSucess : SemaphoreTimeout;
     counter -= 1;
     lock.release();
-    if (yield) StackContext::yield();
-    return true;
+    return SemaphoreWasOpen;
   }
 
 public:
@@ -304,16 +313,11 @@ public:
   ssize_t getValue() const { return counter; }
 
   template<typename... Args>
-  bool P(const Args&... args) { lock.acquire(); return internalP(false, args...); }
-  bool tryP()                 { lock.acquire(); return internalP(false,false); }
-  bool yieldP()               { lock.acquire(); return internalP(true); }
+  SemaphoreResult P(const Args&... args) { lock.acquire(); return internalP(args...); }
+  SemaphoreResult tryP()                 { lock.acquire(); return internalP(false); }
 
-  template<typename Lock2>
-  bool unlockP(Lock2& l) {
-    lock.acquire();
-    l.release();
-    return internalP(false);
-  }
+  template<typename... Args>
+  SemaphoreResult unlockP(Args&... args) { lock.acquire(); unlock(args...); return internalP(true); }
 
   void fakeP(size_t c = 1) {
     ScopedLock<Lock> al(lock);
@@ -321,15 +325,22 @@ public:
     else counter -= c;
   }
 
-  template<bool Enqueue = true>
+  template<bool Enqueue = true, bool TryOnly = false>
   StackContext* V() {
     ScopedLock<Lock> al(lock);
     StackContext* sc = bq.template unblock<Enqueue>();
     if (sc) return sc;
+    if (TryOnly) return nullptr;
     if (Binary) counter = 1;
     else counter += 1;
     return nullptr;
   }
+
+  template<bool Enqueue = true>
+  StackContext* tryV() { return V<Enqueue,true>(); }
+
+  template<bool Enqueue = true, bool TryOnly = false>
+  StackContext* release() { return V<Enqueue,TryOnly>(); }
 };
 
 template<typename Lock, bool Fifo, typename BQ = BlockingQueue>
@@ -486,12 +497,12 @@ public:
   ~LimitedSemaphore0() { destroy(); }
   void destroy() { RASSERT0(queue.empty()); }
 
-  bool P(bool wait = true) {
+  SemaphoreResult P(bool wait = true) {
     RASSERT0(wait);
     StackContext* cs = Context::CurrStack();
     queue.push(*cs);
     BaseSuspender::park();
-    return true;
+    return SemaphoreSucess;
   }
 
   template<bool Enqueue = true, bool DirectSwitch = false>
@@ -519,11 +530,12 @@ public:
   ~LimitedSemaphore1() { destroy(); }
   void destroy() { RASSERT0(queue.empty()); }
 
-  bool P(bool wait = true) {
+  SemaphoreResult P(bool wait = true) {
     RASSERT0(wait);
     StackContext* cs = Context::CurrStack();
-    if (queue.push(*cs)) BaseSuspender::park();
-    return true;
+    if (!queue.push(*cs)) return SemaphoreWasOpen;
+    BaseSuspender::park();
+    return SemaphoreSucess;
   }
 
   template<bool Enqueue = true, bool DirectSwitch = false>
@@ -754,15 +766,9 @@ public:
   explicit StackContextBenaphore(ssize_t c) : ben(c), sem(0) {}
   void destroy() { sem.destroy();  }
 
-  bool P()          { return ben.P() || sem.P(); }
-  bool tryP()       { return ben.tryP(); }
-  bool P(bool wait) { return wait ? P() : tryP(); }
-
-  bool yieldP() {
-    if (!ben.P()) return sem.P();
-    StackContext::yield();
-    return true;
-  }
+  SemaphoreResult P()          { return ben.P() ? SemaphoreWasOpen : sem.P(); }
+  SemaphoreResult tryP()       { return ben.tryP() ? SemaphoreWasOpen : SemaphoreTimeout; }
+  SemaphoreResult P(bool wait) { return wait ? P() : tryP(); }
 
   template<bool Enqueue = true>
   StackContext* V() {
@@ -812,12 +818,6 @@ public:
     if (park) return (bool)BaseSuspender::park();
     else return true;
   }
-};
-
-template<typename Lock>
-class Semaphore : public LockedSemaphore<Lock, false> {
-public:
-  Semaphore(size_t c = 0) : LockedSemaphore<Lock, false>(c) {}
 };
 
 template<typename Lock>

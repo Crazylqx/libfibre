@@ -349,7 +349,7 @@ public:
     for (;;) {
       ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
-      sync.sem.yieldP();
+      if (sync.sem.P() == SemaphoreWasOpen) Fibre::yield();
     }
   }
 
