@@ -38,22 +38,25 @@ class EventScope {
   // A vector for FDs works well here in principle, because POSIX guarantees lowest-numbered FDs:
   // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
   // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
-  struct SyncSem {
-    Mutex<FastMutex>                 mtx;
-    LockedSemaphore<WorkerLock,true> sem;
-  };
+  typedef Mutex<FastMutex>                 SyncMutex;
+  typedef LockedSemaphore<WorkerLock,true> SyncSem;
   struct SyncFD {
-    SyncSem RD;
-    SyncSem WR;
+    SyncSem   rdSem;
+    SyncSem   wrSem;
+    SyncMutex rdMutex;
+    SyncMutex wrMutex;
     bool nonblocking;
 #if TESTING_LAZY_FD_REGISTRATION
-    FastMutex   lock;
+    FastMutex   pollStatusLock;
+    size_t      pollStatus;
     BasePoller* poller;
-    size_t      status;
-    SyncFD() : nonblocking(false), poller(nullptr), status(0) {}
-#else
-    SyncFD() : nonblocking(false) {}
 #endif
+    SyncFD() : nonblocking(false) {
+#if TESTING_LAZY_FD_REGISTRATION
+      pollStatus = 0;
+      poller = nullptr;
+#endif
+    }
   } *fdSyncVector;
 
   int fdCount;
@@ -145,8 +148,8 @@ public:
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
     mainCluster->postFork1(_friend<EventScope>());
     for (int f = 0; f < fdCount; f += 1) {
-      RASSERT(fdSyncVector[f].RD.sem.getValue() >= 0, f);
-      RASSERT(fdSyncVector[f].WR.sem.getValue() >= 0, f);
+      RASSERT(fdSyncVector[f].rdSem.getValue() >= 0, f);
+      RASSERT(fdSyncVector[f].wrSem.getValue() >= 0, f);
     }
     mainCluster->postFork2(_friend<EventScope>());
   }
@@ -184,17 +187,17 @@ public:
 private:
   template<bool Input, bool Output, bool Cluster>
   bool internalRegisterFD(int fd, bool now) {
-    static_assert(Input || Output, "must set Input or Output in registerFD()");
+    static_assert(Input || Output, "must set Input or Output in internalRegisterFD()");
     const size_t target = (Input ? BasePoller::Input : 0) | (Output ? BasePoller::Output : 0);
 
 #if TESTING_LAZY_FD_REGISTRATION
-    if (!now) return true;
+    if (!now) return false;
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
-    if ((fdsync.status & target) == target) return false; // outside of lock: faster, but double regs possible...
-    ScopedLock<FastMutex> sl(fdsync.lock);
-    RASSERT0((bool)fdsync.status == (bool)fdsync.poller)
-    fdsync.status |= target;
+    if ((fdsync.pollStatus & target) == target) return false; // outside of lock: faster, but double regs possible...
+    ScopedLock<FastMutex> sl(fdsync.pollStatusLock);
+    RASSERT0((bool)fdsync.pollStatus == (bool)fdsync.poller)
+    fdsync.pollStatus |= target;
 #endif
 
 #if TESTING_PROCESSOR_POLLER
@@ -207,13 +210,13 @@ private:
 
 #if TESTING_LAZY_FD_REGISTRATION
     if (fdsync.poller) {
-      fdsync.poller->setupFD(fd, fdsync.status, true); // modify poll settings
+      fdsync.poller->setupFD(fd, fdsync.pollStatus, true); // modify poll settings
     } else {
       fdsync.poller = &cp;
-      fdsync.poller->setupFD(fd, fdsync.status);       // add poll settings
+      fdsync.poller->setupFD(fd, fdsync.pollStatus);       // add poll settings
     }
 #else
-    cp.setupFD(fd, target);                            // add poll settings
+    cp.setupFD(fd, target);                                // add poll settings
 #endif
     return true;
   }
@@ -231,12 +234,12 @@ public:
   void deregisterFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
-    fdsync.RD.sem.reinit();
-    fdsync.WR.sem.reinit();
+    fdsync.rdSem.reinit();
+    fdsync.wrSem.reinit();
     fdsync.nonblocking = false;
 #if TESTING_LAZY_FD_REGISTRATION
-    ScopedLock<FastMutex> sl(fdsync.lock);
-    fdsync.status = 0;
+    ScopedLock<FastMutex> sl(fdsync.pollStatusLock);
+    fdsync.pollStatus = 0;
     if (RemoveFromPollSet) {              // only called from lfConnect w/ TESTING_LAZY_FD_REGISTRATION
       RASSERT0(fdsync.poller)
       fdsync.poller->resetFD(fd);
@@ -246,14 +249,15 @@ public:
   }
 
   void checkAsyncCompletion(int fd) {
-    registerFD(fd, true);   // register immediately
-    block<false>(fd);       // wait for completion
+    RASSERT0(fd >= 0 && fd < fdCount);
+    registerFD(fd, true);                 // register immediately
+    fdSyncVector[fd].wrSem.P();           // wait for completion
     int ret;
     socklen_t sz = sizeof(ret);
     SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &sz));
     RASSERT(ret == 0, ret);
 #if TESTING_LAZY_FD_REGISTRATION
-    deregisterFD<true>(fd); // revert to lazy registration
+    deregisterFD<true>(fd);               // revert to lazy registration
 #endif
   }
 
@@ -265,47 +269,36 @@ public:
   void blockPollFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     masterPoller->setupPollFD(fd, true);  // reset using ONESHOT to reduce polling
-    ScopedLock<Mutex<FastMutex>> sl(fdSyncVector[fd].RD.mtx);
-    fdSyncVector[fd].RD.sem.P();
+    fdSyncVector[fd].rdSem.P();
   }
 
   void unblockPollFD(int fd, _friend<PollerFibre>) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].RD.sem.V();
+    fdSyncVector[fd].rdSem.V();
+  }
+
+  bool tryblockTimerFD(int fd) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    return fdSyncVector[fd].rdSem.tryP();
   }
 
   void suspendFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].RD.sem.fakeP();
-    fdSyncVector[fd].WR.sem.fakeP();
+    fdSyncVector[fd].rdSem.fakeP();
+    fdSyncVector[fd].wrSem.fakeP();
   }
 
   void resumeFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].RD.sem.V();
-    fdSyncVector[fd].WR.sem.V();
-  }
-
-  template<bool Input>
-  void block(int fd) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    ScopedLock<Mutex<FastMutex>> sl(sync.mtx);
-    sync.sem.P();
-  }
-
-  template<bool Input>
-  bool tryblock(int fd) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    return sync.sem.tryP();
+    fdSyncVector[fd].rdSem.V();
+    fdSyncVector[fd].wrSem.V();
   }
 
   template<bool Input, bool Enqueue = true>
   StackContext* unblock(int fd, _friend<BasePoller>) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    return sync.sem.V<Enqueue>();
+    SyncSem& sem = Input ? fdSyncVector[fd].rdSem : fdSyncVector[fd].wrSem;
+    return sem.V<Enqueue>();
   }
 
   template<typename T, class... Args>
@@ -343,22 +336,19 @@ public:
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
     }
 #endif
-    Fibre::yield();
-    SyncSem& sync = Input ? fdSyncVector[fd].RD : fdSyncVector[fd].WR;
-    ScopedLock<Mutex<FastMutex>> sl(sync.mtx);
+    SyncSem& sem = Input ? fdSyncVector[fd].rdSem : fdSyncVector[fd].wrSem;
+    ScopedLock<SyncMutex> sl(Input ? fdSyncVector[fd].rdMutex : fdSyncVector[fd].wrMutex);
     for (;;) {
+      sem.P();
       ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
-      if (sync.sem.P() == SemaphoreWasOpen) Fibre::yield();
     }
   }
 
   int fcntl(int fildes, int cmd, int flags) {
-    bool NB = flags & O_NONBLOCK;
-    flags |= O_NONBLOCK; // internally, all sockets need to be nonblocking
-    int ret = ::fcntl(fildes, cmd, flags);
+    int ret = ::fcntl(fildes, cmd, flags | O_NONBLOCK); // internally, all sockets nonblocking
     if (ret != -1) {
-      if (NB) {
+      if (flags & O_NONBLOCK) {
         fdSyncVector[fildes].nonblocking = true;
       } else {
         fdSyncVector[fildes].nonblocking = false;

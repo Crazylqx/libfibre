@@ -68,6 +68,7 @@ class Fibre : public StackContext {
     RASSERT(aligned(guard, pagesize<1>()), guard);
     // reserve/map size + protection
     size += guard;
+    // add PROT_EXEC here to make stack executable (needed for nested C functions)
     ptr_t ptr = mmap(0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
     RASSERT0(ptr != MAP_FAILED);
     // set up protection page
