@@ -208,12 +208,14 @@ struct ConnectionStats : public StatsObject {
 };
 
 struct PollerStats : public StatsObject {
+  Counter regs;
   Counter blocks;
   Counter empty;
   Average events;
   PollerStats(void* o, const char* n = "Poller") : StatsObject(o, n) {}
   bool print(ostream& os);
   void aggregate(const PollerStats& x) {
+    regs.aggregate(x.regs);
     blocks.aggregate(x.blocks);
     empty.aggregate(x.empty);
     events.aggregate(x.events);

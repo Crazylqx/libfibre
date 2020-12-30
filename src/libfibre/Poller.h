@@ -48,8 +48,10 @@ public:
 protected:
 #if __FreeBSD__
   typedef struct kevent EventType;
+  enum PollFlag : size_t { Level = 0, Edge = EV_CLEAR, Oneshot = EV_ONESHOT };
 #else // __linux__ below
   typedef epoll_event   EventType;
+  enum PollFlag : size_t { Level = 0, Edge = EPOLLET, Oneshot = EPOLLONESHOT };
 #endif
 
   static const int maxPoll = 1024;
@@ -84,23 +86,29 @@ public:
     SYSCALL(close(pollFD));
   }
 
+#if TESTING_ONESHOT_REGISTRATION
+  template<PollFlag pflag = Oneshot>
+#else
+  template<PollFlag pflag = Edge>
+#endif
   void setupFD(int fd, size_t status, bool change = false) {
     DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " register ", fd, " on ", pollFD, " for ", status);
+    stats->regs.count();
 #if __FreeBSD__
     struct kevent ev[2];
     int idx = 0;
     if (status & Input) {
-      EV_SET(&ev[idx], fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, 0);
+      EV_SET(&ev[idx], fd, EVFILT_READ, EV_ADD | pflag, 0, 0, 0);
       idx += 1;
     }
     if (status & Output) {
-      EV_SET(&ev[idx], fd, EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, 0);
+      EV_SET(&ev[idx], fd, EVFILT_WRITE, EV_ADD | pflag, 0, 0, 0);
       idx += 1;
     }
     SYSCALL(kevent(pollFD, ev, idx, nullptr, 0, nullptr));
 #else // __linux__ below
     epoll_event ev;
-    ev.events = EPOLLET | status; // man 2 epoll_ctl: EPOLLERR, EPOLLHUP not needed
+    ev.events = pflag | status; // man 2 epoll_ctl: EPOLLERR, EPOLLHUP not needed
     ev.data.fd = fd;
     if (change) {
       SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_MOD, fd, &ev));
@@ -195,7 +203,7 @@ public:
     timerFD = fdCount - 1;
 #else
     timerFD = SYSCALLIO(timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC));
-    setupFD(timerFD, Input);
+    setupFD<Edge>(timerFD, Input);
 #endif
   }
 
@@ -216,21 +224,8 @@ public:
 #endif
   }
 
-  void setupPollFD(int fd, bool change = false) { // (re)set up hierarchical pollling use ONESHOT
-#if __FreeBSD__
-    struct kevent ev;
-    EV_SET(&ev, fd, EVFILT_READ, EV_ADD | EV_ONESHOT, 0, 0, 0);
-    SYSCALL(kevent(pollFD, &ev, 1, nullptr, 0, nullptr));
-#else // __linux__ below
-    epoll_event ev;
-    ev.events = EPOLLIN | EPOLLONESHOT;
-    ev.data.fd = fd;
-    if (change) {
-      SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_MOD, fd, &ev));
-    } else {
-      SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_ADD, fd, &ev));
-    }
-#endif
+  void setupPollFD(int fd, bool change) { // use hierarchical pollling via ONESHOT
+    setupFD<Oneshot>(fd, Input, change);
   }
 };
 

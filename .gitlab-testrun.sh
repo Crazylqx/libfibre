@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 [ $(id -u) -eq 0 ] && exec su -l kos -c "$0 $*"
 
-if [ $(git diff | wc -l) -ne 0 ] && [ "$1" != "-f" ]; then
-	echo "Uncommitted changes in repo; exiting..."
-	exit 1
-fi
-
 if [ "$(uname -s)" = "FreeBSD" ]; then
 	MAKE=gmake
 	count=$(expr $(sysctl kern.smp.cpus|cut -c16- || echo 1) / 4)
 	[ $count -gt 0 ] || count=1
+	clbot=0
+	cltop=$(expr $count \* 2 - 1)
+	svmax=$(expr $count \* 4)
+	svlist=$(expr $count \* 2)
+	for ((c=$svlist+2;c<$svmax;c+=2)); do
+		svlist=$svlist,$c
+	done
+	echo server cores: $svlist
+	echo client cores: $clbot-$cltop
+	TASKSET_SERVER="cpuset -l $svlist time -p"
+	TASKSET_CLIENT="cpuset -l $clbot-$cltop"
+	# pmc or pmcstat?
+	PERF_SERVER=""
 else
 	MAKE=make
 	count=$(expr $(nproc) / 4)
@@ -17,9 +25,9 @@ else
 	clbot1=0
 	cltop1=$(expr $count - 1)
 	clbot2=$(expr $count \* 2)
-	cltop2=$(expr $(expr $count \* 3) - 1)
+	cltop2=$(expr $count \* 3 - 1)
 	svbot=$count
-	svtop=$(expr $(expr $count + $count) - 1)
+	svtop=$(expr $count \* 2 - 1)
 	echo server cores: $svbot-$svtop
 	echo client cores: $clbot1-$cltop1,$clbot2-$cltop2
 	TASKSET_SERVER="taskset -c $svbot-$svtop"
@@ -55,7 +63,7 @@ function run_memcached() {
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --loadonly
 		echo LOADED
 		eval $PERF_SERVER $TASKSET_CLIENT timeout 30 \
-		mutilate -s0 -r 100000 -K fb_key -V fb_value --noload -i fb_ia -u0.5 -c25 -d1 -t10 -T32
+		mutilate -s0 -r 100000 -K fb_key -V fb_value --noload -i fb_ia -u0.5 -c25 -d1 -t10 -T$(expr $count \* 2)
 		[ $? -eq 0 ] && killall memcached || {
 			rm -f memcached.running
 			killall memcached
@@ -124,7 +132,37 @@ function run_5() {
 	run_memcached 5
 }
 
-for ((e=0;e<=5;e+=1)); do
+function prep_6() {
+	sed -i -e 's/.*#define TESTING_ONESHOT_REGISTRATION.*/#define TESTING_ONESHOT_REGISTRATION 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_LAZY_FD_REGISTRATION.*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	echo memcached
+}
+
+function run_6() {
+	run_memcached 6
+}
+
+emax=6
+
+if [ $# -gt 0 ] && [ "$1" != "-f" ]; then
+	if [ $1 -lt 0 -o $1 -gt $emax ]; then
+		echo argument out of range
+		exit 1
+	fi
+	addon=$(prep_$1)
+	pre $addon
+	run_$1
+	$MAKE -C memcached distclean
+	$MAKE clean
+	exit 0
+fi
+
+if [ $(git diff | wc -l) -ne 0 ] && [ "$1" != "-f" ]; then
+	echo "Uncommitted changes in repo; exiting..."
+	exit 1
+fi
+
+for ((e=0;e<=$emax;e+=1)); do
 	addon=$(prep_$e)
 	pre $addon
 	run_$e

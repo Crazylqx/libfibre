@@ -4,6 +4,7 @@
 #define TESTING_CLUSTER_POLLER_FIBRE  1 // per-cluster poller: fibre vs. pthread
 //#define TESTING_POLLER_FIBRE_SPIN 65536 // poller fibre: spin loop of NB polls
 #define TESTING_LAZY_FD_REGISTRATION  1 // lazy vs. eager registration after fd creation
+//#define TESTING_ONESHOT_REGISTRATION  1 // use oneshot event polling
 
 // **** libfibre options - system threading
 //#define TESTING_LOCK_SPIN          1024 // spin before blocking on system lock
@@ -15,5 +16,12 @@
   #if TESTING_CLUSTER_POLLER_FIBRE
     #warning disabling TESTING_CLUSTER_POLLER_FIBRE
     #undef TESTING_CLUSTER_POLLER_FIBRE
+  #endif
+#endif
+
+#if TESTING_ONESHOT_REGISTRATION
+  #if TESTING_LAZY_FD_REGISTRATION
+    #warning disabling TESTING_LAZY_FD_REGISTRATION
+    #undef TESTING_LAZY_FD_REGISTRATION
   #endif
 #endif

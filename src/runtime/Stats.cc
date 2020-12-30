@@ -89,7 +89,7 @@ bool PollerStats::print(ostream& os) {
   if (totalPollerStats && this != totalPollerStats) totalPollerStats->aggregate(*this);
   if (empty + events == 0) return false;
   StatsObject::print(os);
-  os << blocks << empty << events;
+  os << regs << blocks << empty << events;
   return true;
 }
 

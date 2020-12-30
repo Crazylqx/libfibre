@@ -43,8 +43,13 @@ class EventScope {
   struct SyncFD {
     SyncSem   rdSem;
     SyncSem   wrSem;
+#if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
+    SyncMutex rwMutex;
+    bool      pollMod;
+#else
     SyncMutex rdMutex;
     SyncMutex wrMutex;
+#endif
     bool nonblocking;
 #if TESTING_LAZY_FD_REGISTRATION
     FastMutex   pollStatusLock;
@@ -52,6 +57,9 @@ class EventScope {
     BasePoller* poller;
 #endif
     SyncFD() : nonblocking(false) {
+#if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
+      pollMod = false;
+#endif
 #if TESTING_LAZY_FD_REGISTRATION
       pollStatus = 0;
       poller = nullptr;
@@ -215,6 +223,9 @@ private:
       fdsync.poller = &cp;
       fdsync.poller->setupFD(fd, fdsync.pollStatus);       // add poll settings
     }
+#elif TESTING_ONESHOT_REGISTRATION && defined(__linux__)
+    cp.setupFD(fd, target, fdSyncVector[fd].pollMod);      // add poll settings
+    fdSyncVector[fd].pollMod = true;
 #else
     cp.setupFD(fd, target);                                // add poll settings
 #endif
@@ -237,6 +248,9 @@ public:
     fdsync.rdSem.reinit();
     fdsync.wrSem.reinit();
     fdsync.nonblocking = false;
+#if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
+    fdsync.pollMod = false;
+#endif
 #if TESTING_LAZY_FD_REGISTRATION
     ScopedLock<FastMutex> sl(fdsync.pollStatusLock);
     fdsync.pollStatus = 0;
@@ -337,8 +351,15 @@ public:
     }
 #endif
     SyncSem& sem = Input ? fdSyncVector[fd].rdSem : fdSyncVector[fd].wrSem;
+#if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
+    ScopedLock<SyncMutex> sl(fdSyncVector[fd].rwMutex);
+#else
     ScopedLock<SyncMutex> sl(Input ? fdSyncVector[fd].rdMutex : fdSyncVector[fd].wrMutex);
+#endif
     for (;;) {
+#if TESTING_ONESHOT_REGISTRATION
+      internalRegisterFD<Input,!Input,Cluster>(fd, true);
+#endif
       sem.P();
       ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
