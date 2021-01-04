@@ -103,8 +103,8 @@ webserver: picohttpparser/picohttpparser.h
 fwebserver: webserver
 	ln -f $< $@
 
-extra: athreadtest bthreadtest fthreadtest gthreadtest lthreadtest mthreadtest pthreadtest qthreadtest uthreadtest \
-	fwebserver gwebserver lwebserver pwebserver uwebserver pordering
+extra: athreadtest bthreadtest fthreadtest gthreadtest pthreadtest \
+	fwebserver gwebserver pwebserver pordering
 
 clean:
 	rm -f $(TARGETS) $(DEPENDS) pordering
