@@ -194,16 +194,20 @@ struct TimerStats : public StatsObject {
   }
 };
 
-struct ConnectionStats : public StatsObject {
+struct IOStats : public StatsObject {
   Counter srvconn;
   Counter cliconn;
   Counter resets;
-  ConnectionStats(void* o, const char* n = "Connections") : StatsObject(o, n) {}
+  Counter calls;
+  Counter fails;
+  IOStats(void* o, const char* n = "IO") : StatsObject(o, n) {}
   bool print(ostream& os);
-  void aggregate(const ConnectionStats& x) {
+  void aggregate(const IOStats& x) {
     srvconn.aggregate(x.srvconn);
     cliconn.aggregate(x.cliconn);
     resets.aggregate(x.resets);
+    calls.aggregate(x.calls);
+    fails.aggregate(x.fails);
   }
 };
 

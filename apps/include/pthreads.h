@@ -2,6 +2,7 @@
 #define _tt_pthreads_h_ 1
 
 extern "C" { // needed for __cforall
+#include <limits.h> // PTHREAD_STACK_MIN
 #include <pthread.h>
 }
 
@@ -12,12 +13,12 @@ typedef pthread_mutex_t   shim_mutex_t;
 typedef pthread_cond_t    shim_cond_t;
 typedef pthread_barrier_t shim_barrier_t;
 
-static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg, bool bg = false) {
+static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg, bool bg = false, size_t stacksize = PTHREAD_STACK_MIN) {
   typedef void* (*TSR)(void*);
   pthread_t* tid = (pthread_t*)malloc(sizeof(pthread_t));
   pthread_attr_t attr;
   SYSCALL(pthread_attr_init(&attr));
-  SYSCALL(pthread_attr_setstacksize(&attr, 65536));
+  SYSCALL(pthread_attr_setstacksize(&attr, stacksize));
 #if defined(__cforall)
   SYSCALL(pthread_create(tid, &attr, (TSR)start_routine, arg));
 #else
@@ -42,7 +43,7 @@ static inline void shim_mutex_unlock(shim_mutex_t* mtx)  { SYSCALL(pthread_mutex
 
 static inline void shim_cond_init(shim_cond_t* cond)                    { SYSCALL(pthread_cond_init(cond, nullptr)); }
 static inline void shim_cond_destroy(shim_cond_t* cond)                 { SYSCALL(pthread_cond_destroy(cond)); }
-static inline void shim_cond_wait(shim_cond_t* cond, shim_mutex_t* mtx) { SYSCALL(pthread_cond_wait(cond, mtx)); SYSCALL(pthread_mutex_lock(mtx)); }
+static inline void shim_cond_wait(shim_cond_t* cond, shim_mutex_t* mtx) { SYSCALL(pthread_cond_wait(cond, mtx)); SYSCALL(pthread_mutex_unlock(mtx)); }
 static inline void shim_cond_signal(shim_cond_t* cond)                  { SYSCALL(pthread_cond_signal(cond)); }
 
 static inline shim_barrier_t* shim_barrier_create(size_t cnt) {

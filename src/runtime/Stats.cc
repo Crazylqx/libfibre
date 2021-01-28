@@ -23,7 +23,7 @@ static ProcessorStats*   totalProcessorStats   = nullptr;
 static LoadManagerStats* totalLoadManagerStats = nullptr;
 static ClusterStats*     totalClusterStats     = nullptr;
 static TimerStats*       totalTimerStats       = nullptr;
-static ConnectionStats*  totalConnectionStats  = nullptr;
+static IOStats*          totalIOStats          = nullptr;
 static PollerStats*      totalPollerStats      = nullptr;
 
 bool StatsObject::print(ostream& os) {
@@ -36,7 +36,7 @@ void StatsObject::printAll(ostream& os) {
   totalLoadManagerStats = new LoadManagerStats(0, "LoadManager (total)");
   totalClusterStats     = new ClusterStats    (0, "Cluster (total)");
   totalTimerStats       = new TimerStats      (0, "Timer (total)");
-  totalConnectionStats  = new ConnectionStats (0, "Connections (total)");
+  totalIOStats          = new IOStats         (0, "IO (total)");
   totalPollerStats      = new PollerStats     (0, "Poller (total)");
   while (!lst->empty()) {
     StatsObject* o = lst->pop();
@@ -77,11 +77,11 @@ bool TimerStats::print(ostream& os) {
   return true;
 }
 
-bool ConnectionStats::print(ostream& os) {
-  if (totalConnectionStats && this != totalConnectionStats) totalConnectionStats->aggregate(*this);
+bool IOStats::print(ostream& os) {
+  if (totalIOStats && this != totalIOStats) totalIOStats->aggregate(*this);
   if (srvconn + cliconn + resets == 0) return false;
   StatsObject::print(os);
-  os << " server:" << srvconn << " client:" << cliconn << " resets: " << resets;
+  os << " srvconn:" << srvconn << " cliconn:" << cliconn << " resets:" << resets << " calls:" << calls << " fails:" << fails;
   return true;
 }
 

@@ -81,6 +81,7 @@ static unsigned int clusterSize = 64;
 static unsigned int scopeCount = 1;
 static unsigned int listenerCount = 1; // 0 -> listener per connection
 static unsigned int pollerCount = 1;
+static unsigned int portNum = 8800;
 static unsigned int threadCount = 1;
 static bool affinityFlag = false;
 static bool groupAffinityFlag = false;
@@ -106,7 +107,7 @@ static Garage& CurrGarage() {
 
 // help message
 static void usage(const char* prog) {
-  cerr << "usage: " << prog << " -c <cluster size> -e <event scope count> -l <listener count> -p <poller count> -t <system threads> -a -g -m -r" << endl;
+  cerr << "usage: " << prog << " -c <cluster size> -e <event scope count> -l <listener count> -p <poller count> -t <system threads> -P <portnum> -a -g -m" << endl;
 }
 
 // fibre counting
@@ -123,13 +124,14 @@ static void exitHandler(int sig) {
 // command-line option processing
 static void opts(int argc, char** argv) {
   for (;;) {
-    int option = getopt( argc, argv, "c:e:l:p:t:agmh?" );
+    int option = getopt( argc, argv, "c:e:l:p:P:t:agmh?" );
     if ( option < 0 ) break;
     switch(option) {
     case 'c': clusterSize = atoi(optarg); break;
     case 'e': scopeCount = atoi(optarg); break;
     case 'l': listenerCount = atoi(optarg); break;
     case 'p': pollerCount = atoi(optarg); break;
+    case 'P': portNum = atoi(optarg); break;
     case 't': threadCount = atoi(optarg); break;
     case 'a': affinityFlag = true; break;
     case 'g': groupAffinityFlag = true; break;
@@ -281,7 +283,7 @@ closeAndOut:
 
 #if defined __U_CPLUSPLUS__
 static uSocketServer* create_socket() {
-  return new uSocketServer(8800, SOCK_STREAM, 0, maxBacklog);
+  return new uSocketServer(portNum, SOCK_STREAM, 0, maxBacklog);
 }
 
 #else
@@ -294,13 +296,13 @@ static int create_socket(bool singleAccept = false) {
   SYSCALL(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const void*)&on, sizeof(on)));
   SYSCALL(setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (const void*)&on, sizeof(on)));
 #if __FreeBSD__
-  sockaddr_in addr = { sizeof(sockaddr_in), AF_INET, htons(8800), { INADDR_ANY }, { 0 } };
+  sockaddr_in addr = { sizeof(sockaddr_in), AF_INET, htons(portNum), { INADDR_ANY }, { 0 } };
 #else
   int qlen = 5;
   SYSCALL(setsockopt(fd, IPPROTO_TCP, TCP_FASTOPEN, (const void*)&qlen, sizeof(qlen)));
   SYSCALL(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const void*)&on, sizeof(on)));
   SYSCALL(setsockopt(fd, IPPROTO_TCP, TCP_DEFER_ACCEPT, (const void*)&on, sizeof(on)));
-  sockaddr_in addr = { AF_INET, htons(8800), { INADDR_ANY }, { 0 } };
+  sockaddr_in addr = { AF_INET, htons(portNum), { INADDR_ANY }, { 0 } };
 #endif
   SYSCALL(lfBind(fd, (sockaddr*)&addr, sizeof(addr)));
   if (singleAccept) SYSCALL(lfListen(fd, 0));
@@ -502,7 +504,7 @@ static void* scopemain(void* arg) {
 
   // create server socket, if needed
 #if defined __U_CPLUSPLUS__
-  uSocketServer* servFD = singleServerSocket ? new uSocketServer(8800, SOCK_STREAM, 0, 65535) : nullptr;
+  uSocketServer* servFD = singleServerSocket ? new uSocketServer(portNum, SOCK_STREAM, 0, 65535) : nullptr;
 #else
   uintptr_t servFD = singleServerSocket ? create_socket() :  -1;
 #endif

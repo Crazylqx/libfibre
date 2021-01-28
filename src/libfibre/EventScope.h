@@ -101,7 +101,7 @@ class EventScope {
 
   EventScope(size_t pollerCount) : diskCluster(nullptr) {
     RASSERT0(pollerCount > 0);
-    stats = new ConnectionStats(this);
+    stats = new IOStats(this);
     mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>());   // create main cluster
   }
 
@@ -117,7 +117,7 @@ class EventScope {
   }
 
 public:
-  ConnectionStats* stats;
+  IOStats* stats;
 
   /** Create an event scope during bootstrap. */
   static EventScope* bootstrap(size_t pollerCount = 1, size_t workerCount = 1) {
@@ -150,7 +150,7 @@ public:
   }
 
   void postFork() {
-    new (stats) ConnectionStats(this);
+    new (stats) IOStats(this);
     timerQueue.reinit();
     delete masterPoller;
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
@@ -341,13 +341,17 @@ public:
     RASSERT0(fd >= 0 && fd < fdCount);
     if (fdSyncVector[fd].nonblocking) return iofunc(fd, a...);
     if (Yield) Fibre::yield();
+    stats->calls.count();
     T ret = iofunc(fd, a...);
     if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
+    stats->fails.count();
 #if TESTING_LAZY_FD_REGISTRATION
     if (internalRegisterFD<Input,!Input,Cluster>(fd, true)) {
       Fibre::yield();
+      stats->calls.count();
       T ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
+      stats->fails.count();
     }
 #endif
     SyncSem& sem = Input ? fdSyncVector[fd].rdSem : fdSyncVector[fd].wrSem;
@@ -361,8 +365,10 @@ public:
       internalRegisterFD<Input,!Input,Cluster>(fd, true);
 #endif
       sem.P();
+      stats->calls.count();
       ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
+      stats->fails.count();
     }
   }
 
