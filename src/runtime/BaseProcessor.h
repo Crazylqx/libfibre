@@ -81,7 +81,7 @@ class BaseProcessor;
 typedef IntrusiveList<BaseProcessor,0,2> ProcessorList;
 typedef IntrusiveRing<BaseProcessor,1,2> ProcessorRing;
 
-class BaseProcessor : public ProcessorRing::Link {
+class BaseProcessor : public DoubleLink<BaseProcessor,2> {
   inline StackContext* tryLocal();
 #if TESTING_LOADBALANCING
   inline StackContext* tryStage();

@@ -17,7 +17,8 @@
 #ifndef _StackContext_h_
 #define _StackContext_h_ 1
 
-#include "runtime/IntrusiveContainers.h" 
+#include "runtime/Container.h"
+#include "runtime/LockFreeQueues.h"
 #include "runtime/Stack.h"
 #include "runtime-glue/RuntimePreemption.h"
 
@@ -48,7 +49,7 @@ template <size_t NUM> class StackQueue :
 public IntrusiveQueue<StackContext,NUM,StackLinkCount,DoubleLink<StackContext,StackLinkCount>> {};
 
 template <size_t NUM> class StackQueueNemesis :
-public IntrusiveQueueNemesis<StackContext,NUM,StackLinkCount,DoubleLink<StackContext,StackLinkCount>>::Queue {};
+public IntrusiveQueueNemesis<StackContext,NUM,StackLinkCount,DoubleLink<StackContext,StackLinkCount>> {};
 
 template <size_t NUM> class StackQueueStub :
 public IntrusiveQueueStub<StackContext,NUM,StackLinkCount,DoubleLink<StackContext,StackLinkCount>> {};

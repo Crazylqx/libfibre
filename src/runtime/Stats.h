@@ -17,7 +17,7 @@
 #ifndef _Stats_h_
 #define _Stats_h_ 1
 
-#include "runtime/IntrusiveContainers.h"
+#include "runtime/Container.h"
 
 #include <ostream>
 using std::ostream;

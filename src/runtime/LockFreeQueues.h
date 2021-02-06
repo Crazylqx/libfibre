@@ -17,37 +17,30 @@
 #ifndef _LockFreeQueues_h_
 #define _LockFreeQueues_h_ 1
 
+#include "runtime/ContainerLink.h"
+
 // https://doi.org/10.1145/103727.103729
 // the MCS queue can be used to construct an MCS lock or the Nemesis queue
 // next() might stall, if the queue contains one element and the producer of a second elements waits before setting 'prev->vnext'
 template<typename Node, Node* volatile&(*Next)(Node&)>
 class QueueMCS {
   Node* volatile tail;
+
 public:
   QueueMCS() : tail(nullptr) {}
-  bool empty() const { return tail == nullptr; }
-
-  static void clear(Node& elem) {
-#if TESTING_ENABLE_ASSERTIONS
-    Next(elem) = nullptr;
-#endif
-  }
+  bool empty() const { return !tail; }
 
   bool tryPushEmpty(Node& first, Node& last) {
+    RASSERT(!Next(last), FmtHex(Next(last)));  // assume link invalidated at pop
     if (!empty()) return false;
-#if !TESTING_ENABLE_ASSERTIONS
-    Next(last) = nullptr;
-#endif
     Node* expected = nullptr;
-    return  __atomic_compare_exchange_n(&tail, &expected, &last, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+    return __atomic_compare_exchange_n(&tail, &expected, &last, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
   }
 
   bool tryPushEmpty(Node& elem) { return tryPushEmpty(elem, elem); }
 
   Node* push(Node& first, Node& last) {
-#if !TESTING_ENABLE_ASSERTIONS
-    Next(last) = nullptr;
-#endif
+    RASSERT(!Next(last), FmtHex(&last));       // assume link invalidated at pop
     // make sure writes to 'next' are not reordered with this update
     Node* prev = __atomic_exchange_n(&tail, &last, __ATOMIC_SEQ_CST); // swing tail to last of new element(s)
     if (prev) Next(*prev) = &first;
@@ -70,6 +63,7 @@ public:
 template<typename Node, Node* volatile&(*Next)(Node&)>
 class QueueNemesis : public QueueMCS<Node,Next> {
   Node* volatile head;
+
 public:
   QueueNemesis() : head(nullptr) {}
 
@@ -92,7 +86,7 @@ public:
       next = QueueMCS<Node,Next>::next(*elem); // memory sync in next()
       if (next) head = next;
     }
-    QueueMCS<Node,Next>::clear(*elem);
+    Next(*elem) = nullptr;                     // invalidate link
     return elem;
   }
 
@@ -101,5 +95,80 @@ public:
     return pop(dummy);
   }
 };
+
+// http://doc.cat-v.org/inferno/concurrent_gc/concurrent_gc.pdf
+// https://www.cs.rice.edu/~johnmc/papers/cqueues-mellor-crummey-TR229-1987.pdf
+// http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue
+// https://github.com/samanbarghi/MPSCQ/blob/master/src/MPSCQueue.h
+
+// NOTE WELL: Static cast from Link to Node must work! If downcasting,
+//            Link must the first class that Node inherits from.
+template<typename Node, typename Link, Node* volatile&(*Next)(Node&), bool Blocking>
+class QueueStub {
+  Link anchorLink;
+  Node* stub;
+  Node* head;
+  Node* tail;
+
+  // peek/pop operate in chunks of elements and re-append stub after each chunk
+  // after re-appending stub, tail points to stub, if no further insertions -> empty!
+  bool checkStub() {
+    if (head == stub) {                             // if current front chunk is empty
+      if (Blocking) {                               // BLOCKING:
+        Node* expected = stub;                      //   check if tail also points at stub -> empty?
+        Node* xchg = (Node*)(uintptr_t(expected) | 1);    //   if yes, mark queue empty
+        bool empty = __atomic_compare_exchange_n((Node**)&tail, &expected, xchg, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+        if (empty) return false;                    //   queue is empty and is marked now
+        if (uintptr_t(expected) & 1) return false;  //   queue is empty and was marked before
+      } else {                                      // NONBLOCKING:
+        if (tail == stub) return false;             //   check if tail also points at stub -> empty?
+      }
+      while (!Next(*stub)) Pause();                 // producer in push()
+      head = Next(*stub);                           // remove stub
+      push(*stub);                                  // re-append stub at end
+    }
+    return true;
+  }
+
+public:
+  QueueStub() : stub(static_cast<Node*>(&anchorLink)) {
+    head = tail = Next(*stub) = stub;
+    if (Blocking) tail = (Node*)(uintptr_t(tail) | 1); // mark queue empty
+  }
+  bool empty() const { return (head == stub && tail == stub); }
+
+  bool push(Node& first, Node& last) {
+    RASSERT(!Next(last), FmtHex(&last));               // assume link invalidated at pop
+    Node* prev = __atomic_exchange_n((Node**)&tail, &last, __ATOMIC_SEQ_CST); // swing tail to last of new element(s)
+    bool empty = false;
+    if (Blocking) {                                    // BLOCKING:
+      empty = uintptr_t(prev) & 1;                     //   check empty marking
+      prev = (Node*)(uintptr_t(prev) & ~uintptr_t(1)); //   clear marking
+    }
+    Next(*prev) = &first;                              // append segments to previous tail
+    return empty;
+  }
+
+  bool push(Node& elem) { return push(elem, elem); }
+
+  Node* peek() {
+    if (!checkStub()) return nullptr;
+    return head;
+  }
+
+  template<bool Peeked = false>
+  Node* pop() {
+    if (!Peeked && !checkStub()) return nullptr;
+    Node* retval = head;                               // head will be returned
+    while (!Next(*head)) Pause();                      // producer in push()
+    head = Next(*head);                                // remove head
+    Next(*retval) = nullptr;                           // invalidate link
+    return retval;
+  }
+};
+
+template<typename T, size_t NUM=0, size_t CNT=1, typename LT=SingleLink<T,CNT>> struct IntrusiveQueueNemesis : public QueueNemesis<T,LT::template VNext<NUM>> {};
+// NOTE WELL: The intrusive design leads to downcasting in the QueueStub class. This only works, if LT is the first class that T inherits from.
+template<typename T, size_t NUM=0, size_t CNT=1, typename LT=SingleLink<T,CNT>, bool Blocking=false> struct IntrusiveQueueStub : public QueueStub<T,LT,LT::template VNext<NUM>,Blocking> {};
 
 #endif /* _LockFreeQueues_h_ */
