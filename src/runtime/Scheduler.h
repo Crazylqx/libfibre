@@ -127,12 +127,12 @@ public:
     ringCount -= 1;
   }
 
-  BaseProcessor& placement(_friend<StackContext>, bool sg = false) {
+  BaseProcessor& placement(_friend<StackContext>, bool staging = false) {
 #if TESTING_PLACEMENT_STAGING || TESTING_SHARED_READYQUEUE
     return stagingProc;
 #else
 #if TESTING_LOADBALANCING
-    if (sg) return stagingProc;
+    if (staging) return stagingProc;
 #endif
     RASSERT0(placeProc);
     // ring insert is traversal-safe, so could use separate 'placeLock' here

@@ -102,8 +102,8 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
 
 protected:
   // constructor/destructors can only be called by derived classes
-  StackContext(BaseProcessor& proc, bool aff = false); // main constructor
-  StackContext(Scheduler&, bool bg = false);           // uses delegation
+  StackContext(BaseProcessor& proc, bool affinity = false); // main constructor
+  StackContext(Scheduler&, bool background = false);        // uses delegation
   ~StackContext() {
     RASSERT(runState == 1, FmtHex(this), runState);
     RASSERT(resumeInfo == nullptr, FmtHex(this));

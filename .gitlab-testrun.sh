@@ -53,25 +53,18 @@ function post() {
 }
 
 function run_memcached() {
-	touch memcached.running
-	while [ -f memcached.running ]; do
-		$TASKSET_SERVER memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24
-		sleep 1
-	done | tee memcached.server.$1.out &
 	for ((i=0;i<5;i+=1)); do
+		$TASKSET_SERVER memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24 &
 		sleep 3
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --loadonly
 		echo LOADED
 		eval $PERF_SERVER $TASKSET_CLIENT timeout 30 \
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --noload -i fb_ia -u0.5 -c25 -d1 -t10 -T$(expr $count \* 2)
-		[ $? -eq 0 ] && killall memcached || {
-			rm -f memcached.running
-			killall memcached
-			sleep 1
-			exit 1
-		}
-	done | tee memcached.client.$1.out
-	rm -f memcached.running
+		result=$?
+		killall memcached
+		wait
+		[ $result -eq 0 ] || exit 1
+	done | tee memcached.$1.out
 }
 
 function prep_0() {
@@ -95,7 +88,7 @@ function run_1() {
 }
 
 function prep_2() {
-	sed -i -e 's/.*#define TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_PROCESSOR_POLLER .*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -104,7 +97,7 @@ function run_2() {
 }
 
 function prep_3() {
-	sed -i -e 's/.*#define TESTING_CLUSTER_POLLER_FIBRE.*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -113,7 +106,7 @@ function run_3() {
 }
 
 function prep_4() {
-	sed -i -e 's/.*#define TESTING_LAZY_FD_REGISTRATION.*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_LAZY_FD_REGISTRATION .*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -122,9 +115,9 @@ function run_4() {
 }
 
 function prep_5() {
-	sed -i -e 's/.*#define TESTING_PROCESSOR_POLLER.*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
-	sed -i -e 's/.*#define TESTING_CLUSTER_POLLER_FIBRE.*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
-	sed -i -e 's/.*#define TESTING_LAZY_FD_REGISTRATION.*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_PROCESSOR_POLLER .*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_LAZY_FD_REGISTRATION .*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -133,8 +126,8 @@ function run_5() {
 }
 
 function prep_6() {
-	sed -i -e 's/.*#define TESTING_ONESHOT_REGISTRATION.*/#define TESTING_ONESHOT_REGISTRATION 1/' src/runtime-glue/testoptions.h
-	sed -i -e 's/.*#define TESTING_LAZY_FD_REGISTRATION.*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_ONESHOT_REGISTRATION .*/#define TESTING_ONESHOT_REGISTRATION 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_LAZY_FD_REGISTRATION .*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -142,7 +135,16 @@ function run_6() {
 	run_memcached 6
 }
 
-emax=6
+function prep_7() {
+	sed -i -e 's/.* TESTING_NEMESIS_READYQUEUE .*/#undef TESTING_NEMESIS_READYQUEUE/' src/runtime-glue/testoptions.h
+	echo memcached
+}
+
+function run_7() {
+	run_memcached 7
+}
+
+emax=7
 
 if [ $# -gt 0 ] && [ "$1" != "-f" ]; then
 	if [ $1 -lt 0 -o $1 -gt $emax ]; then

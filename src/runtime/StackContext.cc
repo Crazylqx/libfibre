@@ -18,15 +18,15 @@
 #include "runtime/StackContext.h"
 #include "runtime-glue/RuntimeStack.h"
 
-StackContext::StackContext(BaseProcessor& proc, bool aff)
-: stackPointer(0), processor(&proc), priority(DefPriority), affinity(aff), runState(1), resumeInfo(nullptr) {
+StackContext::StackContext(BaseProcessor& proc, bool affinity)
+: stackPointer(0), processor(&proc), priority(DefPriority), affinity(affinity), runState(1), resumeInfo(nullptr) {
 #if TESTING_SHARED_READYQUEUE
-  affinity = true;
+  this->affinity = true;
 #endif
 }
 
-StackContext::StackContext(Scheduler& scheduler, bool bg)
-: StackContext(scheduler.placement(_friend<StackContext>(), bg), bg) {}
+StackContext::StackContext(Scheduler& scheduler, bool background)
+: StackContext(scheduler.placement(_friend<StackContext>(), background), background) {}
 
 template<StackContext::SwitchCode Code>
 inline void StackContext::switchStack(StackContext& nextStack) {
