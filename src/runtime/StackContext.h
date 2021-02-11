@@ -20,7 +20,6 @@
 #include "runtime/Container.h"
 #include "runtime/LockFreeQueues.h"
 #include "runtime/Stack.h"
-#include "runtime-glue/RuntimePreemption.h"
 
 static const size_t TopPriority = 0;
 static const size_t DefPriority = 1;
@@ -28,11 +27,10 @@ static const size_t LowPriority = 2;
 static const size_t NumPriority = 3;
 
 class EventScope;
-class BaseSuspender;
-class ResumeInfo;
 class BaseProcessor;
 class KernelProcessor;
 class Scheduler;
+class Suspender;
 
 #if TESTING_ENABLE_DEBUGGING
 static const size_t DebugListLink = 0;
@@ -75,9 +73,8 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
   size_t         priority;     // scheduling priority
   bool           affinity;     // affinity prohibits re-staging
 
-  size_t      volatile runState;   // runState == 0 => parked
-  ptr_t       volatile resumeMsg;  // send info from resumer to this task
-  ResumeInfo* volatile resumeInfo; // race: unblock vs. timeout
+  size_t volatile runState;    // 0 = parked, 1 = running, 2 = early resume
+  ptr_t  volatile resumeInfo;
 
   StackContext(const StackContext&) = delete;
   const StackContext& operator=(const StackContext&) = delete;
@@ -104,10 +101,7 @@ protected:
   // constructor/destructors can only be called by derived classes
   StackContext(BaseProcessor& proc, bool affinity = false); // main constructor
   StackContext(Scheduler&, bool background = false);        // uses delegation
-  ~StackContext() {
-    RASSERT(runState == 1, FmtHex(this), runState);
-    RASSERT(resumeInfo == nullptr, FmtHex(this));
-  }
+  ~StackContext() { RASSERT(runState == 1, FmtHex(this), runState); }
 
   void initStackPointer(vaddr sp) {
     stackPointer = align_down(sp, stackAlignment);
@@ -138,25 +132,22 @@ public:
   static void preempt();
   static void terminate() __noreturn;
 
-  // context switching - non-static -> restricted to BaseSuspender
   template<size_t SpinStart = 1, size_t SpinEnd = 0>
-  ptr_t suspend(_friend<BaseSuspender>) {
+  ptr_t suspend(_friend<Suspender>) {
     size_t spin = SpinStart;
-    while (spin <= SpinEnd) {
+    for (;;) {
+      size_t exp = 2; // resumed already? skip suspend
+      if (__atomic_compare_exchange_n(&runState, &exp, 1, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return resumeInfo;
+      if (spin > SpinEnd) break;
       for (size_t i = 0; i < spin; i += 1) Pause();
-      // resumed already? skip suspend
-      size_t exp = 2;
-      if (__atomic_compare_exchange_n(&runState, &exp, 1, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return resumeMsg;
       spin += spin;
     }
     suspendInternal();
-    return resumeMsg;
+    return resumeInfo;
   }
 
-  // if suspended (runState == 0), resume
   template<bool DirectSwitch = false>
-  void resume(ptr_t rmsg = nullptr) {
-    resumeMsg = rmsg;
+  void resume() {
     size_t prev = __atomic_fetch_add(&runState, 1, __ATOMIC_SEQ_CST);
     if (prev == 0) {
       if (DirectSwitch) resumeDirect();
@@ -166,14 +157,13 @@ public:
     }
   }
 
-  // set ResumeInfo to facilitate later resume race
-  void setupResumeRace(ResumeInfo& ri, _friend<ResumeInfo>) {
-    __atomic_store_n( &resumeInfo, &ri, __ATOMIC_SEQ_CST );
+  void prepareResumeRace(_friend<Suspender>) {
+    resumeInfo = nullptr;
   }
 
-  // race between different possible resumers -> winner cancels the other
-  ResumeInfo* raceResume() {
-    return __atomic_exchange_n( &resumeInfo, nullptr, __ATOMIC_SEQ_CST );
+  bool raceResume(ptr_t ri) {
+    ptr_t exp = nullptr;
+    return __atomic_compare_exchange_n(&resumeInfo, &exp, ri, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
   }
 
   // change resume processor during scheduling

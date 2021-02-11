@@ -222,7 +222,7 @@ inline int fibre_yield(void) {
 
 /** @brief Park fibre (indefinite sleep). */
 inline int fibre_park() {
-  BaseSuspender::park();
+  Suspender::suspend(*Context::CurrStack());
   return 0;
 }
 

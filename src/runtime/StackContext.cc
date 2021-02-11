@@ -19,7 +19,7 @@
 #include "runtime-glue/RuntimeStack.h"
 
 StackContext::StackContext(BaseProcessor& proc, bool affinity)
-: stackPointer(0), processor(&proc), priority(DefPriority), affinity(affinity), runState(1), resumeInfo(nullptr) {
+: stackPointer(0), processor(&proc), priority(DefPriority), affinity(affinity), runState(1) {
 #if TESTING_SHARED_READYQUEUE
   this->affinity = true;
 #endif

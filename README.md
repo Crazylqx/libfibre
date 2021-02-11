@@ -29,6 +29,7 @@ In addition, the following students (in alphabetical order) have helped with var
 - Bilal Akhtar (gdb extension)
 - Peng Chen (split stack)
 - Peiran Hong (API/Apache)
+- Matthew May (suspend/timeout)
 - Wen Shi (gdb extension)
 - Shuangyi Tong (event scopes)
 - Gan Wang (API/Apache)

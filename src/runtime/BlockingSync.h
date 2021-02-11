@@ -24,187 +24,114 @@
 #include "runtime/StackContext.h"
 #include "runtime-glue/RuntimeContext.h"
 #include "runtime-glue/RuntimeLock.h"
+#include "runtime-glue/RuntimePreemption.h"
 #include "runtime-glue/RuntimeTimer.h"
 
-#include <list>
 #include <map>
 
-class BaseTimer;
+struct Suspender { // funnel suspend calls through this class for access control
+  static void prepareRace(StackContext& stack) {
+    stack.prepareResumeRace(_friend<Suspender>());
+  }
 
-// DEADLOCK AVOIDANCE RULE: acquire Timer lock while BlockingQueue lock held, but not vice versa!
+  template<bool DisablePreemption=true>
+  static ptr_t suspend(StackContext& stack) {
+    if (DisablePreemption) RuntimeDisablePreemption();
+    ptr_t result = stack.suspend(_friend<Suspender>());
+    RuntimeEnablePreemption();
+    return result;
+  }
+};
 
 class TimerQueue {
   WorkerLock lock;
-  std::multimap<Time,BaseTimer*> queue;
+  std::multimap<Time,StackContext*> queue;
   TimerStats* stats;
-
 public:
-  typedef typename std::multimap<Time,BaseTimer*>::iterator Handle;
-
   TimerQueue() { stats = new TimerStats(this); }
   bool empty() const { return queue.empty(); }
   void reinit() { new (stats) TimerStats(this); }
 
-  Handle insert(BaseTimer& bt, const Time& relTimeout, const Time& absTimeout) {
-    ScopedLock<WorkerLock> al(lock);
-    Handle ret = queue.insert( {absTimeout, &bt} ); // set up timeout
-    if (ret == queue.begin()) Runtime::Timer::newTimeout(relTimeout);
-    return ret; // returns with lock held
-  }
-
-  void erase(Handle titer) {
-    ScopedLock<WorkerLock> al(lock);
-    queue.erase(titer);
-  }
-
-  inline bool checkExpiry(const Time& now, Time& newTime);
-};
-
-class BaseTimer {
-  TimerQueue::Handle thandle;
-protected:
-  TimerQueue& tQueue;
-  void prepareRelative(const Time& timeout) {
-    thandle = tQueue.insert(*this, timeout, timeout + Runtime::Timer::now());
-  }
-  void prepareAbsolute(const Time& timeout, const Time& now) {
-    thandle = tQueue.insert(*this, timeout - now, timeout);
-  }
-public:
-  BaseTimer(TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) : tQueue(tq) {}
-  void cancel() { tQueue.erase(thandle); }
-  virtual bool checkTimer() { return true; }
-  virtual void fireTimer() = 0;
-};
-
-class BaseSuspender {
-protected:
-  static void prepareSuspend() {
-    RuntimeDisablePreemption();
-  }
-  static ptr_t doSuspend(StackContext& cs) {
-    ptr_t msg = cs.suspend(_friend<BaseSuspender>());
-    RuntimeEnablePreemption();
-    return msg;
-  }
-public:
-  static ptr_t park(StackContext& stack = *Context::CurrStack()) {
-    prepareSuspend();
-    return doSuspend(stack);
-  }
-};
-
-class ResumeInfo {
-protected:
-  void setupResumeRace(StackContext& cs) {
-    cs.setupResumeRace(*this, _friend<ResumeInfo>());
-  }
-public:
-  virtual void cancelTimer() {}
-};
-
-class TimeoutInfo : public virtual BaseSuspender, public BaseTimer {
-public:
-  StackContext& stack;
-  TimeoutInfo(StackContext& stack = *Context::CurrStack()) : stack(stack) {}
-  void suspendRelative(const Time& timeout) {
-    prepareSuspend();
-    prepareRelative(timeout);
-    doSuspend(stack);
-  }
-  virtual void fireTimer() {
-    DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(&stack), " timed out");
-    stack.resume();
-  }
-};
-
-template<typename Lock>
-class BlockingInfo : public virtual BaseSuspender, public ResumeInfo {
-protected:
-  Lock& lock;
-public:
-  BlockingInfo(Lock& l) : lock(l) {}
-  void suspend(StackContext& stack = *Context::CurrStack()) {
-    prepareSuspend();
-    lock.release();
-    doSuspend(stack);
-  }
-  void suspend(FlexStackList& queue, StackContext& stack = *Context::CurrStack()) {
-    setupResumeRace(stack);
-    prepareSuspend();
-    queue.push_back(stack);
-    lock.release();
-    doSuspend(stack);
-  }
-};
-
-template<typename Lock>
-class TimeoutBlockingInfo : public BlockingInfo<Lock>, public TimeoutInfo {
-  using BaseBI = BlockingInfo<Lock>;
-  bool timedOut;
-public:
-  TimeoutBlockingInfo(Lock& l, StackContext& stack = *Context::CurrStack()) : BaseBI(l), TimeoutInfo(stack), timedOut(false) {}
-  bool suspendAbsolute(FlexStackList& queue, const Time& timeout, const Time& now) {
-    BaseBI::setupResumeRace(stack);
-    prepareSuspend();
-    queue.push_back(stack);
-    BaseTimer::prepareAbsolute(timeout, now);
-    BaseBI::lock.release();
-    doSuspend(stack);
-    return !timedOut;
-  }
-  virtual bool checkTimer() {
-    return stack.raceResume();
-  }
-  virtual void fireTimer() {
-    timedOut = true;
-    BaseBI::lock.acquire();
-    FlexStackList::remove(stack);
-    BaseBI::lock.release();
-    TimeoutInfo::fireTimer();
-  }
-  virtual void cancelTimer() {
-    timedOut = false;
-    TimeoutInfo::cancel();
-  }
-};
-
-inline bool TimerQueue::checkExpiry(const Time& now, Time& newTime) {
-  bool retcode = false;
-  std::list<BaseTimer*> fireList; // defer event locks
-  lock.acquire();
-  int cnt = 0;
-  for (auto it = queue.begin(); it != queue.end(); ) {
-    if (it->first > now) {
-      retcode = true;
-      newTime = it->first - now;
-  break;
+  bool checkExpiry(const Time& now, Time& newTime) {
+    bool retcode = false;
+    int cnt = 0;
+    lock.acquire();
+    for (auto iter = queue.begin(); iter != queue.end(); ) {
+      if (iter->first > now) {
+        retcode = true;              // timeouts remaining after this run
+        newTime = iter->first - now; // time to next timeout
+      break;
+      }
+      StackContext* sc = iter->second;
+      if (sc->raceResume(&queue)) {
+        iter = queue.erase(iter);
+        sc->resume();
+      } else {
+        iter = std::next(iter);
+      }
+      cnt += 1;
     }
-#if TESTING_ENABLE_STATISTICS
-    cnt += 1;
-#endif
-    BaseTimer* timer = it->second;
-    if (timer->checkTimer()) {
-      it = queue.erase(it);
-      fireList.push_back(timer);
-    } else {
-      it = next(it);
-    }
+    lock.release();
+    stats->events.add(cnt);
+    return retcode;
   }
-  stats->events.add(cnt);
-  lock.release();
-  for (auto f : fireList) f->fireTimer(); // timeout lock released
-  return retcode;
-}
 
-static inline void sleepStack(const Time& timeout) {
-  TimeoutInfo ti;
-  DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " sleep ", timeout);
-  ti.suspendRelative(timeout);
+  // Note that StackContext::prepareSuspend must have been called already!
+  ptr_t blockTimeout(StackContext& cs, const Time& relTimeout, const Time& absTimeout) {
+    // set up queue node
+    lock.acquire();
+    std::multimap<Time,StackContext*>::iterator iter = queue.insert( {absTimeout, &cs} );
+    if (iter == queue.begin()) Runtime::Timer::newTimeout(relTimeout);
+    lock.release();
+    // suspend
+    ptr_t winner = Suspender::suspend(cs);
+    if (winner == &queue) return nullptr; // timer expired
+    // clean up
+    ScopedLock<WorkerLock> sl(lock);
+    queue.erase(iter);
+    return winner;                        // timer cancelled
+  }
+};
+
+static inline bool sleepStack(const Time& timeout, TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) {
+  StackContext* cs = Context::CurrStack();
+  DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(cs), " sleep ", timeout);
+  Suspender::prepareRace(*cs);
+  return tq.blockTimeout(*cs, timeout, timeout + Runtime::Timer::now()) == nullptr;
 }
 
 class BlockingQueue {
-  FlexStackList queue;
+  struct Node : public DoubleLink<Node> { // need separate node for timeout & cancellation
+    StackContext& stack;
+    Node(StackContext& cs) : stack(cs) {}
+  };
+  IntrusiveList<Node> queue;
+
+  ptr_t blockHelper(StackContext& cs) {
+    return Suspender::suspend(cs);
+  }
+  ptr_t blockHelper(StackContext& cs, const Time& relTimeout, const Time& absTimeout, TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) {
+    return tq.blockTimeout(cs, relTimeout, absTimeout);
+  }
+
+  template<typename Lock, typename...Args>
+  bool blockInternal(Lock& lock, const Args&... args) {
+    // set up queue node
+    StackContext* cs = Context::CurrStack();
+    DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(cs), " blocking on ", FmtHex(&queue));
+    Node node(*cs);
+    Suspender::prepareRace(*cs);
+    queue.push_back(node);
+    lock.release();
+    // block, potentially with timeout
+    ptr_t winner = blockHelper(*cs, args...);
+    DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(cs), " continuing on ", FmtHex(&queue));
+    // clean up
+    if (winner == &queue) return true; // blocking completed;
+    ScopedLock<Lock> sl(lock);
+    queue.remove(node);
+    return false;                      // blocking cancelled
+  }
 
   BlockingQueue(const BlockingQueue&) = delete;            // no copy
   BlockingQueue& operator=(const BlockingQueue&) = delete; // no assignment
@@ -215,60 +142,32 @@ public:
   bool empty() const { return queue.empty(); }
 
   template<typename Lock>
-  bool block(Lock& lock, bool wait = true) {
-    if (wait) {
-      BlockingInfo<Lock> bi(lock);
-      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " blocking on ", FmtHex(&queue));
-      bi.suspend(queue);
-      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " continuing on ", FmtHex(&queue));
-      return true;
-    }
+  bool block(Lock& lock, bool wait = true) {    // Note that caller must hold lock
+    if (wait) return blockInternal(lock);
     lock.release();
     return false;
   }
 
   template<typename Lock>
-  bool block(Lock& lock, const Time& timeout) {
+  bool block(Lock& lock, const Time& timeout) { // Note that caller must hold lock
     Time now = Runtime::Timer::now();
-    if (timeout > now) {
-      TimeoutBlockingInfo<Lock> tbi(lock);
-      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " blocking on ", FmtHex(&queue), " timeout ", timeout);
-      bool ret = tbi.suspendAbsolute(queue, timeout, now);
-      DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(Context::CurrStack()), " continuing on ", FmtHex(&queue));
-      return ret;
-    }
+    if (timeout > now) return blockInternal(lock, timeout - now, timeout);
     lock.release();
     return false;
   }
 
   template<bool Enqueue = true>
-  StackContext* unblock() {       // not concurrency-safe; better hold lock
-    for (StackContext* s = queue.front(); s != queue.edge(); s = FlexStackList::next(*s)) {
-      ResumeInfo* ri = s->raceResume();
-      if (ri) {
-        ri->cancelTimer();
-        FlexStackList::remove(*s);
-        DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(s), " resume from ", FmtHex(&queue));
-        if (Enqueue) s->resume();
-        return s;
+  StackContext* unblock() {                     // Note that caller must hold lock
+    for (Node* node = queue.front(); node != queue.edge(); node = IntrusiveList<Node>::next(*node)) {
+      StackContext* sc = &node->stack;
+      if (sc->raceResume(&queue)) {
+        IntrusiveList<Node>::remove(*node);
+        DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(sc), " resume from ", FmtHex(&queue));
+        if (Enqueue) sc->resume();
+        return sc;
       }
     }
     return nullptr;
-  }
-
-  void reset() {                  // not concurrency-safe; better hold lock
-    StackContext* s = queue.front();
-    while (s != queue.edge()) {
-      ResumeInfo* ri = s->raceResume();
-      StackContext* ns = FlexStackList::next(*s);
-      if (ri) {
-        ri->cancelTimer();
-        FlexStackList::remove(*s);
-        DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(s), " clear/resume from ", FmtHex(&queue));
-        s->resume();
-      }
-      s = ns;
-    }
   }
 };
 
@@ -391,7 +290,6 @@ public:
   }
 };
 
-// simple blocking barrier
 template<typename Lock, typename BQ = BlockingQueue>
 class LockedBarrier {
   Lock lock;
@@ -410,8 +308,7 @@ public:
     lock.acquire();
     counter += 1;
     if (counter == target) {
-      while (bq.unblock());
-      counter = 0;
+      for ( ;counter > 0; counter -= 1) bq.unblock();
       lock.release();
       return true;
     } else {
@@ -500,8 +397,9 @@ public:
   SemaphoreResult P(bool wait = true) {
     RASSERT0(wait);
     StackContext* cs = Context::CurrStack();
+    RuntimeDisablePreemption();
     queue.push(*cs);
-    BaseSuspender::park();
+    Suspender::suspend<false>(*cs);
     return SemaphoreSucess;
   }
 
@@ -533,8 +431,12 @@ public:
   SemaphoreResult P(bool wait = true) {
     RASSERT0(wait);
     StackContext* cs = Context::CurrStack();
-    if (!queue.push(*cs)) return SemaphoreWasOpen;
-    BaseSuspender::park();
+    RuntimeDisablePreemption();
+    if (!queue.push(*cs)) {
+      RuntimeEnablePreemption();
+      return SemaphoreWasOpen;
+    }
+    Suspender::suspend<false>(*cs);
     return SemaphoreSucess;
   }
 
@@ -652,7 +554,7 @@ public:
   }
 };
 
-// simple blocking condition variable: assume caller holds lock
+// condition variable with external lock
 template<typename BQ = BlockingQueue>
 class Condition {
   BQ bq;
@@ -671,7 +573,7 @@ public:
   void signal() { while (bq.unblock() && Broadcast); }
 };
 
-// cf. condition variable: assume caller to wait/post holds lock
+// synchronization flag with with external lock
 template<typename Lock>
 class SynchronizedFlag {
 
@@ -692,9 +594,9 @@ public:
 
   bool wait(Lock& lock) {             // returns false, if detached
     if (state == Running) {
-      BlockingInfo<Lock> bi(lock);
       waiter = Context::CurrStack();
-      bi.suspend(*waiter);
+      lock.release();
+      Suspender::suspend(*waiter);
       lock.acquire();                 // reacquire lock to check state
     }
     if (state == Posted) return true;
@@ -717,7 +619,7 @@ public:
   }
 };
 
-// cf. condition variable: assume caller to wait/post holds lock
+// synchronization (with result) with external lock
 template<typename Runner, typename Result, typename Lock>
 class Joinable : public SynchronizedFlag<Lock> {
   using Baseclass = SynchronizedFlag<Lock>;
@@ -745,6 +647,7 @@ public:
   Runner* getRunner() const { return runner; }
 };
 
+// synchronization flag with automatic locking
 template<typename Lock>
 class SyncPoint : public SynchronizedFlag<Lock> {
   using Baseclass = SynchronizedFlag<Lock>;
@@ -778,7 +681,7 @@ public:
 };
 
 template<typename Lock = BinaryLock<>>
-class FastBarrier : public BaseSuspender {
+class FastBarrier {
   size_t target;
   volatile size_t counter;
   FlexStackQueueMPSC queue;
@@ -791,11 +694,13 @@ public:
   bool wait() {
     // There's a race between counter and queue.  A thread can be in a
     // different position in the queue relative to the counter.  The
-    // notifier is determined by counter, so a thread might notify a group
-    // of other threads, but itself not continue.  However, one thread of
-    // each group must be "special" (PTHREAD_BARRIER_SERIAL_THREAD) with a
-    // different return code.
+    // notifier is determined by the counter, so a thread might notify a
+    // group of other threads, but itself not continue.  However, one thread
+    // of each group must be receive a "special" return code.  With POSIX
+    // threads, this is PTHREAD_BARRIER_SERIAL_THREAD - here it's 'true'.
     StackContext* cs = Context::CurrStack();
+    Suspender::prepareRace(*cs);
+    RuntimeDisablePreemption();
     queue.push(*cs);
     bool park = __atomic_add_fetch(&counter, 1, __ATOMIC_RELAXED) % target;
     if (!park) {
@@ -809,14 +714,14 @@ public:
           if (next) break;
           Pause();
         }
-        // don't suspend/resume self
-        if (next == cs) park = false;
-        // if current thread is not continuing, last of group is notified
-        else next->resume(ptr_t(park && (i == target - 1)));
+        if (i == target - 1) next->raceResume(cs); // set special return code
+        if (next == cs) park = false;              // don't suspend/resume self
+        else next->resume();
       }
     }
-    if (park) return (bool)BaseSuspender::park();
-    else return true;
+    if (park) return Suspender::suspend<false>(*cs);
+    else RuntimeEnablePreemption();
+    return cs;
   }
 };
 
