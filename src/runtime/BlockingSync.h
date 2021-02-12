@@ -29,6 +29,8 @@
 
 #include <map>
 
+/****************************** Basics ******************************/
+
 struct Suspender { // funnel suspend calls through this class for access control
   static void prepareRace(StackContext& stack) {
     stack.prepareResumeRace(_friend<Suspender>());
@@ -38,19 +40,25 @@ struct Suspender { // funnel suspend calls through this class for access control
   static ptr_t suspend(StackContext& stack) {
     if (DisablePreemption) RuntimeDisablePreemption();
     ptr_t result = stack.suspend(_friend<Suspender>());
+    DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(&stack), " continuing");
     RuntimeEnablePreemption();
     return result;
   }
 };
 
+enum SemaphoreResult : size_t { SemaphoreTimeout = 0, SemaphoreSucess = 1, SemaphoreWasOpen = 2 };
+
+/****************************** Timeouts ******************************/
+
 class TimerQueue {
   WorkerLock lock;
   std::multimap<Time,StackContext*> queue;
   TimerStats* stats;
+
 public:
   TimerQueue() { stats = new TimerStats(this); }
-  bool empty() const { return queue.empty(); }
   void reinit() { new (stats) TimerStats(this); }
+  bool empty() const { return queue.empty(); }
 
   bool checkExpiry(const Time& now, Time& newTime) {
     bool retcode = false;
@@ -100,6 +108,8 @@ static inline bool sleepStack(const Time& timeout, TimerQueue& tq = Runtime::Tim
   return tq.blockTimeout(*cs, timeout, timeout + Runtime::Timer::now()) == nullptr;
 }
 
+/****************************** Common Locked Synchronization ******************************/
+
 class BlockingQueue {
   struct Node : public DoubleLink<Node> { // need separate node for timeout & cancellation
     StackContext& stack;
@@ -118,16 +128,15 @@ class BlockingQueue {
   bool blockInternal(Lock& lock, const Args&... args) {
     // set up queue node
     StackContext* cs = Context::CurrStack();
-    DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(cs), " blocking on ", FmtHex(&queue));
     Node node(*cs);
+    DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(cs), " blocking on ", FmtHex(&queue));
     Suspender::prepareRace(*cs);
     queue.push_back(node);
     lock.release();
     // block, potentially with timeout
     ptr_t winner = blockHelper(*cs, args...);
-    DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(cs), " continuing on ", FmtHex(&queue));
-    // clean up
     if (winner == &queue) return true; // blocking completed;
+    // clean up
     ScopedLock<Lock> sl(lock);
     queue.remove(node);
     return false;                      // blocking cancelled
@@ -171,11 +180,8 @@ public:
   }
 };
 
-enum SemaphoreResult : size_t { SemaphoreTimeout = 0, SemaphoreSucess = 1, SemaphoreWasOpen = 2 };
-
 template<typename Lock, bool Binary = false, typename BQ = BlockingQueue>
 class LockedSemaphore {
-protected:
   Lock lock;
   volatile ssize_t counter;
   BQ bq;
@@ -199,15 +205,11 @@ protected:
 
 public:
   explicit LockedSemaphore(ssize_t c = 0) : counter(c) {}
-  ~LockedSemaphore() { destroy(); }
-  void reinit(ssize_t c = 0) {
+  ~LockedSemaphore() { cleanup(); }
+  void cleanup(ssize_t c = 0) { // baton passing requires serialization at destruction
     ScopedLock<Lock> al(lock);
     RASSERT0(bq.empty());
     counter = c;
-  }
-  void destroy() { // baton passing requires serialization at destruction
-    ScopedLock<Lock> al(lock);
-    RASSERT0(bq.empty());
   }
   ssize_t getValue() const { return counter; }
 
@@ -267,8 +269,8 @@ protected:
 
 public:
   LockedMutex() : owner(nullptr) {}
-  ~LockedMutex() { destroy(); }
-  void destroy() { // baton passing requires serialization at destruction
+  ~LockedMutex() { cleanup(); }
+  void cleanup() { // baton passing requires serialization at destruction
     ScopedLock<Lock> al(lock);
     RASSERT(owner == nullptr, FmtHex(owner));
     RASSERT0(bq.empty());
@@ -290,6 +292,25 @@ public:
   }
 };
 
+// condition variable with external lock
+template<typename BQ = BlockingQueue>
+class Condition {
+  BQ bq;
+
+public:
+  ~Condition() { cleanup(); }
+  void cleanup() { RASSERT0(bq.empty()); }
+
+  template<typename Lock>
+  bool wait(Lock& lock) { return bq.block(lock); }
+
+  template<typename Lock>
+  bool wait(Lock& lock, const Time& timeout) { return bq.block(lock, timeout); }
+
+  template<bool Broadcast = false>
+  void signal() { while (bq.unblock() && Broadcast); }
+};
+
 template<typename Lock, typename BQ = BlockingQueue>
 class LockedBarrier {
   Lock lock;
@@ -298,8 +319,8 @@ class LockedBarrier {
   BQ bq;
 public:
   explicit LockedBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
-  ~LockedBarrier() { destroy(); }
-  void destroy() {
+  ~LockedBarrier() { cleanup(); }
+  void cleanup() {
     ScopedLock<Lock> al(lock);
     RASSERT0(bq.empty())
   }
@@ -353,8 +374,8 @@ class LockedRWLock {
 
 public:
   LockedRWLock() : state(0) {}
-  ~LockedRWLock() { destroy(); }
-  void destroy() {
+  ~LockedRWLock() { cleanup(); }
+  void cleanup() {
     ScopedLock<Lock> al(lock);
     RASSERT(state == 0, state);
     RASSERT0(bqR.empty());
@@ -384,194 +405,7 @@ public:
   }
 };
 
-template<typename Lock = DummyLock>
-class LimitedSemaphore0 {
-  Lock lock;
-  FlexStackQueueMPSC queue;
-
-public:
-  explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
-  ~LimitedSemaphore0() { destroy(); }
-  void destroy() { RASSERT0(queue.empty()); }
-
-  SemaphoreResult P(bool wait = true) {
-    RASSERT0(wait);
-    StackContext* cs = Context::CurrStack();
-    RuntimeDisablePreemption();
-    queue.push(*cs);
-    Suspender::suspend<false>(*cs);
-    return SemaphoreSucess;
-  }
-
-  template<bool Enqueue = true, bool DirectSwitch = false>
-  StackContext* V() {
-    ScopedLock<Lock> sl(lock);
-    StackContext* next;
-    for (;;) {
-      next = queue.pop();
-      if (next) break;
-      Pause();
-    }
-    if (Enqueue) next->resume<DirectSwitch>();
-    return next;
-  }
-};
-
-// NOTE: on queue after P and before V
-template<typename Lock = DummyLock>
-class LimitedSemaphore1 {
-  Lock lock;
-  FlexStackQueueNemesis queue;
-
-public:
-  explicit LimitedSemaphore1(ssize_t c = 1) { RASSERT(c == 1, c); }
-  ~LimitedSemaphore1() { destroy(); }
-  void destroy() { RASSERT0(queue.empty()); }
-
-  SemaphoreResult P(bool wait = true) {
-    RASSERT0(wait);
-    StackContext* cs = Context::CurrStack();
-    RuntimeDisablePreemption();
-    if (!queue.push(*cs)) {
-      RuntimeEnablePreemption();
-      return SemaphoreWasOpen;
-    }
-    Suspender::suspend<false>(*cs);
-    return SemaphoreSucess;
-  }
-
-  template<bool Enqueue = true, bool DirectSwitch = false>
-  StackContext* V() {
-    ScopedLock<Lock> sl(lock);
-    StackContext* next = nullptr;
-    queue.pop(next);
-    if (!next) return nullptr;
-    if (Enqueue) next->resume<DirectSwitch>();
-    return next;
-  }
-};
-
-class SimpleMutex0 {
-  Benaphore<> ben;
-  LimitedSemaphore0<> sem;
-public:
-  SimpleMutex0() : sem(0) {}
-  bool acquire()    { return ben.P() || sem.P(); }
-  bool tryAcquire() { return ben.tryP(); }
-  void release()    { if (!ben.V()) sem.V(); }
-};
-
-class SimpleMutex1 {
-  LimitedSemaphore1<> sem;
-public:
-  SimpleMutex1() : sem(1) {}
-  bool acquire() { return sem.P(); }
-  void release() { sem.V(); }
-};
-
-template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount>
-class SpinMutex {
-  StackContext* owner;
-  Semaphore sem;
-
-  template<typename... Args>
-  bool tryOnly(const Args&... args) { return false; }
-
-  template<typename... Args>
-  bool tryOnly(bool wait) { return !wait; }
-
-  bool tryLock(StackContext* cs) {
-    StackContext* exp = nullptr;
-    return __atomic_compare_exchange_n(&owner, &exp, cs, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
-  }
-
-protected:
-  template<bool OwnerLock, typename... Args>
-  bool internalAcquire(const Args&... args) {
-    StackContext* cs = Context::CurrStack();
-    if (OwnerLock && cs == owner) return true;
-    RASSERT(cs != owner, FmtHex(cs), FmtHex(owner));
-    if (tryOnly(args...)) return tryLock(cs);
-    int cnt = 0;
-    int spin = SpinStart;
-    for (;;) {
-      if (tryLock(cs)) return true;
-      if (cnt < SpinCount) {
-        for (int i = 0; i < spin; i += 1) Pause();
-        if (spin < SpinEnd) spin += spin;
-        else cnt += 1;
-      } else {
-        cnt = 0;
-        spin = SpinStart;
-        if (!sem.P(args...)) return false;
-      }
-    }
-  }
-
-public:
-  SpinMutex() : owner(nullptr), sem(1) {}
-  ~SpinMutex() { RASSERT(owner == nullptr, FmtHex(owner)); }
-  void destroy() {
-    RASSERT(owner == nullptr, FmtHex(owner));
-    sem.destroy();
-  }
-
-  template<typename... Args>
-  bool acquire(const Args&... args) { return internalAcquire<false>(args...); }
-  bool tryAcquire() { return acquire(false); }
-
-  void release() {
-    RASSERT(owner == Context::CurrStack(), FmtHex(owner));
-    owner = nullptr;
-    StackContext* next = sem.template V<false>(); // memory sync via sem.V()
-    if (next) next->resume();
-  }
-};
-
-template<typename BaseMutex>
-class OwnerMutex : private BaseMutex {
-  size_t counter;
-  bool recursion;
-
-public:
-  OwnerMutex() : counter(0), recursion(false) {}
-  void destroy() { BaseMutex::destroy(); }
-  void enableRecursion() { recursion = true; }
-
-  template<typename... Args>
-  size_t acquire(const Args&... args) {
-    bool success = recursion
-      ? BaseMutex::template internalAcquire<true>(args...)
-      : BaseMutex::template internalAcquire<false>(args...);
-    if (success) return ++counter; else return 0;
-  }
-  size_t tryAcquire() { return acquire(false); }
-
-  size_t release() {
-    if (--counter > 0) return counter;
-    BaseMutex::release();
-    return 0;
-  }
-};
-
-// condition variable with external lock
-template<typename BQ = BlockingQueue>
-class Condition {
-  BQ bq;
-
-public:
-  ~Condition() { destroy(); }
-  void destroy() { RASSERT0(bq.empty()); }
-
-  template<typename Lock>
-  bool wait(Lock& lock) { return bq.block(lock); }
-
-  template<typename Lock>
-  bool wait(Lock& lock, const Time& timeout) { return bq.block(lock, timeout); }
-
-  template<bool Broadcast = false>
-  void signal() { while (bq.unblock() && Broadcast); }
-};
+/****************************** Special Locked Synchronization ******************************/
 
 // synchronization flag with with external lock
 template<typename Lock>
@@ -653,6 +487,7 @@ class SyncPoint : public SynchronizedFlag<Lock> {
   using Baseclass = SynchronizedFlag<Lock>;
   typedef typename Baseclass::State State;
   Lock lock;
+
 public:
   SyncPoint(State s = Baseclass::Running) : Baseclass(s) {}
   bool wait()   { ScopedLock<Lock> al(lock); return Baseclass::wait(lock); }
@@ -660,24 +495,93 @@ public:
   void detach() { ScopedLock<Lock> al(lock); Baseclass::detach(); }
 };
 
-template<typename Semaphore, bool Binary = false>
-class StackContextBenaphore {
-  Benaphore<Binary> ben;
-  Semaphore sem;
+/****************************** (Almost-)Lock-Free Synchronization ******************************/
+
+template<typename Lock = DummyLock>
+class LimitedSemaphore0 {
+  Lock lock;
+  FlexStackQueueMPSC queue;
 
 public:
-  explicit StackContextBenaphore(ssize_t c) : ben(c), sem(0) {}
-  void destroy() { sem.destroy();  }
+  explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
+  ~LimitedSemaphore0() { cleanup(); }
+  void cleanup() { RASSERT0(queue.empty()); }
 
-  SemaphoreResult P()          { return ben.P() ? SemaphoreWasOpen : sem.P(); }
-  SemaphoreResult tryP()       { return ben.tryP() ? SemaphoreWasOpen : SemaphoreTimeout; }
-  SemaphoreResult P(bool wait) { return wait ? P() : tryP(); }
-
-  template<bool Enqueue = true>
-  StackContext* V() {
-    if (ben.V()) return nullptr;
-    return sem.template V<Enqueue>();
+  SemaphoreResult P(bool wait = true) {
+    RASSERT0(wait);
+    StackContext* cs = Context::CurrStack();
+    RuntimeDisablePreemption();
+    queue.push(*cs);
+    Suspender::suspend<false>(*cs);
+    return SemaphoreSucess;
   }
+
+  template<bool Enqueue = true, bool DirectSwitch = false>
+  StackContext* V() {
+    ScopedLock<Lock> sl(lock);
+    StackContext* next;
+    for (;;) {
+      next = queue.pop();
+      if (next) break;
+      Pause();
+    }
+    if (Enqueue) next->resume<DirectSwitch>();
+    return next;
+  }
+};
+
+// NOTE: on queue after P and before V
+template<typename Lock = DummyLock>
+class LimitedSemaphore1 {
+  Lock lock;
+  FlexStackQueueNemesis queue;
+
+public:
+  explicit LimitedSemaphore1(ssize_t c = 1) { RASSERT(c == 1, c); }
+  ~LimitedSemaphore1() { cleanup(); }
+  void cleanup() { RASSERT0(queue.empty()); }
+
+  SemaphoreResult P(bool wait = true) {
+    RASSERT0(wait);
+    StackContext* cs = Context::CurrStack();
+    RuntimeDisablePreemption();
+    if (!queue.push(*cs)) {
+      RuntimeEnablePreemption();
+      return SemaphoreWasOpen;
+    }
+    Suspender::suspend<false>(*cs);
+    return SemaphoreSucess;
+  }
+
+  template<bool Enqueue = true, bool DirectSwitch = false>
+  StackContext* V() {
+    ScopedLock<Lock> sl(lock);
+    StackContext* next = nullptr;
+    queue.pop(next);
+    if (!next) return nullptr;
+    if (Enqueue) next->resume<DirectSwitch>();
+    return next;
+  }
+};
+
+class SimpleMutex0 {
+  Benaphore<> ben;
+  LimitedSemaphore0<> sem;
+
+public:
+  SimpleMutex0() : sem(0) {}
+  bool acquire()    { return ben.P() || sem.P(); }
+  bool tryAcquire() { return ben.tryP(); }
+  void release()    { if (!ben.V()) sem.V(); }
+};
+
+class SimpleMutex1 {
+  LimitedSemaphore1<> sem;
+
+public:
+  SimpleMutex1() : sem(1) {}
+  bool acquire() { return sem.P(); }
+  void release() { sem.V(); }
 };
 
 template<typename Lock = BinaryLock<>>
@@ -689,8 +593,8 @@ class FastBarrier {
 
 public:
   explicit FastBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
-  ~FastBarrier() { destroy(); }
-  void destroy() { RASSERT0(queue.empty()); }
+  ~FastBarrier() { cleanup(); }
+  void cleanup() { RASSERT0(queue.empty()); }
   bool wait() {
     // There's a race between counter and queue.  A thread can be in a
     // different position in the queue relative to the counter.  The
@@ -722,6 +626,113 @@ public:
     if (park) return Suspender::suspend<false>(*cs);
     else RuntimeEnablePreemption();
     return cs;
+  }
+};
+
+/****************************** Compound Types ******************************/
+
+template<typename Semaphore, bool Binary = false>
+class StackContextBenaphore {
+  Benaphore<Binary> ben;
+  Semaphore sem;
+
+public:
+  explicit StackContextBenaphore(ssize_t c) : ben(c), sem(0) {}
+  void cleanup() { sem.cleanup();  }
+
+  SemaphoreResult P()          { return ben.P() ? SemaphoreWasOpen : sem.P(); }
+  SemaphoreResult tryP()       { return ben.tryP() ? SemaphoreWasOpen : SemaphoreTimeout; }
+  SemaphoreResult P(bool wait) { return wait ? P() : tryP(); }
+
+  template<bool Enqueue = true>
+  StackContext* V() {
+    if (ben.V()) return nullptr;
+    return sem.template V<Enqueue>();
+  }
+};
+
+template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount>
+class SpinMutex {
+  StackContext* owner;
+  Semaphore sem;
+
+  template<typename... Args>
+  bool tryOnly(const Args&... args) { return false; }
+
+  template<typename... Args>
+  bool tryOnly(bool wait) { return !wait; }
+
+  bool tryLock(StackContext* cs) {
+    StackContext* exp = nullptr;
+    return __atomic_compare_exchange_n(&owner, &exp, cs, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+  }
+
+protected:
+  template<bool OwnerLock, typename... Args>
+  bool internalAcquire(const Args&... args) {
+    StackContext* cs = Context::CurrStack();
+    if (OwnerLock && cs == owner) return true;
+    RASSERT(cs != owner, FmtHex(cs), FmtHex(owner));
+    if (tryOnly(args...)) return tryLock(cs);
+    int cnt = 0;
+    int spin = SpinStart;
+    for (;;) {
+      if (tryLock(cs)) return true;
+      if (cnt < SpinCount) {
+        for (int i = 0; i < spin; i += 1) Pause();
+        if (spin < SpinEnd) spin += spin;
+        else cnt += 1;
+      } else {
+        cnt = 0;
+        spin = SpinStart;
+        if (!sem.P(args...)) return false;
+      }
+    }
+  }
+
+public:
+  SpinMutex() : owner(nullptr), sem(1) {}
+  ~SpinMutex() { RASSERT(owner == nullptr, FmtHex(owner)); }
+  void cleanup() {
+    RASSERT(owner == nullptr, FmtHex(owner));
+    sem.cleanup();
+  }
+
+  template<typename... Args>
+  bool acquire(const Args&... args) { return internalAcquire<false>(args...); }
+  bool tryAcquire() { return acquire(false); }
+
+  void release() {
+    RASSERT(owner == Context::CurrStack(), FmtHex(owner));
+    owner = nullptr;
+    StackContext* next = sem.template V<false>(); // memory sync via sem.V()
+    if (next) next->resume();
+  }
+};
+
+template<typename BaseMutex>
+class OwnerMutex : private BaseMutex {
+  size_t counter;
+  bool recursion;
+
+public:
+  OwnerMutex() : counter(0), recursion(false) {}
+  void cleanup() { BaseMutex::cleanup(); }
+  void enableRecursion() { recursion = true; }
+
+  template<typename... Args>
+  size_t acquire(const Args&... args) {
+    bool success = recursion
+      ? BaseMutex::template internalAcquire<true>(args...)
+      : BaseMutex::template internalAcquire<false>(args...);
+    if (success) return ++counter; else return 0;
+  }
+  size_t tryAcquire() { return acquire(false); }
+
+  size_t release() {
+    if (--counter > 0) return counter;
+    BaseMutex::release();
+    return 0;
   }
 };
 

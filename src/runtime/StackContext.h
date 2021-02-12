@@ -30,7 +30,7 @@ class EventScope;
 class BaseProcessor;
 class KernelProcessor;
 class Scheduler;
-class Suspender;
+struct Suspender;
 
 #if TESTING_ENABLE_DEBUGGING
 static const size_t DebugListLink = 0;
@@ -73,8 +73,9 @@ class StackContext : public DoubleLink<StackContext,StackLinkCount> {
   size_t         priority;     // scheduling priority
   bool           affinity;     // affinity prohibits re-staging
 
-  size_t volatile runState;    // 0 = parked, 1 = running, 2 = early resume
-  ptr_t  volatile resumeInfo;
+  enum RunState : size_t { Parked = 0, Running = 1, ResumedEarly = 2 };
+  RunState volatile runState;    // 0 = parked, 1 = running, 2 = early resume
+  ptr_t    volatile resumeInfo;
 
   StackContext(const StackContext&) = delete;
   const StackContext& operator=(const StackContext&) = delete;
@@ -101,7 +102,7 @@ protected:
   // constructor/destructors can only be called by derived classes
   StackContext(BaseProcessor& proc, bool affinity = false); // main constructor
   StackContext(Scheduler&, bool background = false);        // uses delegation
-  ~StackContext() { RASSERT(runState == 1, FmtHex(this), runState); }
+  ~StackContext() { RASSERT(runState == Running, FmtHex(this), runState); }
 
   void initStackPointer(vaddr sp) {
     stackPointer = align_down(sp, stackAlignment);
@@ -136,8 +137,8 @@ public:
   ptr_t suspend(_friend<Suspender>) {
     size_t spin = SpinStart;
     for (;;) {
-      size_t exp = 2; // resumed already? skip suspend
-      if (__atomic_compare_exchange_n(&runState, &exp, 1, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return resumeInfo;
+      RunState exp = ResumedEarly; // resumed already? then skip suspend
+      if (__atomic_compare_exchange_n(&runState, &exp, Running, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return resumeInfo;
       if (spin > SpinEnd) break;
       for (size_t i = 0; i < spin; i += 1) Pause();
       spin += spin;
@@ -148,12 +149,12 @@ public:
 
   template<bool DirectSwitch = false>
   void resume() {
-    size_t prev = __atomic_fetch_add(&runState, 1, __ATOMIC_SEQ_CST);
-    if (prev == 0) {
+    size_t prev = __atomic_fetch_add(&runState, RunState(1), __ATOMIC_SEQ_CST);
+    if (prev == Parked) {               // Parked -> Running
       if (DirectSwitch) resumeDirect();
       else resumeInternal();
-    } else {
-      RASSERT(prev == 1, prev);
+    } else {                            // Running -> ResumedEarly
+      RASSERT(prev == Running, prev);
     }
   }
 

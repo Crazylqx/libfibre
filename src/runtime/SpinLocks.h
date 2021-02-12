@@ -189,7 +189,7 @@ public:
     while (ssize_t(tgt - counter) > 0) Pause(); // works with overflow
     return (cnt == tgt - 1);
   }
-  void destroy() {}
+  void cleanup() {}
 } __caligned;
 
 #endif /* _SpinLocks_h_ */

@@ -19,7 +19,7 @@
 #include "runtime-glue/RuntimeStack.h"
 
 StackContext::StackContext(BaseProcessor& proc, bool affinity)
-: stackPointer(0), processor(&proc), priority(DefPriority), affinity(affinity), runState(1) {
+: stackPointer(0), processor(&proc), priority(DefPriority), affinity(affinity), runState(Running) {
 #if TESTING_SHARED_READYQUEUE
   this->affinity = true;
 #endif
@@ -69,9 +69,9 @@ void StackContext::postResume(StackContext* prevStack) {
 // if resumption already triggered -> resume right away
 void StackContext::postSuspend(StackContext* prevStack) {
   CHECK_PREEMPTION(0);
-  size_t prev = __atomic_fetch_sub(&prevStack->runState, 1, __ATOMIC_SEQ_CST);
-  if (prev == 2) prevStack->resumeInternal(); // previous stack already resumed
-  else RASSERT(prev == 1, prev);
+  size_t prev = __atomic_fetch_sub(&prevStack->runState, RunState(1), __ATOMIC_SEQ_CST);
+  if (prev == ResumedEarly) prevStack->resumeInternal(); // ResumedEarly -> Running
+  else RASSERT(prev == Running, prev);                   // Running -> Parked
 }
 
 // destroy stack

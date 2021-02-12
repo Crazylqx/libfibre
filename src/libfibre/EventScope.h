@@ -245,8 +245,8 @@ public:
   void deregisterFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
-    fdsync.rdSem.reinit();
-    fdsync.wrSem.reinit();
+    fdsync.rdSem.cleanup();
+    fdsync.wrSem.cleanup();
     fdsync.nonblocking = false;
 #if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
     fdsync.pollMod = false;

@@ -159,6 +159,11 @@ if [ $# -gt 0 ] && [ "$1" != "-f" ]; then
 	exit 0
 fi
 
+if [ "$(uname -s)" = "Linux" ]; then
+	$MAKE CC=clang all || exit 1
+	$MAKE CC=clang clean || exit 1
+fi
+
 if [ $(git diff | wc -l) -ne 0 ] && [ "$1" != "-f" ]; then
 	echo "Uncommitted changes in repo; exiting..."
 	exit 1
