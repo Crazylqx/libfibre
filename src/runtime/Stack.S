@@ -14,26 +14,11 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
-.include "runtime/RegistersOnStack.HS"
+#include "runtime/RegistersOnStack.HS"
 
 .text
 
-.ifdef _try__i386__
-
-.align 4
-.globl stackSwitch
-stackSwitch:                        # (currStack, postFunc, &currSP, nextSP)
-	STACK_PUSH                        # save register context
-	movl (STACKFRAME+ 4)(%esp), %eax  # load currStack
-	movl (STACKFRAME+ 8)(%esp), %ecx  # load postFunc
-	movl (STACKFRAME+12)(%esp), %edx  # load currSP
-	movl %esp, (%edx)                 # save current stack pointer into currSP
-	movl (STACKFRAME+16)(%esp), %esp  # load nextSP into stack pointer
-	STACK_POP                         # restore register context
-	movl %eax, 4(%esp)                # set currStack argument for postFunc
-	jmp *%exc                         # return directly from postFunc
-
-.endif
+#if defined(__x86_64__)
 
 .align 8
 .globl stackDirect
@@ -84,3 +69,7 @@ stackSwitch:                # (currStack, postFunc, &currSP, nextSP)
 	movq %rcx, %rsp           # load next stack pointer
 	STACK_POP                 # restore register context
 	jmp *%rsi                 # %rdi set -> return directly from postFunc
+
+#else
+#error unsupported architecture: only __x86_64__ supported at this time
+#endif

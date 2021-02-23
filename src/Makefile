@@ -13,13 +13,11 @@ DEPENDS+=$(subst .c,.d,$(notdir $(CSOURCES)))
 LIBA=libfibre.a
 LIBSO=libfibre.so
 
-CXXFLAGS+=-I. -D__LIBFIBRE__
+CFLAGS+=-I. -D__LIBFIBRE__
 
 vpath %.cc $(SOURCEDIRS)
 vpath %.c errnoname
 vpath %.S $(SOURCEDIRS)
-
-AFLAGS=-g --divide -I$(SRCDIR) --defsym __$(shell uname -m)__=1
 
 .PHONY: all clean
 
@@ -40,7 +38,7 @@ $(COBJECTS): %.o: %.c
 	$(CC) $(CFLAGS) -MMD -c $< -o $@
 
 $(AOBJECTS): %.o: %.S
-	$(AS) $(ASFLAGS) $< -o $@
+	$(CC) $(CFLAGS) -MMD -c $< -o $@
 
 $(OBJECTS): errnoname/errnoname.h
 

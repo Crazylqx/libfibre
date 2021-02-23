@@ -5,9 +5,9 @@ TARGETS=$(subst .cpp,,$(SOURCES))
 DEPENDS=$(subst .cpp,.d,$(SOURCES))
 
 CFA=cfa
+CFAFLAGS=$(CFLAGS)
 
-CXXFLAGS+=-I. -I../src -I../src/libfibre
-CFAFLAGS+=-I. -I../src -I../src/libfibre
+CFLAGS+=-I. -I../src -I../src/libfibre
 
 LIBS=-lfibre -lrt
 ifeq ($(shell uname),FreeBSD)

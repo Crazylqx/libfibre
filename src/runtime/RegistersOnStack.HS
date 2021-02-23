@@ -20,6 +20,8 @@
 # STACK_PUSH/POP: save caller-owned registers during synchronous stack switch
 # callee-owned regs automatically saved by compiler code before routine calls
 
+#if defined(__x86_64__)
+
 # GCC: arguments in %rdi, %rsi, %rdx, %rcx , %r8, %r9, see 'System V AMD64 ABI' in
 # see http://en.wikipedia.org/wiki/X86_calling_conventions
 
@@ -70,3 +72,7 @@
   popq %r15
   popq %rbp
 .endm
+
+#else
+#error unsupported architecture: only __x86_64__ supported at this time
+#endif
