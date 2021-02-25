@@ -21,6 +21,16 @@
 #include "runtime/FloatingPoint.h"
 #include "runtime/Platform.h"
 
+typedef void (*funcvoid0_t)();
+typedef void (*funcvoid1_t)(ptr_t);
+typedef void (*funcvoid2_t)(ptr_t, ptr_t);
+typedef void (*funcvoid3_t)(ptr_t, ptr_t, ptr_t);
+
+typedef void* (*funcptr0_t)();
+typedef void* (*funcptr1_t)(ptr_t);
+typedef void* (*funcptr2_t)(ptr_t, ptr_t);
+typedef void* (*funcptr3_t)(ptr_t, ptr_t, ptr_t);
+
 class NoObject {
   NoObject() = delete;                           // no creation
   NoObject(const NoObject&) = delete;            // no copy
@@ -32,73 +42,6 @@ template<typename Friend> class _friend {
   _friend() {}
 };
 
-typedef void (*funcvoid0_t)();
-typedef void (*funcvoid1_t)(ptr_t);
-typedef void (*funcvoid2_t)(ptr_t, ptr_t);
-typedef void (*funcvoid3_t)(ptr_t, ptr_t, ptr_t);
-
-typedef void* (*funcptr0_t)();
-typedef void* (*funcptr1_t)(ptr_t);
-typedef void* (*funcptr2_t)(ptr_t, ptr_t);
-typedef void* (*funcptr3_t)(ptr_t, ptr_t, ptr_t);
-
-template <typename T>
-static inline constexpr T pow2( unsigned int x ) {
-  return T(1) << x;
-}
-
-template <typename T>
-static inline constexpr bool ispow2( T x ) {
-  return (x & (x - 1)) == 0;
-}
-
-template <typename T>
-static inline constexpr T align_up( T x, T a ) {
-  return (x + a - 1) & (~(a - 1));
-}
-
-template <typename T>
-static inline constexpr T align_down( T x, T a ) {
-//  return x - (x % a);
-  return x & (~(a - 1));
-}
-
-template <typename T>
-static inline constexpr bool aligned( T x, T a ) {
-//  return (x % a) == 0;
-  return (x & (a - 1)) == 0;
-}
-
-template <typename T>
-static inline constexpr T divup( T n, T d ) {
-  return ((n - 1) / d) + 1;
-}
-
-template <typename T>
-static inline constexpr T limit() {
-  return ~T(0);
-}
-
-template <typename T>
-static inline constexpr T slimit() {
-  return ~T(0) >> 1;
-}
-
-template <typename T>
-static inline constexpr size_t bitsize() {
-  return sizeof(T) * charbits;
-}
-
-template <typename T>
-static inline constexpr T bitmask(unsigned int Width) {
-  return Width == bitsize<T>() ? limit<T>() : pow2<T>(Width) - 1;
-}
-
-template <typename T>
-static inline constexpr T bitmask(unsigned int Pos, unsigned int Width) {
-  return bitmask<T>(Width) << Pos;
-}
-
 template <typename T, unsigned int Pos, unsigned int Width>
 struct BitString {
   static_assert( Pos + Width <= 8*sizeof(T), "illegal parameters" );
@@ -107,50 +50,6 @@ struct BitString {
   constexpr T get(T f) const { return (f >> Pos) & bitmask<T>(Width); }
   constexpr T excl(T f) const { return f & ~bitmask<T>(Pos,Width); }
 };
-
-template<bool atomic=false>
-static inline void bit_set(mword& a, size_t idx) {
-  mword b = mword(1) << idx;
-  if (atomic) __atomic_or_fetch(&a, b, __ATOMIC_RELAXED);
-  else a |= b;
-}
-
-template<bool atomic=false>
-static inline void bit_clr(mword& a, size_t idx) {
-  mword b = ~(mword(1) << idx);
-  if (atomic) __atomic_and_fetch(&a, b, __ATOMIC_RELAXED);
-  else a &= b;
-}
-
-template<bool atomic=false>
-static inline void bit_flp(mword& a, size_t idx) {
-  mword b = mword(1) << idx;
-  if (atomic) __atomic_xor_fetch(&a, b, __ATOMIC_RELAXED);
-  else a ^= b;
-}
-
-static inline bool bit_tst(const mword& a, size_t idx) {
-  mword b = mword(1) << idx;
-  return a & b;
-}
-
-template<unsigned int N>
-static constexpr size_t pagesizebits() {
-  static_assert( N <= pagelevels + 1, "page level template violation" );
-  return pageoffsetbits + (N-1) * pagetablebits;
-}
-
-template<unsigned int N>
-static constexpr size_t pagesize() {
-  static_assert( N <= pagelevels, "page level template violation" );
-  return pow2<size_t>(pagesizebits<N>());
-}
-
-template<unsigned int N>
-static constexpr size_t pageoffset(uintptr_t addr) {
-  static_assert( N <= pagelevels, "page level template violation" );
-  return addr & bitmask<uintptr_t>(pagesizebits<N>());
-}
 
 class Time : public timespec {
   friend std::ostream& operator<<(std::ostream&, const Time&);

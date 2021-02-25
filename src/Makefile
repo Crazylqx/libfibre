@@ -7,7 +7,7 @@ COBJECTS=$(subst .c,.o,$(notdir $(CSOURCES)))
 ASOURCES=$(wildcard $(addsuffix /*.S,$(SOURCEDIRS)))
 AOBJECTS=$(subst .S,.o,$(notdir $(ASOURCES)))
 
-DEPENDS=$(subst .cc,.d,$(notdir $(SOURCES)))
+DEPENDS=$(subst .cc,.d,$(notdir $(SOURCES))) $(subst .c,.d,$(notdir $(CSOURCES))) $(subst .S,.d,$(notdir $(ASOURCES)))
 DEPENDS+=$(subst .c,.d,$(notdir $(CSOURCES)))
 
 LIBA=libfibre.a

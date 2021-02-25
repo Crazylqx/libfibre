@@ -17,7 +17,7 @@
 #ifndef _Debug_h_
 #define _Debug_h_ 1
 
-#include "runtime/Basics.h"
+#include "runtime/Bitmap.h"
 
 class DBG {
   static size_t levels;
