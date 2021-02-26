@@ -29,9 +29,7 @@ static struct _Bootstrapper {
   ~_Bootstrapper();
 } _lfBootstrap;
 
-#include "runtime/SpinLocks.h"
-// EventScope.h pulls in everything else
-#include "libfibre/EventScope.h"
+#include "libfibre/EventScope.h" // EventScope.h pulls in everything else
 
 typedef Mutex<WorkerLock>           FibreMutex;
 typedef Condition<>                 FibreCondition;
@@ -71,14 +69,16 @@ struct fibre_attr_t {
 };
 
 enum {
-  FIBRE_MUTEX_RECURSIVE = PTHREAD_MUTEX_RECURSIVE,
-  FIBRE_MUTEX_DEFAULT   = PTHREAD_MUTEX_DEFAULT
+  FIBRE_MUTEX_RECURSIVE  = PTHREAD_MUTEX_RECURSIVE,
+  FIBRE_MUTEX_ERRORCHECK = PTHREAD_MUTEX_ERRORCHECK,
+  FIBRE_MUTEX_DEFAULT    = PTHREAD_MUTEX_DEFAULT
 };
 
 struct fibre_mutexattr_t {
   int type;
   fibre_mutexattr_t() : type(FIBRE_MUTEX_DEFAULT) {}
 };
+
 struct fibre_condattr_t {};
 struct fibre_rwlockattr_t {};
 struct fibre_barrierattr_t {};
@@ -89,6 +89,16 @@ struct fibre_fastmutexattr_t {
   int type;
   fibre_fastmutexattr_t() : type(FIBRE_MUTEX_DEFAULT) {}
 };
+
+typedef size_t fibre_key_t;
+
+typedef pthread_once_t fibre_once_t;
+static const fibre_once_t FIBRE_ONCE_INIT = PTHREAD_ONCE_INIT;
+
+/** @brief One-time initialization (`pthread_once`). */
+static inline int fibre_once(fibre_once_t *once_control, void (*init_routine)(void)) {
+  return pthread_once(once_control, init_routine);
+}
 
 #ifdef __GNUC__
 #define restrict __restrict__
@@ -218,6 +228,29 @@ inline int fibre_equal(fibre_t thread1, fibre_t thread2) {
 inline int fibre_yield(void) {
   Fibre::yield();
   return 0;
+}
+
+/** @brief Create key for thread-specific storage. (`pthread_key_create`) */
+inline int fibre_key_create(fibre_key_t *key, void (*destructor)(void*)) {
+  *key = Fibre::key_create(destructor);
+  return 0;
+}
+
+/** @brief Delete key for thread-specific storage. (`pthread_key_delete`) */
+inline int fibre_key_delete(fibre_key_t key) {
+  Fibre::key_delete(key);
+  return 0;
+}
+
+/** @brief Store thread-specific value. (`pthread_setspecific`) */
+inline int fibre_setspecific(fibre_key_t key, void *value) {
+  CurrFibre()->setspecific(key, value);
+  return 0;
+}
+
+/** @brief Read thread-specific value for key. (`pthread_getspecific`) */
+inline void *fibre_getspecific(fibre_key_t key) {
+  return CurrFibre()->getspecific(key);
 }
 
 /** @brief Park fibre (indefinite sleep). */
@@ -513,8 +546,12 @@ inline int fibre_fastmutex_destroy(fibre_fastmutex_t *mutex) {
 
 /** @brief Acquire mutex lock. Block, if necessary. (`pthread_mutex_lock`) */
 inline int fibre_fastmutex_lock(fibre_fastmutex_t *mutex) {
+#if TESTING_LOCK_RECURSION
+  return mutex->acquire() ? 0 : -1;
+#else
   mutex->acquire();
   return 0;
+#endif
 }
 
 /** @brief Perform non-blocking attempt to acquire mutex lock. (`pthread_mutex_trylock`) */

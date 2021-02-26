@@ -9,7 +9,21 @@ static volatile size_t counter = 0;
 
 static FibreMutex testmtx;
 
+static fibre_once_t once_test = PTHREAD_ONCE_INIT;
+static fibre_key_t key_test;
+
+static void key_finish(void* value) {
+  cout << "finish " << (char)(uintptr_t)value << endl;
+}
+
+static void once_init() {
+  cout << "once init" << endl;
+  SYSCALL(fibre_key_create(&key_test, key_finish));
+}
+
 static void f1main() {
+  fibre_once(&once_test, once_init);
+  SYSCALL(fibre_setspecific(key_test, (void*)'A'));
   cout << "F1 1" << endl;
   Fibre::yield();
   cout << "F1 2" << endl;
@@ -19,9 +33,12 @@ static void f1main() {
     counter += 1;
     testmtx.release();
   }
+  cout << "F1 specific " << (char)(uintptr_t)fibre_getspecific(key_test) << endl;
 }
 
 static void f2main() {
+  fibre_once(&once_test, once_init);
+  SYSCALL(fibre_setspecific(key_test, (void*)'B'));
   cout << "F2 1" << endl;
   Fibre::yield();
   cout << "F2 2" << endl;
@@ -31,11 +48,14 @@ static void f2main() {
     counter += 1;
     testmtx.release();
   }
+  cout << "F2 specific " << (char)(uintptr_t)fibre_getspecific(key_test) << endl;
 }
 
 static FibreSemaphore tmx(0);
 
 static void f3main() {
+  fibre_once(&once_test, once_init);
+  SYSCALL(fibre_setspecific(key_test, (void*)'C'));
   Time ct;
   SYSCALL(clock_gettime(CLOCK_REALTIME, &ct));
   cout << ct.tv_sec << '.' << ct.tv_nsec << endl;
@@ -45,6 +65,7 @@ static void f3main() {
   }
   SYSCALL(clock_gettime(CLOCK_REALTIME, &ct));
   cout << ct.tv_sec << '.' << ct.tv_nsec << endl;
+  cout << "F3 specific " << (char)(uintptr_t)fibre_getspecific(key_test) << endl;
 }
 
 int main(int argc, char** argv) {
@@ -77,5 +98,6 @@ int main(int argc, char** argv) {
   delete f3;
   cout << "f3 gone" << endl;
   cout << counter << endl;
+  SYSCALL(fibre_key_delete(key_test));
   return 0;
 }

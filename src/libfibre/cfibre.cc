@@ -183,6 +183,22 @@ extern "C" int cfibre_yield(void) {
   return fibre_yield();
 }
 
+extern "C" int cfibre_key_create(cfibre_key_t *key, void (*destructor)(void*)) {
+  return fibre_key_create(key, destructor);
+}
+
+extern "C" int cfibre_key_delete(cfibre_key_t key) {
+  return fibre_key_delete(key);
+}
+
+extern "C" int cfibre_setspecific(cfibre_key_t key, void *value) {
+  return fibre_setspecific(key, value);
+}
+
+extern "C" void *cfibre_getspecific(cfibre_key_t key) {
+  return fibre_getspecific(key);
+}
+
 extern "C" int cfibre_park(void) {
   return fibre_park();
 }

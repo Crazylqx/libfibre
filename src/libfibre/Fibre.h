@@ -23,6 +23,7 @@
 #include "runtime/BlockingSync.h"
 #include "runtime-glue/RuntimeContext.h"
 
+#include <vector>
 #include <sys/mman.h> // mmap, munmap, mprotect
 
 #ifdef SPLIT_STACK
@@ -46,8 +47,65 @@ extern GlobalStackList* _lfGlobalStackList;
 
 class Cluster;
 
+class FibreSpecific {
+public:
+  static const size_t FIBRE_KEYS_MAX = bitsize<mword>();
+  typedef void (*Destructor)(void*);
+private:
+  static FastMutex mutex;
+  static Bitmap<FIBRE_KEYS_MAX> bmap;
+  static std::vector<Destructor> destrVector;
+  std::vector<void*> valueVector;
+protected:
+  FibreSpecific(size_t e = 0) : valueVector(e) {}
+  void clearSpecific() {
+    size_t start = bmap.find();
+    if (start >= FIBRE_KEYS_MAX) return;
+    size_t idx = start;
+    do {
+      if (destrVector[idx]) destrVector[idx](valueVector[idx]);
+      idx = bmap.findnext(idx);
+    } while (idx > start);
+  }
+public:
+  void setspecific(size_t idx, void *value) {
+    RASSERT(idx < FIBRE_KEYS_MAX, idx);
+    RASSERT(bmap.test(idx), idx);
+    if (idx >= valueVector.size()) {
+      if (valueVector.size() == 0) valueVector.resize(1);
+      while (idx >= valueVector.size()) valueVector.resize(valueVector.size() * 2);
+    }
+    valueVector[idx] = value;
+  }
+  void* getspecific(size_t idx) {
+    RASSERT(idx < FIBRE_KEYS_MAX, idx);
+    RASSERT(bmap.test(idx), idx);
+    RASSERT(idx < valueVector.size(), idx);
+    return valueVector[idx];
+  }
+  static size_t key_create(Destructor d = nullptr) {
+    ScopedLock<FastMutex> sl(mutex);
+    size_t idx = bmap.find(false);
+    RASSERT(idx < FIBRE_KEYS_MAX, idx);
+    bmap.set(idx);
+    if (idx >= destrVector.size()) {
+      if (destrVector.size() == 0) destrVector.resize(1);
+      while (idx >= destrVector.size()) destrVector.resize(destrVector.size() * 2);
+    }
+    destrVector[idx] = d;
+    return idx;
+  }
+  static void key_delete(size_t idx) {
+    ScopedLock<FastMutex> sl(mutex);
+    RASSERT(idx < FIBRE_KEYS_MAX, idx);
+    RASSERT(bmap.test(idx), idx);
+    bmap.clr(idx);
+    destrVector[idx] = nullptr;
+  }
+};
+
 /** A Fibre object represents an independent execution context backed by a stack. */
-class Fibre : public StackContext {
+class Fibre : public StackContext, public FibreSpecific {
   FloatingPointFlags fp;       // FP context
   size_t stackSize;            // stack size (including guard)
 #ifdef SPLIT_STACK
@@ -141,6 +199,7 @@ public:
 
   // callback from StackContext via Runtime after final context switch
   void destroy(_friend<StackContext>) {
+    clearSpecific();
     clearDebug();
     stackFree();
     done.post();

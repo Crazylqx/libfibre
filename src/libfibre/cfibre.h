@@ -55,8 +55,18 @@ typedef struct _cfibre_fastmutexattr_t* cfibre_fastmutexattr_t;
 typedef struct _cfibre_cluster_t*    cfibre_cluster_t;
 typedef struct _cfibre_eventscope_t* cfibre_eventscope_t;
 
-static const int CFIBRE_MUTEX_RECURSIVE = PTHREAD_MUTEX_RECURSIVE;
-static const int CFIBRE_MUTEX_DEFAULT   = PTHREAD_MUTEX_DEFAULT;
+typedef size_t cfibre_key_t;
+
+typedef pthread_once_t cfibre_once_t;
+static const cfibre_once_t CFIBRE_ONCE_INIT = PTHREAD_ONCE_INIT;
+
+static inline int cfibre_once(cfibre_once_t *once_control, void (*init_routine)(void)) {
+  return pthread_once(once_control, init_routine);
+}
+
+static const int CFIBRE_MUTEX_RECURSIVE  = PTHREAD_MUTEX_RECURSIVE;
+static const int CFIBRE_MUTEX_ERRORCHECK = PTHREAD_MUTEX_ERRORCHECK;
+static const int CFIBRE_MUTEX_DEFAULT    = PTHREAD_MUTEX_DEFAULT;
 
 #ifdef __cplusplus
 extern "C" {
@@ -115,6 +125,10 @@ void cfibre_exit() __attribute__((__noreturn__));
 cfibre_t cfibre_self(void);
 int cfibre_equal(cfibre_t thread1, cfibre_t thread2);
 int cfibre_yield(void);
+int cfibre_key_create(cfibre_key_t *key, void (*destructor)(void*));
+int cfibre_key_delete(cfibre_key_t key);
+int cfibre_setspecific(cfibre_key_t key, void *value);
+void *cfibre_getspecific(cfibre_key_t key);
 int cfibre_park(void);
 int cfibre_unpark(cfibre_t thread);
 int cfibre_migrate(cfibre_cluster_t cluster);
