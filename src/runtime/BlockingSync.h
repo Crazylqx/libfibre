@@ -36,10 +36,19 @@ struct Suspender { // funnel suspend calls through this class for access control
     fred.prepareResumeRace(_friend<Suspender>());
   }
 
-  template<bool DisablePreemption=true>
+  // returns the resumeMsg
+  static ptr_t cancelRunningResumeRace(Fred& fred) {
+    return fred.cancelRunningResumeRace(_friend<Suspender>());
+  }
+
+  static void cancelEarlyResume(Fred& fred) {
+    fred.cancelEarlyResume(_friend<Suspender>());
+  }
+
+  template<bool DisablePreemption=true, size_t SpinStart=1, size_t SpinEnd=0>
   static ptr_t suspend(Fred& fred) {
     if (DisablePreemption) RuntimeDisablePreemption();
-    ptr_t result = fred.suspend(_friend<Suspender>());
+    ptr_t result = fred.suspend<SpinStart, SpinEnd>(_friend<Suspender>());
     DBG::outl(DBG::Level::Blocking, "Fred ", FmtHex(&fred), " continuing");
     RuntimeEnablePreemption();
     return result;
@@ -51,8 +60,16 @@ enum SemaphoreResult : size_t { SemaphoreTimeout = 0, SemaphoreSucess = 1, Semap
 /****************************** Timeouts ******************************/
 
 class TimerQueue {
+public:
+  struct Node {
+    Fred& fred;
+    bool expired;
+  };
+  typedef std::multimap<Time, Node*>::iterator Handle;
+
+private:
   WorkerLock lock;
-  std::multimap<Time,Fred*> queue;
+  std::multimap<Time, Node*> queue;
   TimerStats* stats;
 
 public:
@@ -64,18 +81,18 @@ public:
     bool retcode = false;
     int cnt = 0;
     lock.acquire();
-    for (auto iter = queue.begin(); iter != queue.end(); ) {
+    for (auto iter = queue.begin(); iter != queue.end();
+          iter = queue.erase(iter)) {
       if (iter->first > now) {
         retcode = true;              // timeouts remaining after this run
         newTime = iter->first - now; // time to next timeout
       break;
       }
-      Fred* f = iter->second;
-      if (f->raceResume(&queue)) {
-        iter = queue.erase(iter);
-        f->resume();
+      Node* node = iter->second;
+      if (node->fred.raceResume(&queue)) {
+        node->fred.resume();  // node no longer accessible after this
       } else {
-        iter = std::next(iter);
+        node->expired = true;  // node no longer accessible after this
       }
       cnt += 1;
     }
@@ -84,20 +101,38 @@ public:
     return retcode;
   }
 
-  // Note that Fred::prepareSuspend must have been called already!
   ptr_t blockTimeout(Fred& cf, const Time& relTimeout, const Time& absTimeout) {
     // set up queue node
-    lock.acquire();
-    std::multimap<Time,Fred*>::iterator iter = queue.insert( {absTimeout, &cf} );
-    if (iter == queue.begin()) Runtime::Timer::newTimeout(relTimeout);
-    lock.release();
+    Node node = {cf, false};
+    Handle timer = enqueue(node, relTimeout, absTimeout);
     // suspend
     ptr_t winner = Suspender::suspend(cf);
     if (winner == &queue) return nullptr; // timer expired
     // clean up
-    ScopedLock<WorkerLock> sl(lock);
-    queue.erase(iter);
+    erase(timer, node);
     return winner;                        // timer cancelled
+  }
+
+  Handle enqueue(Node& node, const Time& relTimeout, const Time& absTimeout) {
+    ScopedLock<WorkerLock> sl(lock);
+    Handle iter = queue.insert({absTimeout, &node});
+    if (iter == queue.begin()) Runtime::Timer::newTimeout(relTimeout);
+    return iter;
+  }
+
+  // Warning: must NOT call if timer won race
+  void erase(Handle& handle, const Node& node) {
+    // optimization, try without lock + memory sync
+    if (node.expired) return;
+    ScopedLock<WorkerLock> sl(lock);
+    if (!node.expired) queue.erase(handle);
+  }
+
+  bool didExpireAfterLosingRace(const Node& node) {
+    // optimization, try without lock + memory sync
+    if (node.expired) return true;
+    ScopedLock<WorkerLock> sl(lock);
+    return node.expired;
   }
 };
 
@@ -700,6 +735,8 @@ public:
     return 0;
   }
 };
+
+#include "runtime/FastTimeoutLocks.h"
 
 #if defined(FAST_MUTEX_TYPE)
 typedef FAST_MUTEX_TYPE FastMutex;
