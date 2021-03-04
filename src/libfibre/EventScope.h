@@ -296,18 +296,6 @@ public:
     return fdSyncVector[fd].rdSem.tryP();
   }
 
-  void suspendFD(int fd) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].rdSem.fakeP();
-    fdSyncVector[fd].wrSem.fakeP();
-  }
-
-  void resumeFD(int fd) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].rdSem.V();
-    fdSyncVector[fd].wrSem.V();
-  }
-
   template<bool Input, bool Enqueue = true>
   StackContext* unblock(int fd, _friend<BasePoller>) {
     RASSERT0(fd >= 0 && fd < fdCount);

@@ -513,14 +513,6 @@ extern "C" int cfibre_fcntl(int fildes, int cmd, int flags) {
   return lfFcntl(fildes, cmd, flags);
 }
 
-extern "C" void cfibre_suspendFD(int fd) {
-  Context::CurrEventScope().suspendFD(fd);
-}
-
-extern "C" void cfibre_resumeFD(int fd) {
-  Context::CurrEventScope().resumeFD(fd);
-}
-
 extern "C" int cfibre_usleep(useconds_t usec) {
   Fibre::usleep(usec);
   return 0;

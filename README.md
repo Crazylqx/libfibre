@@ -1,7 +1,7 @@
-libfibre
-========
+Fred / Libfibre
+===============
 
-libfibre is an M:N user-level threading runtime without preemption, thus the term <i>fibre</i>.
+Fred / Libfibre is an M:N user-level threading runtime without preemption, thus the term <i>fibre</i>. It demonstrably supports massive session concurrency in network/cloud servers with minimal overhead.
 
 Running `make all` builds the fibre library in `src/libfibre.so` along with several example/test programs: `test1`, `ordering`, `threadtest`, `echotest`, and `webserver` in the subdirectory `apps`.
 
@@ -23,7 +23,7 @@ requirements during peer review - and to distinguish it from other user-level th
 
 The runtime has originally been developed in close collaboration with Saman Barghi.
 
-In addition, the following students (in alphabetical order) have helped with various parts of libfibre:
+In addition, the following students (in alphabetical order) have helped with various parts of Libfibre:
 
 - Qin An (FreeBSD/kqueue)
 - Bilal Akhtar (gdb extension)
@@ -38,7 +38,7 @@ In addition, the following students (in alphabetical order) have helped with var
 
 ### License
 
-libfibre is currently distributed under the GNU GPL license, although this could change in the future. See <tt>[LICENSE](LICENSE)</tt> for details.
+Libfibre is currently distributed under the GNU GPL license, although this could change in the future. See <tt>[LICENSE](LICENSE)</tt> for details.
 
 ### Feedback / Questions
 

@@ -220,12 +220,6 @@ public:
   template<typename... Args>
   SemaphoreResult unlockP(Args&... args) { lock.acquire(); unlock(args...); return internalP(true); }
 
-  void fakeP(size_t c = 1) {
-    ScopedLock<Lock> al(lock);
-    if (Binary) counter = 0;
-    else counter -= c;
-  }
-
   template<bool Enqueue = true, bool TryOnly = false>
   StackContext* V() {
     ScopedLock<Lock> al(lock);
@@ -618,9 +612,13 @@ public:
           if (next) break;
           Pause();
         }
-        if (i == target - 1) next->raceResume(cs); // set special return code
-        if (next == cs) park = false;              // don't suspend/resume self
-        else next->resume();
+        if (next == cs) {
+          park = false; // don't suspend self
+        } else {
+          // if caller ends up suspending, set special return code for last waiter in loop
+          if ((i == target - 1) && park) next->raceResume(cs);
+          next->resume();
+        }
       }
     }
     if (park) return Suspender::suspend<false>(*cs);

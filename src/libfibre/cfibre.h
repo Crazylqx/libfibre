@@ -237,11 +237,6 @@ ssize_t cfibre_sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
 /** @brief Set socket flags (`fcntl`). */
 int cfibre_fcntl(int fildes, int cmd, int flags);
 
-/** @brief temporarily halt event handling for FD */
-void cfibre_suspendFD(int fd);
-/** @brief resume event handling for FD */
-void cfibre_resumeFD(int fd);
-
 /** @brief Sleep fibre. (`usleep`). */
 int cfibre_usleep(useconds_t uses);
 /** @brief Sleep fibre. (`sleep`). */
