@@ -15,7 +15,7 @@ ifeq ($(strip $(MAKEFLAGS)),)
 MAKEFLAGS=-j $(NPROC)
 endif
 
-.PHONY: lib apps extra doc
+.PHONY: lib apps extra vclean doc cleandoc Makefile.local
 
 .DEFAULT:
 	+nice -10 $(MAKE) -C src $@

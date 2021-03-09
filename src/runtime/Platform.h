@@ -109,6 +109,42 @@ static inline constexpr T bitmask(unsigned int Pos, unsigned int Width) {
   return bitmask<T>(Width) << Pos;
 }
 
+#define __var_builtin(x, func) \
+  ( sizeof(x) <= sizeof(int)       ? __builtin_ ## func    (x) : \
+    sizeof(x) <= sizeof(long)      ? __builtin_ ## func ## l(x) : \
+    sizeof(x) <= sizeof(long long) ? __builtin_ ## func ## ll(x) : \
+    sizeof(x) * bitsize<char>() )
+
+template <typename T>
+static inline constexpr int lsb(T x, T alt = bitsize<T>()) { // result: 0-63 (alt if x = 0)
+  return x == 0 ? alt : __var_builtin(x, ctz);
+}
+
+template <typename T>
+static inline constexpr int msb(T x, T alt = bitsize<T>()) { // result: 0-63 (alt if x = 0)
+  return x == 0 ? alt : (bitsize<T>() - 1) - __var_builtin(x, clz);
+}
+
+template <typename T>
+static inline constexpr int popcount(T x) {
+  return __var_builtin(x, popcount);
+}
+
+template <typename T>
+static inline constexpr int floorlog2( T x ) {
+  return msb(x);
+}
+
+template <typename T>
+static inline constexpr int ceilinglog2( T x ) {
+  return msb(x - 1, limit<T>()) + 1; // x = 1 -> msb = -1 (alt) -> result is 0
+}
+
+template <typename T>
+static inline constexpr int alignment( T x ) {
+  return lsb(x);
+}
+
 #if defined(__x86_64__)
 
 #if defined(__clang__) || defined(__cforall) // avoid include file problems
@@ -136,20 +172,42 @@ static const size_t ptentries      = 1 << pagetablebits;
 
 template <typename T> static inline constexpr size_t bitsize() { return sizeof(T) * 8; }
 
+#else
+#error unsupported architecture: only __x86_64__ supported at this time
+#endif
+
+template<size_t N>
+static inline mword multiscan_next(const mword* data, size_t idx, bool findset = true) {
+  if (idx >= N * bitsize<mword>()) return N * bitsize<mword>();
+  size_t i = idx / bitsize<mword>();
+  mword result = align_down(idx, bitsize<mword>());
+  mword datafield = (findset ? data[i] : ~data[i]);
+  datafield &= ~bitmask<mword>(idx % bitsize<mword>());
+  for (;;) {
+    mword b = lsb(datafield);
+    result += b;
+    if (b < bitsize<mword>()) break;
+    i += 1;
+    if (i == N) break;
+    datafield = (findset ? data[i] : ~data[i]);
+  }
+  return result;
+}
+
+#if defined(__x86_64__)
+
 // depending on the overall code complexity, the loop can be unrolled at -O3
 // "=&r"(scan) to mark as 'earlyclobber': modified before all input processed
 // "+r"(newmask) to keep newmask = mask
-template<size_t N, bool FindNext = false>
-static inline mword multiscan(const mword* data, size_t idx = 0, bool findset = true) {
-
+template<size_t N>
+static inline mword multiscan(const mword* data, bool findset = true) {
   mword result = 0;
   mword mask = ~mword(0);
   mword newmask = mask;
-
-  for (size_t i = FindNext ? 0 : (idx / bitsize<mword>()); i < N; i += 1) {
+  size_t i = 0;
+  do {
     mword scan;
     mword datafield = (findset ? data[i] : ~data[i]);
-    if (FindNext && (i == idx / bitsize<mword>())) datafield &= ~bitmask<mword>(idx % bitsize<mword>());
     asm volatile("\
       bsfq %2, %0\n\t\
       cmovzq %3, %0\n\t\
@@ -159,14 +217,10 @@ static inline mword multiscan(const mword* data, size_t idx = 0, bool findset = 
     : "cc");
     result += scan & mask;
     mask = newmask;
-  }
+    i += 1;
+  } while (i < N);
 
   return result;
-}
-
-template<size_t N>
-static inline mword multiscan_next(const mword* data, size_t idx = 0, bool findset = true) {
-  return multiscan<N,true>(data, idx, findset);
 }
 
 // depending on the overall code complexity, the loop can be unrolled at -O3
@@ -191,12 +245,17 @@ static inline mword multiscan_rev(const mword* data, bool findset = true) {
     : "cc");
     result += (scan & mask) + (bitsize<mword>() & ~mask);
     mask = newmask;
-  } while (i != 0);
+  } while (i > 0);
   return result;
 }
 
 #else
-#error unsupported architecture: only __x86_64__ supported at this time
+
+template<size_t N>
+static inline mword multiscan(const mword* data, bool findset = true) {
+  return multiscan_next<N>(data, 0, findset);
+}
+
 #endif
 
 template<unsigned int N>

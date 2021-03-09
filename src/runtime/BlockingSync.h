@@ -563,7 +563,7 @@ class SimpleMutex0 {
   LimitedSemaphore0<> sem;
 
 public:
-  SimpleMutex0() : sem(0) {}
+  SimpleMutex0() : ben(1), sem(0) {}
   bool acquire()    { return ben.P() || sem.P(); }
   bool tryAcquire() { return ben.tryP(); }
   void release()    { if (!ben.V()) sem.V(); }

@@ -19,52 +19,6 @@
 
 #include "runtime/Basics.h"
 
-#define __var_builtin(x, func) \
-  ( sizeof(x) <= sizeof(int)       ? __builtin_ ## func    (x) : \
-    sizeof(x) <= sizeof(long)      ? __builtin_ ## func ## l(x) : \
-    sizeof(x) <= sizeof(long long) ? __builtin_ ## func ## ll(x) : \
-    sizeof(x) * bitsize<char>() )
-
-template <typename T>
-static inline constexpr int lsbcond(T x, T alt = bitsize<T>()) {
-  return x == 0 ? alt : __var_builtin(x, ctz);
-}
-
-template <typename T>
-static inline constexpr int msbcond(T x, T alt = bitsize<T>()) {
-  return x == 0 ? alt : (bitsize<T>() - 1) - __var_builtin(x, clz);
-}
-
-template <typename T>
-static inline constexpr int lsb(T x) {
-  return __var_builtin(x, ctz);
-}
-
-template <typename T>
-static inline constexpr int msb(T x) {
-  return (bitsize<T>() - 1) - __var_builtin(x, clz);
-}
-
-template <typename T>
-static inline constexpr int popcount(T x) {
-  return __var_builtin(x, popcount);
-}
-
-template <typename T>
-static inline constexpr int floorlog2( T x ) {
-  return msbcond(x, bitsize<T>());
-}
-
-template <typename T>
-static inline constexpr int ceilinglog2( T x ) {
-  return msbcond(x - 1, limit<T>()) + 1; // x = 1 -> msb = -1 (alt) -> result is 0
-}
-
-template <typename T>
-static inline constexpr int alignment( T x ) {
-  return lsbcond(x, bitsize<T>());
-}
-
 template<size_t X> constexpr mword BitmapEmptyHelper(const mword* bits) {
   return bits[X] | BitmapEmptyHelper<X-1>(bits);
 }
@@ -140,7 +94,7 @@ public:
   constexpr bool test( mword idx ) const {
     return  bit_tst(bits[idx / bitsize<mword>()], idx % bitsize<mword>());
   }
-  constexpr bool empty()  const { return BitmapEmptyHelper<N-1>(bits) == mword(0); }
+  constexpr bool empty()  const { return BitmapEmptyHelper<N-1>(bits) ==  mword(0); }
   constexpr bool full()   const { return  BitmapFullHelper<N-1>(bits) == ~mword(0); }
   constexpr mword count() const { return BitmapCountHelper<N-1>(bits); }
   constexpr mword find(bool findset = true) const {
@@ -148,9 +102,6 @@ public:
   }
   constexpr mword findnext(mword idx, bool findset = true) const {
     return multiscan_next<N>(bits, idx, findset);
-  }
-  constexpr mword findrev(bool findset = true) const {
-    return multiscan_rev<N>(bits, findset);
   }
 };
 
@@ -181,13 +132,10 @@ public:
   constexpr bool full()   const { return bits == ~mword(0); }
   constexpr mword count() const { return popcount(bits); }
   constexpr mword find(bool findset = true) const {
-    return lsbcond(findset ? bits : ~bits);
+    return lsb(findset ? bits : ~bits);
   }
   constexpr mword findnext(mword idx, bool findset = true) const {
-    return lsbcond((findset ? bits : ~bits) & ~bitmask<mword>(idx));
-  }
-  constexpr mword findrev(bool findset = true) const {
-    return msbcond(findset ? bits : ~bits);
+    return lsb((findset ? bits : ~bits) & ~bitmask<mword>(idx));
   }
 };
 
@@ -317,16 +265,6 @@ public:
     while (((end / B) < maxBucketCount) && test(end)) end += 1;
     if (end > max) end = max;
     return end - start;
-  }
-
-  size_t findrev() const {
-    size_t idx = 0;
-    for (size_t i = Levels - 1;; i -= 1) {
-      size_t ldx = bitmaps[i][idx].findrev();
-      if (ldx == B) return limit<size_t>();
-      idx = idx * B + ldx;
-      if (i == 0) return idx;
-    }
   }
 };
 
