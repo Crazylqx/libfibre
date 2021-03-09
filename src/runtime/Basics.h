@@ -75,6 +75,12 @@ public:
   long long toUS() const {
     return 1000000ll * tv_sec + tv_nsec / 1000;
   }
+  static Time fromNS(long long ns) {
+    return Time(ns / 1000000000, ns % 1000000000);
+  }
+  long long toNS() const {
+    return 1000000000ll * tv_sec + tv_nsec;
+  }
   Time& operator=(const Time& t) {
     tv_sec  = t.tv_sec;
     tv_nsec = t.tv_nsec;

@@ -291,7 +291,7 @@ public:
     fdSyncVector[fd].rdSem.V();
   }
 
-  bool tryblockTimerFD(int fd) {
+  bool tryblock(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     return fdSyncVector[fd].rdSem.tryP();
   }

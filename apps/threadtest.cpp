@@ -66,17 +66,21 @@ typedef cpuset_t cpu_set_t;
 #endif /* VARIANT */
 
 // configuration default settings
-static unsigned int threadCount = 2;
 static unsigned int duration = 10;
 static unsigned int fibreCount = 4;
 static unsigned int lockCount = 1;
+#if defined WITH_TIMEOUTS
+static unsigned int timeout = 1000;
+#endif
+static unsigned int threadCount = 2;
 static unsigned int work_unlocked = 10000;
 static unsigned int work_locked = 10000;
 
-static bool yieldFlag = false;
-static bool serialFlag = false;
 static bool affinityFlag = false;
-static bool calibration = false;
+static bool calibrationFlag = false;
+static bool randomizedFlag = false;
+static bool serialFlag = false;
+static bool yieldFlag = false;
 
 static bool yieldExperiment = false;
 static char lockType = 'B';
@@ -85,6 +89,7 @@ static char lockType = 'B';
 struct Worker {
   shim_thread_t* runner;
   volatile unsigned long long counter;
+  volatile unsigned long long failed;
 };
 
 // lock descriptor
@@ -119,27 +124,50 @@ static void alarmHandler(int) {
 
 // help message
 static void usage(const char* prog) {
-  fprintf(stderr, "usage: %s -d <duration (secs)> -f <total fibres> -l <locks> -t <system threads> -u <unlocked work> -w <locked work> -s -y -a -c -Y -L <lock type>\n", prog);
+  fprintf(stdout, "usage:\n");
+  fprintf(stdout, " %s -d <duration (secs)> -f <total fibres> -l <locks> -t <system threads> -u <unlocked work> -w <locked work> -L <lock type (B,S,T,Y)> -a -c -s -y -Y", prog);
+#if defined WITH_TIMEOUTS
+  fprintf(stdout, " -o <timeout in nsec>\n");
+#else
+  fprintf(stdout, "\n");
+#endif
+  fprintf(stdout, "defaults:\n");
+	fprintf(stdout, " -d 10 -f 4 -l 1 -t 2 -u 10000 -w 10000 -L B");
+#if defined WITH_TIMEOUTS
+  fprintf(stdout, " -o 1000\n");
+#else
+  fprintf(stdout, "\n");
+#endif
+  fprintf(stdout, "flags:\n");
+  fprintf(stdout, " -a  set pthread-to-core affinity\n");
+  fprintf(stdout, " -c  run calibration\n");
+  fprintf(stdout, " -s  acquire locks in serial order (instead of random)\n");
+  fprintf(stdout, " -y  yield after each locked iteration\n");
+  fprintf(stdout, " -Y  brute force yield experiment (no locks, no work)\n");
 }
 
 // command-line option processing
 static bool opts(int argc, char** argv) {
   for (;;) {
-    int option = getopt( argc, argv, "d:f:l:t:u:w:syacYL:h?" );
+    int option = getopt(argc, argv, "acd:f:l:o:rst:u:w:yL:Yh?");
     if ( option < 0 ) break;
     switch(option) {
+    case 'a': affinityFlag = true; break;
+    case 'c': calibrationFlag = true; break;
     case 'd': duration = atoi(optarg); break;
     case 'f': fibreCount = atoi(optarg); break;
     case 'l': lockCount = atoi(optarg); break;
+#if defined WITH_TIMEOUTS
+    case 'o': timeout = atoi(optarg); break;
+#endif
+    case 'r': randomizedFlag = true; break;
+    case 's': serialFlag = true; break;
     case 't': threadCount = atoi(optarg); break;
     case 'u': work_unlocked = atoi(optarg); break;
     case 'w': work_locked = atoi(optarg); break;
-    case 's': serialFlag = true; break;
     case 'y': yieldFlag = true; break;
-    case 'a': affinityFlag = true; break;
-    case 'c': calibration = true; break;
-    case 'Y': yieldExperiment = true; break;
     case 'L': lockType = optarg[0]; break;
+    case 'Y': yieldExperiment = true; break;
     case 'h':
     case '?':
       usage(argv[0]);
@@ -166,6 +194,9 @@ static bool opts(int argc, char** argv) {
     case 'Y':
     case 'S':
 #endif
+#if defined WITH_TIMEOUTS
+    case 'T':
+#endif
     case 'B': break;
     default: fprintf(stderr, "lock type %c not supported\n", lockType);
     return false;
@@ -191,10 +222,30 @@ static bool opts(int argc, char** argv) {
 
 static const int workBufferSize = 16;
 
+// Marsaglia shift-XOR PRNG with thread-local state
+static inline unsigned int pseudoRandom() {
+  static __thread unsigned long long R = 0;
+	if (R == 0) {
+    static const unsigned long long Mix64K = 0xdaba0b6eb09322e3ull;
+    R = (uintptr_t)&R;
+	  R = (R ^ (R >> 32)) * Mix64K;
+    R = (R ^ (R >> 32)) * Mix64K;
+    R =  R ^ (R >> 32);
+  }
+	unsigned long long v = R;
+	unsigned long long n = v;
+	n ^= n << 6;
+	n ^= n >> 21;
+	n ^= n << 7;
+	R = n;
+	return v;
+}
+
 static inline void dowork(volatile int* buffer, unsigned int steps) {
   int value = 0;
+  if (randomizedFlag) steps = pseudoRandom() % steps;
   for (unsigned int i = 0; i < steps; i += 1) {
-    // a little more work than just a memory access helps with stability
+    // a little more work than just a single memory access helps with stability
     value += (buffer[i % workBufferSize] * 17) / 23 + 55;
   }
   buffer[0] += value;
@@ -307,11 +358,18 @@ static void worker(void* arg) {
   // run loop
   while (running) {
     // unlocked work
-    if (work_unlocked != (unsigned int)-1) dowork(buffer, work_unlocked);
+    dowork(buffer, work_unlocked);
     // locked work and counters
     switch (lockType) {
       // regular blocking lock
       case 'B': shim_mutex_lock(&locks[lck].mtx); break;
+#if defined WITH_TIMEOUTS
+      case 'T':
+        if (!shim_mutex_timedlock(&locks[lck].mtx, randomizedFlag ? pseudoRandom() % timeout : timeout)) {
+          workers[num].failed += 1;
+          goto lock_failed;
+        } else break;
+#endif
 #if defined HASTRYLOCK
       // plain spin lock
       case 'S': while (!shim_mutex_trylock(&locks[lck].mtx)) Pause(); break;
@@ -320,10 +378,13 @@ static void worker(void* arg) {
 #endif
       default: fprintf(stderr, "internal error: lock type\n"); abort();
     }
-    if (work_locked != (unsigned int)-1) dowork(buffer, work_locked);
+    dowork(buffer, work_locked);
     workers[num].counter += 1;
     locks[lck].counter += 1;
     shim_mutex_unlock(&locks[lck].mtx);
+#if defined WITH_TIMEOUTS
+lock_failed:
+#endif
     if (yieldFlag) shim_yield();
     // pick next lock, serial or random
     if (serialFlag) lck += 1;
@@ -340,42 +401,42 @@ public:
 };
 #endif
 
-#if defined __U_CPLUSPLUS__ || defined ARACHNE_H_
-#define EXITMAIN return
-#else
-#define EXITMAIN return 0
-#endif
-
-
 // main routine
 #if defined ARACHNE_H_
 void AppMain(int argc, char* argv[]) {
 #elif defined MORDOR_MAIN
 MORDOR_MAIN(int argc, char *argv[]) {
-#elif defined __U_CPLUSPLUS__
-void uMain::main() {
 #else
 int main(int argc, char* argv[]) {
 #endif
   // parse command-line arguments
-  if (!opts(argc, argv)) EXITMAIN;
+  if (!opts(argc, argv)) exit(1);
 
   // print configuration
-  printf("threads: %u workers: %u locks: %u", threadCount, fibreCount, lockCount);
-  if (affinityFlag) printf(" affinity");
-  if (serialFlag) printf(" serial");
-  if (yieldFlag) printf(" yield");
+  printf("threads: %u workers: %u", threadCount, fibreCount);
+  if (!yieldExperiment) {
+    printf(" locks: %u", lockCount);
+    if (affinityFlag) printf(" affinity");
+    if (serialFlag) printf(" serial");
+    if (yieldFlag) printf(" yield");
+  }
   printf("\n");
   printf("duration: %u", duration);
-  if (work_locked != (unsigned int)-1) printf(" locked work: %u", work_locked);
-  if (work_unlocked != (unsigned int)-1) printf(" unlocked work: %u", work_unlocked);
+  if (!yieldExperiment) {
+    printf(" locked work: %u", work_locked);
+    printf(" unlocked work: %u", work_unlocked);
+#if defined WITH_TIMEOUTS
+    if (lockType == 'T') printf(" timeout: %u", timeout);
+#endif
+    if (randomizedFlag) printf(" randomized");
+  }
   printf("\n");
 
   // set up random number generator
   srandom(time(nullptr));
 
   // run timer calibration, if requested
-  if (calibration) {
+  if (calibrationFlag) {
     calibrateTimer();
     printf("time overhead: %lu\n", timerOverhead);
     unsigned int l = calibrateInterval(work_locked);
@@ -386,7 +447,7 @@ int main(int argc, char* argv[]) {
     printf("WARNING: these numbers are not necessarily very accurate."
            " Double-check the actual runtime with 'perf'\n");
     printf("\n");
-    EXITMAIN;
+    exit(0);
   }
 
   // create system processors (pthreads)
@@ -461,6 +522,7 @@ int main(int argc, char* argv[]) {
   for (unsigned int i = 0; i < fibreCount; i += 1) {
     workers[i].runner = shim_thread_create(yieldExperiment ? yielder : worker, (void*)((uintptr_t)i));
     workers[i].counter = 0;
+    workers[i].failed = 0;
   }
 
 #if defined PTHREADS
@@ -520,13 +582,24 @@ int main(int argc, char* argv[]) {
   // collect and print work results
   unsigned long long wsum = 0;
   double wsum2 = 0;
+  unsigned long long fsum = 0;
+  double fsum2 = 0;
   for (unsigned int i = 0; i < fibreCount; i += 1) {
     wsum += workers[i].counter;
     wsum2 += pow(workers[i].counter, 2);
+    fsum += workers[i].failed;
+    fsum2 += pow(workers[i].failed, 2);
   }
   unsigned long long wavg = wsum/fibreCount;
   unsigned long long wstd = (unsigned long long)sqrt(wsum2 / fibreCount - pow(wavg, 2));
-  printf("work - total: %llu rate: %llu fairness: %llu/%llu\n", wsum, wsum/duration, wavg, wstd);
+  printf("loops/fibre - total: %llu rate: %llu average: %llu stddev: %llu\n", wsum, wsum/duration, wavg, wstd);
+#if defined WITH_TIMEOUTS
+  unsigned long long favg = fsum/fibreCount;
+  unsigned long long fstd = (unsigned long long)sqrt(fsum2 / fibreCount - pow(favg, 2));
+  if (lockType == 'T') {
+    printf("fails/fibre - total: %llu rate: %llu average: %llu stddev: %llu\n", fsum, fsum/duration, favg, fstd);
+  }
+#endif
 
   // collect and print lock results
   unsigned long long lsum = 0;
@@ -537,7 +610,9 @@ int main(int argc, char* argv[]) {
   }
   unsigned long long lavg = lsum/lockCount;
   unsigned long long lstd = (unsigned long long)sqrt(lsum2 / lockCount - pow(lavg, 2));
-  printf( "lock - total: %llu rate: %llu fairness: %llu/%llu\n", lsum, lsum/duration, lavg, lstd );
+  if (!yieldExperiment) {
+    printf( "loops/lock  - total: %llu rate: %llu average: %llu stddev: %llu\n", lsum, lsum/duration, lavg, lstd );
+  }
 
   // print timing information
   if (yieldExperiment) {
@@ -545,8 +620,13 @@ int main(int argc, char* argv[]) {
     printf("time per yield: %lld\n", diff_to_ns(endTime, startTime) / (wsum / threadCount));
   }
 
+  if (!yieldExperiment && wsum != lsum) {
+    printf("CHECKSUM ERROR: total work %llu != %llu total lock\n", wsum, lsum);
+    exit(1);
+  }
+
   // exit hard for performance experiments
-  EXITMAIN;
+  exit(0);
 
   // clean up
   free(workers);
@@ -562,9 +642,6 @@ int main(int argc, char* argv[]) {
 #elif defined QTHREAD_VERSION
   qthread_finalize();
 #endif
-
-  // done
-  EXITMAIN;
 
   shim_barrier_destroy(sbar);
   shim_barrier_destroy(cbar);

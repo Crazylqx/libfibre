@@ -73,6 +73,7 @@ function prep_0() {
 
 function run_0() {
 	./apps/threadtest || exit 1
+	./apps/threadtest -o 10000 -r -L T || exit 1
 	run_memcached 0
 }
 

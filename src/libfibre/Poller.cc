@@ -71,10 +71,10 @@ void* MasterPoller::pollLoopSetup(void* This) {
 }
 
 inline void MasterPoller::prePoll(_friend<BaseThreadPoller>) {
-  if (eventScope.tryblockTimerFD(timerFD)) {
+  if (eventScope.tryblock(timerFD)) {
 #if __linux__
     uint64_t count; // read timerFD
-    SYSCALL_EQ(read(timerFD, (void*)&count, sizeof(count)), sizeof(count));
+    if (read(timerFD, (void*)&count, sizeof(count)) != sizeof(count)) return;
 #endif
     Time currTime;
     SYSCALL(clock_gettime(CLOCK_REALTIME, &currTime));
