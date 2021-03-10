@@ -19,8 +19,8 @@
 
 #include "runtime/Benaphore.h"
 #include "runtime/Debug.h"
+#include "runtime/Fred.h"
 #include "runtime/Stats.h"
-#include "runtime/StackContext.h"
 #include "runtime-glue/RuntimeLock.h"
 
 class LoadManager;
@@ -29,23 +29,23 @@ class Scheduler;
 class ReadyQueue {
   WorkerLock readyLock;
 #if TESTING_LOCKED_READYQUEUE
-  FlexStackQueue     queue[NumPriority];
+  FlexFredQueue     queue[NumPriority];
 #else
-  FlexStackQueueMPSC queue[NumPriority];
+  FlexFredQueueMPSC queue[NumPriority];
 #endif
 
   ReadyQueue(const ReadyQueue&) = delete;            // no copy
   ReadyQueue& operator=(const ReadyQueue&) = delete; // no assignment
 
-  StackContext* dequeueInternal() {
+  Fred* dequeueInternal() {
 #if TESTING_LOCKED_READYQUEUE
     for (size_t p = 0; p < NumPriority; p += 1) {
       if (!queue[p].empty()) return queue[p].pop();
     }
 #else
     for (size_t p = 0; p < NumPriority; p += 1) {
-      StackContext* s = queue[p].pop();
-      if (s) return s;
+      Fred* f = queue[p].pop();
+      if (f) return f;
     }
 #endif
     return nullptr;
@@ -54,26 +54,26 @@ class ReadyQueue {
 public:
   ReadyQueue() = default;
 
-  StackContext* dequeue() {
+  Fred* dequeue() {
     ScopedLock<WorkerLock> sl(readyLock);
     return dequeueInternal();
   }
 
 #if TESTING_LOADBALANCING
-  StackContext* tryDequeue() {
+  Fred* tryDequeue() {
     if (!readyLock.tryAcquire()) return nullptr;
-    StackContext* s = dequeueInternal();
+    Fred* f = dequeueInternal();
     readyLock.release();
-    return s;
+    return f;
   }
 #endif
 
-  void enqueue(StackContext& s) {
-    RASSERT(s.getPriority() < NumPriority, s.getPriority());
+  void enqueue(Fred& f) {
+    RASSERT(f.getPriority() < NumPriority, f.getPriority());
 #if TESTING_LOCKED_READYQUEUE
     ScopedLock<WorkerLock> sl(readyLock);
 #endif
-    queue[s.getPriority()].push(s);
+    queue[f.getPriority()].push(f);
   }
 };
 
@@ -82,11 +82,11 @@ typedef IntrusiveList<BaseProcessor,0,2> ProcessorList;
 typedef IntrusiveRing<BaseProcessor,1,2> ProcessorRing;
 
 class BaseProcessor : public DoubleLink<BaseProcessor,2> {
-  inline StackContext* tryLocal();
+  inline Fred* tryLocal();
 #if TESTING_LOADBALANCING
-  inline StackContext* tryStage();
-  inline StackContext* trySteal();
-  inline StackContext* scheduleInternal();
+  inline Fred* tryStage();
+  inline Fred* trySteal();
+  inline Fred* scheduleInternal();
 #else
   Benaphore<OsSemaphore> readyCount;
 #endif
@@ -94,78 +94,78 @@ class BaseProcessor : public DoubleLink<BaseProcessor,2> {
 
   void idleLoopTerminate();
 
-  void enqueueDirect(StackContext& s) {
-    DBG::outl(DBG::Level::Scheduling, "Stack ", FmtHex(&s), " queueing on ", FmtHex(this));
+  void enqueueDirect(Fred& f) {
+    DBG::outl(DBG::Level::Scheduling, "Fred ", FmtHex(&f), " queueing on ", FmtHex(this));
     stats->enq.count();
-    readyQueue.enqueue(s);
+    readyQueue.enqueue(f);
   }
 
 #if TESTING_LOADBALANCING
-  bool addReadyStack(StackContext& s);
+  bool addReadyFred(Fred& f);
 #endif
 
 protected:
-  Scheduler&    scheduler;
-  StackContext* idleStack;
+  Scheduler& scheduler;
+  Fred*      idleFred;
 
   WorkerSemaphore haltNotify;
-  StackContext*   handoverStack;
+  Fred*           handoverFred;
 
   ProcessorStats* stats;
 
   void idleLoop();
 
-  static void yieldDirect(StackContext& sc) {
-    StackContext::idleYieldTo(sc, _friend<BaseProcessor>());
+  static void yieldDirect(Fred& f) {
+    Fred::idleYieldTo(f, _friend<BaseProcessor>());
   }
 
 public:
-  BaseProcessor(Scheduler& c, const char* n = "Processor") : scheduler(c), idleStack(nullptr), haltNotify(0), handoverStack(nullptr) {
+  BaseProcessor(Scheduler& c, const char* n = "Processor") : scheduler(c), idleFred(nullptr), haltNotify(0), handoverFred(nullptr) {
     stats = new ProcessorStats(this, n);
   }
 
   Scheduler& getScheduler() { return scheduler; }
 
 #if TESTING_LOADBALANCING
-  StackContext* tryDequeue(_friend<Scheduler>) {
+  Fred* tryDequeue(_friend<Scheduler>) {
     return readyQueue.tryDequeue();
   }
 #endif
 
-  void enqueueDirect(StackContext& s, _friend<StackContext>) {
-    enqueueDirect(s);
+  void enqueueDirect(Fred& f, _friend<Fred>) {
+    enqueueDirect(f);
   }
 
-  void enqueueResume(StackContext& s, _friend<StackContext>) {
+  void enqueueResume(Fred& f, _friend<Fred>) {
 #if TESTING_LOADBALANCING
-    if (!addReadyStack(s)) enqueueDirect(s);
+    if (!addReadyFred(f)) enqueueDirect(f);
 #else
-    enqueueDirect(s);
+    enqueueDirect(f);
     readyCount.V();
 #endif
   }
 
-  StackContext& scheduleFull(_friend<StackContext>);
-  StackContext* scheduleYield(_friend<StackContext>);
-  StackContext* scheduleYieldGlobal(_friend<StackContext>);
-  StackContext* schedulePreempt(StackContext* currStack,_friend<StackContext>);
+  Fred& scheduleFull(_friend<Fred>);
+  Fred* scheduleYield(_friend<Fred>);
+  Fred* scheduleYieldGlobal(_friend<Fred>);
+  Fred* schedulePreempt(Fred* currFred, _friend<Fred>);
 
-  StackContext* suspend(_friend<LoadManager>) {
+  Fred* suspend(_friend<LoadManager>) {
 #if TESTING_HALT_SPIN
     static const size_t SpinMax = TESTING_HALT_SPIN;
     for (size_t i = 0; i < SpinMax; i += 1) {
-      if fastpath(haltNotify.tryP()) return handoverStack;
+      if fastpath(haltNotify.tryP()) return handoverFred;
       Pause();
     }
 #endif
     stats->idle.count();
     haltNotify.P();
-    return handoverStack;
+    return handoverFred;
   }
 
-  void resume(_friend<LoadManager>, StackContext* sc = nullptr) {
+  void resume(_friend<LoadManager>, Fred* f = nullptr) {
     stats->wake.count();
-    handoverStack = sc;
+    handoverFred = f;
     haltNotify.V();
   }
 };

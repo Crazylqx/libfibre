@@ -50,7 +50,7 @@ stackInit:                  # stack, func, arg1, arg2, arg3 -> new stack
 	retq
 
 .align 8
-stubInit:                   # stub needed to pass arguments to 'invokeStack'
+stubInit:                   # stub needed to pass arguments to 'invokeFred'
 	movq %rbx, %rdi           # 'func'
 	movq %r12, %rsi           # 'arg1'
 	movq %r13, %rdx           # 'arg2'
@@ -59,7 +59,7 @@ stubInit:                   # stub needed to pass arguments to 'invokeStack'
 	pushq %rbp                # previous %rip = 0 (fake stack frame)
 	pushq %rbp                # previous %rbp = 0
 	movq %rsp, %rbp           # set base pointer
-	jmp invokeStack@PLT
+	jmp invokeFred@PLT
 
 .align 8
 .globl stackSwitch

@@ -297,7 +297,7 @@ public:
   }
 
   template<bool Input, bool Enqueue = true>
-  StackContext* unblock(int fd, _friend<BasePoller>) {
+  Fred* unblock(int fd, _friend<BasePoller>) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncSem& sem = Input ? fdSyncVector[fd].rdSem : fdSyncVector[fd].wrSem;
     return sem.V<Enqueue>();

@@ -33,7 +33,7 @@ class BaseProcessor;
 
 class EventScope;
 class Fibre;
-class StackContext;
+class Fred;
 
 class BasePoller {
 public:
@@ -67,7 +67,7 @@ protected:
   inline int doPoll();
 
   template<bool Enqueue = true>
-  inline StackContext* notifyOne(EventType& ev);
+  inline Fred* notifyOne(EventType& ev);
 
   inline void notifyAll(int evcnt);
 

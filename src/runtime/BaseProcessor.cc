@@ -16,53 +16,53 @@
 ******************************************************************************/
 #include "runtime/Scheduler.h"
 
-inline StackContext* BaseProcessor::tryLocal() {
-  StackContext* s = readyQueue.dequeue();
-  if (s) {
-    DBG::outl(DBG::Level::Scheduling, "tryLocal: ", FmtHex(this), ' ', FmtHex(s));
+inline Fred* BaseProcessor::tryLocal() {
+  Fred* f = readyQueue.dequeue();
+  if (f) {
+    DBG::outl(DBG::Level::Scheduling, "tryLocal: ", FmtHex(this), ' ', FmtHex(f));
     stats->deq.count();
   }
-  return s;
+  return f;
 }
 
 #if TESTING_LOADBALANCING
-inline StackContext* BaseProcessor::tryStage() {
-  StackContext* s = scheduler.stage();
-  if (s) {
-    DBG::outl(DBG::Level::Scheduling, "tryStage: ", FmtHex(this), ' ', FmtHex(s));
-    if (s->getAffinity()) {
+inline Fred* BaseProcessor::tryStage() {
+  Fred* f = scheduler.stage();
+  if (f) {
+    DBG::outl(DBG::Level::Scheduling, "tryStage: ", FmtHex(this), ' ', FmtHex(f));
+    if (f->getAffinity()) {
       stats->borrow.count();
     } else {
       stats->stage.count();
-      s->changeProcessor(*this, _friend<BaseProcessor>());
+      f->changeProcessor(*this, _friend<BaseProcessor>());
     }
   }
-  return s;
+  return f;
 }
 
-inline StackContext* BaseProcessor::trySteal() {
-  BaseProcessor* sp = this;
+inline Fred* BaseProcessor::trySteal() {
+  BaseProcessor* victim = this;
   for (;;) {
 #if TESTING_OPTIMISTIC_ISRS
-    StackContext* l = tryLocal();
+    Fred* l = tryLocal();
     if (l) return l;
 #endif
-    sp = ProcessorRing::next(*sp);
-    if (sp == this) return nullptr;
-    StackContext* s = sp->readyQueue.tryDequeue();
-    if (s) {
-      DBG::outl(DBG::Level::Scheduling, "trySteal: ", FmtHex(this), ' ', FmtHex(s));
+    victim = ProcessorRing::next(*victim);
+    if (victim == this) return nullptr;
+    Fred* f = victim->readyQueue.tryDequeue();
+    if (f) {
+      DBG::outl(DBG::Level::Scheduling, "trySteal: ", FmtHex(this), ' ', FmtHex(f));
       stats->steal.count();
-      return s;
+      return f;
     }
   }
 }
 
-inline StackContext* BaseProcessor::scheduleInternal() {
-  StackContext* nextStack;
-  if ((nextStack = tryLocal())) return nextStack;
-  if ((nextStack = tryStage())) return nextStack;
-  if ((nextStack = trySteal())) return nextStack;
+inline Fred* BaseProcessor::scheduleInternal() {
+  Fred* nextFred;
+  if ((nextFred = tryLocal())) return nextFred;
+  if ((nextFred = tryStage())) return nextFred;
+  if ((nextFred = trySteal())) return nextFred;
   return nullptr;
 }
 #endif
@@ -70,45 +70,45 @@ inline StackContext* BaseProcessor::scheduleInternal() {
 void BaseProcessor::idleLoop() {
   for (;;) {
 #if TESTING_LOADBALANCING
-    StackContext* nextStack = scheduler.getReadyStack(*this);
-    if (nextStack) {
+    Fred* nextFred = scheduler.getReadyFred(*this);
+    if (nextFred) {
       stats->handover.count();
-      yieldDirect(*nextStack);
+      yieldDirect(*nextFred);
   continue;
     }
 #if TESTING_OPTIMISTIC_ISRS
-    nextStack = scheduleInternal();
-    if (nextStack) {
-      yieldDirect(*nextStack);
+    nextFred = scheduleInternal();
+    if (nextFred) {
+      yieldDirect(*nextFred);
   continue;
     }
     // might have gotten a token, but not a stack -> correct
     stats->correction.count();
-    scheduler.correctReadyStack();
+    scheduler.correctReadyFred();
 #else /* TESTING_OPTIMISTIC_ISRS */
     for (;;) {
-      nextStack = scheduleInternal();
-      if (nextStack) break;
+      nextFred = scheduleInternal();
+      if (nextFred) break;
       Pause();
     }
-    yieldDirect(*nextStack);
+    yieldDirect(*nextFred);
 #endif
 #else /* TESTING_LOADBALANCING */
     readyCount.P();
-    StackContext* nextStack = tryLocal();
-    RASSERT0(nextStack);
-    yieldDirect(*nextStack);
+    Fred* nextFred = tryLocal();
+    RASSERT0(nextFred);
+    yieldDirect(*nextFred);
 #endif
   }
 }
 
 #if TESTING_LOADBALANCING
-bool BaseProcessor::addReadyStack(StackContext& s) {
-  return scheduler.addReadyStack(s);
+bool BaseProcessor::addReadyFred(Fred& f) {
+  return scheduler.addReadyFred(f);
 }
 #endif
 
-StackContext& BaseProcessor::scheduleFull(_friend<StackContext>) {
+Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
 #if TESTING_IDLE_SPIN
   static const size_t SpinMax = TESTING_IDLE_SPIN;
 #else
@@ -117,36 +117,36 @@ StackContext& BaseProcessor::scheduleFull(_friend<StackContext>) {
   for (size_t i = 0; i < SpinMax; i += 1) {
 #if TESTING_LOADBALANCING
 #if TESTING_OPTIMISTIC_ISRS
-    StackContext* nextStack = scheduleInternal();
-    if (nextStack) {
-      scheduler.reportReadyStack();
-      return *nextStack;
+    Fred* nextFred = scheduleInternal();
+    if (nextFred) {
+      scheduler.reportReadyFred();
+      return *nextFred;
     }
 #else /* TESTING_OPTIMISTIC_ISRS */
-    if (scheduler.tryGetReadyStack()) {
+    if (scheduler.tryGetReadyFred()) {
       for (;;) {
-        StackContext* nextStack = scheduleInternal();
-        if (nextStack) return *nextStack;
+        Fred* nextFred = scheduleInternal();
+        if (nextFred) return *nextFred;
         Pause();
       }
     }
 #endif
 #else /* TESTING_LOADBALANCING */
     if (readyCount.tryP()) {
-      StackContext* nextStack = tryLocal();
-      RASSERT0(nextStack);
-      return *nextStack;
+      Fred* nextFred = tryLocal();
+      RASSERT0(nextFred);
+      return *nextFred;
     }
 #endif
   }
-  return *idleStack;
+  return *idleFred;
 }
 
-StackContext* BaseProcessor::scheduleYield(_friend<StackContext>) {
+Fred* BaseProcessor::scheduleYield(_friend<Fred>) {
   return tryLocal();
 }
 
-StackContext* BaseProcessor::scheduleYieldGlobal(_friend<StackContext>) {
+Fred* BaseProcessor::scheduleYieldGlobal(_friend<Fred>) {
 #if TESTING_LOADBALANCING
   return scheduleInternal();
 #else
@@ -154,7 +154,7 @@ StackContext* BaseProcessor::scheduleYieldGlobal(_friend<StackContext>) {
 #endif
 }
 
-StackContext* BaseProcessor::schedulePreempt(StackContext* currStack, _friend<StackContext> fsc) {
-  if (currStack == idleStack) return nullptr;
+Fred* BaseProcessor::schedulePreempt(Fred* currFred, _friend<Fred> fsc) {
+  if (currFred == idleFred) return nullptr;
   return scheduleYieldGlobal(fsc);
 }

@@ -41,8 +41,8 @@ static const size_t defaultStackGuard =  1 * pagesize<1>();
 #endif
 
 #if TESTING_ENABLE_DEBUGGING
-extern WorkerLock*      _lfGlobalStackLock;
-extern GlobalStackList* _lfGlobalStackList;
+extern WorkerLock*     _lfGlobalFredLock;
+extern GlobalFredList* _lfGlobalFredList;
 #endif
 
 class Cluster;
@@ -105,7 +105,7 @@ public:
 };
 
 /** A Fibre object represents an independent execution context backed by a stack. */
-class Fibre : public StackContext, public FibreSpecific {
+class Fibre : public Fred, public FibreSpecific {
   FloatingPointFlags fp;       // FP context
   size_t stackSize;            // stack size (including guard)
 #ifdef SPLIT_STACK
@@ -133,7 +133,7 @@ class Fibre : public StackContext, public FibreSpecific {
     if (guard) SYSCALL(mprotect(ptr, guard, PROT_NONE));
     stackBottom = vaddr(ptr);
 #endif
-    StackContext::initStackPointer(stackBottom + size);
+    Fred::initStackPointer(stackBottom + size);
     return size;
   }
 
@@ -147,20 +147,20 @@ class Fibre : public StackContext, public FibreSpecific {
 
   void initDebug() {
 #if TESTING_ENABLE_DEBUGGING
-    ScopedLock<WorkerLock> sl(*_lfGlobalStackLock);
-    _lfGlobalStackList->push_back(*this);
+    ScopedLock<WorkerLock> sl(*_lfGlobalFredLock);
+    _lfGlobalFredList->push_back(*this);
 #endif
   }
 
   void clearDebug() {
 #if TESTING_ENABLE_DEBUGGING
-    ScopedLock<WorkerLock> sl(*_lfGlobalStackLock);
-    _lfGlobalStackList->remove(*this);
+    ScopedLock<WorkerLock> sl(*_lfGlobalFredLock);
+    _lfGlobalFredList->remove(*this);
 #endif
   }
 
   Fibre* runInternal(ptr_t func, ptr_t p1, ptr_t p2, ptr_t p3) {
-    StackContext::start(func, p1, p2, p3);
+    Fred::start(func, p1, p2, p3);
     return this;
   }
 
@@ -169,19 +169,19 @@ public:
 
   /** Constructor. */
   Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), size_t size = defaultStackSize, bool background = false, size_t guard = defaultStackGuard)
-  : StackContext(sched, background), stackSize(stackAlloc(size, guard)) { initDebug(); }
+  : Fred(sched, background), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
   /** Constructor setting affinity to processor. */
   Fibre(BaseProcessor &sp, size_t size = defaultStackSize, size_t guard = defaultStackGuard)
-  : StackContext(sp, true), stackSize(stackAlloc(size, guard)) { initDebug(); }
+  : Fred(sp, true), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
   /** Constructor to immediately start fibre with `func(arg)`. */
   Fibre(funcvoid1_t func, ptr_t arg, bool background = false)
   : Fibre(Context::CurrProcessor().getScheduler(), defaultStackSize, background) { run(func, arg); }
 
   // constructor for idle loop or main loop (bootstrap) on existing pthread stack
-  Fibre(BaseProcessor &sp, _friend<Cluster>)
-  : StackContext(sp), stackSize(0) { initDebug(); }
+  Fibre(BaseProcessor &p, _friend<Cluster>)
+  : Fred(p), stackSize(0) { initDebug(); }
 
   //  explicit final notification for idle loop or main loop (bootstrap) on pthread stack
   void endDirect(_friend<Cluster>) {
@@ -197,8 +197,8 @@ public:
   /** Exit fibre (with join, if not detached). */
   static void exit() __noreturn;
 
-  // callback from StackContext via Runtime after final context switch
-  void destroy(_friend<StackContext>) {
+  // callback from Fred via Runtime after final context switch
+  void destroy(_friend<Fred>) {
     clearSpecific();
     clearDebug();
     stackFree();
@@ -232,30 +232,30 @@ public:
 
   /** Sleep. */
   static void usleep(uint64_t usecs) {
-    sleepStack(Time::fromUS(usecs));
+    sleepFred(Time::fromUS(usecs));
   }
 
   /** Sleep. */
   static void sleep(uint64_t secs) {
-    sleepStack(Time(secs, 0));
+    sleepFred(Time(secs, 0));
   }
 
   // context switching interface
-  void deactivate(Fibre& next, _friend<StackContext>) {
+  void deactivate(Fibre& next, _friend<Fred>) {
     fp.save();
 #if defined(SPLIT_STACK)
     __splitstack_getcontext(splitStackContext);
     __splitstack_setcontext(next.splitStackContext);
 #endif
   }
-  void activate(_friend<StackContext>) {
+  void activate(_friend<Fred>) {
     fp.restore();
   }
 };
 
 /** @brief Obtain pointer to current Fibre object. */
 inline Fibre* CurrFibre() {
-  return (Fibre*)Context::CurrStack();
+  return (Fibre*)Context::CurrFred();
 }
 
 #endif /* _Fibre_h_ */

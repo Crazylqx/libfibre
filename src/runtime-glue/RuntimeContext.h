@@ -19,10 +19,10 @@
 
 #include "runtime/Basics.h"
 
-class StackContext;
 class BaseProcessor;
 class Cluster;
 class EventScope;
+class Fred;
 #if TESTING_PROCESSOR_POLLER
 class PollerFibre;
 #endif
@@ -35,8 +35,8 @@ namespace Context {
   // http://stackoverflow.com/questions/25673787/making-thread-local-variables-fully-volatile
   // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66631
 
-  // CurrStack() and CurrProcessor() needed for generic runtime code
-  StackContext*  CurrStack()      __no_inline;
+  // CurrFred() and CurrProcessor() needed for generic runtime code
+  Fred*          CurrFred()       __no_inline;
   BaseProcessor& CurrProcessor()  __no_inline;
   // CurrCluster(), CurrEventScope(), CurrPoller() only used in libfibre code
   Cluster&       CurrCluster()    __no_inline;
@@ -45,8 +45,8 @@ namespace Context {
   PollerFibre&   CurrPoller()     __no_inline;
 #endif
 
-  // setCurrStack() to update current stack
-  void setCurrStack(StackContext& s, _friend<StackContext>);
+  // setCurrFred() to update current fred
+  void setCurrFred(Fred& f, _friend<Fred>);
 
   // install context
   void install(BaseProcessor* bp, Cluster* cl, EventScope* es, _friend<Cluster>);

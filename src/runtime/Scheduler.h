@@ -23,54 +23,54 @@
 #if TESTING_LOADBALANCING
 
 class LoadManager {
-  volatile ssize_t stackCounter;
-  WorkerLock procLock;
-  ProcessorList waitingProcs;
-  FlexStackList waitingStacks;
+  volatile ssize_t fredCounter;
+  WorkerLock       procLock;
+  ProcessorList    waitingProcs;
+  FlexFredList     waitingFreds;
 
   LoadManagerStats* stats;
 
-  StackContext* block(BaseProcessor& proc) {
+  Fred* block(BaseProcessor& proc) {
     procLock.acquire();
-    if (waitingStacks.empty()) {
+    if (waitingFreds.empty()) {
       waitingProcs.push_front(proc);
       procLock.release();
       return proc.suspend(_friend<LoadManager>());
     } else {
-      StackContext* nextStack = waitingStacks.pop_front();
+      Fred* nextFred = waitingFreds.pop_front();
       procLock.release();
-      return nextStack;
+      return nextFred;
     }
   }
 
-  void unblock(StackContext& sc) {
+  void unblock(Fred& f) {
     procLock.acquire();
     if (waitingProcs.empty()) {
-      waitingStacks.push_back(sc);
+      waitingFreds.push_back(f);
       procLock.release();
     } else {
       BaseProcessor* nextProc = waitingProcs.pop_front();
       procLock.release();
-      nextProc->resume(_friend<LoadManager>(), &sc);
+      nextProc->resume(_friend<LoadManager>(), &f);
     }
   }
 
 public:
-  LoadManager() : stackCounter(0) { stats = new LoadManagerStats(this); }
+  LoadManager() : fredCounter(0) { stats = new LoadManagerStats(this); }
 
 #if TESTING_OPTIMISTIC_ISRS
-  void reportReadyStack()  { __atomic_sub_fetch(&stackCounter, 1, __ATOMIC_RELAXED); }
-  void correctReadyStack() { __atomic_add_fetch(&stackCounter, 1, __ATOMIC_RELAXED); }
+  void reportReadyFred()  { __atomic_sub_fetch(&fredCounter, 1, __ATOMIC_RELAXED); }
+  void correctReadyFred() { __atomic_add_fetch(&fredCounter, 1, __ATOMIC_RELAXED); }
 #else
-  bool tryGetReadyStack() {
-    ssize_t c = stackCounter;
-    return (c > 0) && __atomic_compare_exchange_n(&stackCounter, &c, c-1, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+  bool tryGetReadyFred() {
+    ssize_t c = fredCounter;
+    return (c > 0) && __atomic_compare_exchange_n(&fredCounter, &c, c-1, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
   }
 #endif
 
-  StackContext* getReadyStack(BaseProcessor& proc) {
+  Fred* getReadyFred(BaseProcessor& proc) {
     stats->tasks.count();
-    ssize_t blockedCount = - __atomic_sub_fetch(&stackCounter, 1, __ATOMIC_RELAXED);
+    ssize_t blockedCount = - __atomic_sub_fetch(&fredCounter, 1, __ATOMIC_RELAXED);
     if (blockedCount > 0) {
       stats->blocks.count(blockedCount);
       return block(proc);
@@ -78,9 +78,9 @@ public:
     return nullptr;
   }
 
-  bool addReadyStack(StackContext& sc) {
-    if (__atomic_add_fetch(&stackCounter, 1, __ATOMIC_RELAXED) > 0) return false;
-    unblock(sc);
+  bool addReadyFred(Fred& f) {
+    if (__atomic_add_fetch(&fredCounter, 1, __ATOMIC_RELAXED) > 0) return false;
+    unblock(f);
     return true;
   }
 };
@@ -127,7 +127,7 @@ public:
     ringCount -= 1;
   }
 
-  BaseProcessor& placement(_friend<StackContext>, bool staging = false) {
+  BaseProcessor& placement(_friend<Fred>, bool staging = false) {
 #if TESTING_PLACEMENT_STAGING || TESTING_SHARED_READYQUEUE
     return stagingProc;
 #else
@@ -143,7 +143,7 @@ public:
   }
 
 #if TESTING_LOADBALANCING
-  StackContext* stage()  {
+  Fred* stage()  {
     return stagingProc.tryDequeue(_friend<Scheduler>());
   }
 #endif

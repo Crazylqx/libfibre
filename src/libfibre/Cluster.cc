@@ -22,7 +22,7 @@
 namespace Context {
 
 struct Data {
-  StackContext*  currStack;
+  Fred*          currFred;
   BaseProcessor* currProc;
   Cluster*       currCluster;
   EventScope*    currScope;
@@ -37,7 +37,7 @@ static thread_local Data data = { nullptr, nullptr, nullptr, nullptr, nullptr };
 static thread_local Data data = { nullptr, nullptr, nullptr, nullptr };
 #endif
 
-StackContext*  CurrStack()      { RASSERT0(data.currStack);   return  data.currStack; }
+Fred*          CurrFred()       { RASSERT0(data.currFred);    return  data.currFred; }
 BaseProcessor& CurrProcessor()  { RASSERT0(data.currProc);    return *data.currProc; }
 Cluster&       CurrCluster()    { RASSERT0(data.currCluster); return *data.currCluster; }
 EventScope&    CurrEventScope() { RASSERT0(data.currScope);   return *data.currScope; }
@@ -45,10 +45,10 @@ EventScope&    CurrEventScope() { RASSERT0(data.currScope);   return *data.currS
 PollerFibre&   CurrPoller()     { RASSERT0(data.currPoller);  return *data.currPoller; }
 #endif
 
-void setCurrStack(StackContext& s, _friend<StackContext>) { data.currStack = &s; }
+void setCurrFred(Fred& f, _friend<Fred>) { data.currFred = &f; }
 
 void install(Fibre* fib, BaseProcessor* bp, Cluster* cl, EventScope* es, _friend<Cluster>) {
-  data.currStack   = fib;
+  data.currFred    = fib;
   data.currProc    = bp;
   data.currCluster = cl;
   data.currScope   = es;
@@ -59,7 +59,7 @@ void install(Fibre* fib, BaseProcessor* bp, Cluster* cl, EventScope* es, _friend
 }
 
 void installFake(EventScope* es, _friend<BaseThreadPoller>) {
-  data.currStack = (StackContext*)0xdeadbeef;
+  data.currFred  = (Fred*)0xdeadbeef;
   data.currScope = es;
 }
 

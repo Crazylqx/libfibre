@@ -52,9 +52,9 @@ class Cluster : public Scheduler {
       c.Scheduler::addProcessor(*this);
     }
     ~Worker();
-    void setIdleLoop(Fibre* f) { BaseProcessor::idleStack = f; }
+    void setIdleLoop(Fibre* f) { BaseProcessor::idleFred = f; }
     void runIdleLoop()         { BaseProcessor::idleLoop(); }
-    static void yieldDirect(StackContext& sc) { BaseProcessor::yieldDirect(sc); }
+    static void yieldDirect(Fred& f) { BaseProcessor::yieldDirect(f); }
   };
 
   static void maintenance(Cluster* cl);

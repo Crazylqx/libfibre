@@ -14,32 +14,32 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
-#ifndef _RuntimeStack_h_
-#define _RuntimeStack_h_ 1
+#ifndef _RuntimeFred_h_
+#define _RuntimeFred_h_ 1
 
 #include "libfibre/Fibre.h"
 
-inline void RuntimeStartStack(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) {
+inline void RuntimeStartFred(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) {
   try {
     func(arg1, arg2, arg3);
   } catch (Fibre::ExitException*) {}
 }
 
-inline void RuntimePreStackSwitch(StackContext& currStack, StackContext& nextStack, _friend<StackContext> fs) {
-  Fibre& currFibre = reinterpret_cast<Fibre&>(currStack);
-  Fibre& nextFibre = reinterpret_cast<Fibre&>(nextStack);
+inline void RuntimePreFredSwitch(Fred& currFred, Fred& nextFred, _friend<Fred> fs) {
+  Fibre& currFibre = reinterpret_cast<Fibre&>(currFred);
+  Fibre& nextFibre = reinterpret_cast<Fibre&>(nextFred);
   currFibre.deactivate(nextFibre, fs);
-  Context::setCurrStack(nextFibre, fs);
+  Context::setCurrFred(nextFibre, fs);
 }
 
-inline void RuntimePostStackSwitch(StackContext& newStack, _friend<StackContext> fs) {
-  Fibre& newFibre = reinterpret_cast<Fibre&>(newStack);
+inline void RuntimePostFredSwitch(Fred& newFred, _friend<Fred> fs) {
+  Fibre& newFibre = reinterpret_cast<Fibre&>(newFred);
   newFibre.activate(fs);
 }
 
-inline void RuntimeStackDestroy(StackContext& prevStack, _friend<StackContext> fs) {
-  Fibre& prevFibre = reinterpret_cast<Fibre&>(prevStack);
+inline void RuntimeFredDestroy(Fred& prevFred, _friend<Fred> fs) {
+  Fibre& prevFibre = reinterpret_cast<Fibre&>(prevFred);
   prevFibre.destroy(fs);
 }
 
-#endif /* _RuntimeStack_h_ */
+#endif /* _RuntimeFred_h_ */

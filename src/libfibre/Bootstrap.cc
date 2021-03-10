@@ -22,14 +22,14 @@
 #include <execinfo.h> // see _lfAbort
 
 // various global objects and pointers
-static WorkerLock      _dummy1;
-WorkerLock*            _lfDebugOutputLock = &_dummy1; // RuntimeDebug.h
+static WorkerLock     _dummy1;
+WorkerLock*           _lfDebugOutputLock = &_dummy1; // RuntimeDebug.h
 
 #if TESTING_ENABLE_DEBUGGING
-static WorkerLock      _dummy2;
-static GlobalStackList _dummy3;
-WorkerLock*            _lfGlobalStackLock = &_dummy2; // Fibre.h
-GlobalStackList*       _lfGlobalStackList = &_dummy3; // Fibre.h
+static WorkerLock     _dummy2;
+static GlobalFredList _dummy3;
+WorkerLock*           _lfGlobalFredLock = &_dummy2; // Fibre.h
+GlobalFredList*       _lfGlobalFredList = &_dummy3; // Fibre.h
 #endif
 
 #if TESTING_ENABLE_STATISTICS

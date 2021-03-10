@@ -31,7 +31,7 @@ inline int BasePoller::doPoll() {
 }
 
 template<bool Enqueue>
-inline StackContext* BasePoller::notifyOne(EventType& ev) {
+inline Fred* BasePoller::notifyOne(EventType& ev) {
 #if __FreeBSD__
   if (ev.filter == EVFILT_READ || ev.filter == EVFILT_TIMER) {
     return eventScope.template unblock<true,Enqueue>(ev.ident, _friend<BasePoller>());

@@ -35,6 +35,7 @@ public:
 };
 
 template<typename T,size_t CNT=1> class DoubleLink {
+  friend class SingleLink<T,CNT>;
   struct {
     union {
       T* next;

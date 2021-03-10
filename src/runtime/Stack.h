@@ -19,14 +19,14 @@
 
 #include "runtime/Basics.h"
 
-class StackContext;
-typedef void PostFunc(StackContext*);
+class Fred;
+typedef void PostFunc(Fred*);
 
 // initialize stack and switch directly to 'func(arg1,arg2,arg3,arg4)'
 extern "C" void stackDirect(vaddr stack, ptr_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) __noreturn;
-// initialize stack for indirect invocation of 'invokeStack(prevStack,func,arg1,arg2,arg3,arg4)'
+// initialize stack for indirect invocation of 'invokeFred(func,arg1,arg2,arg3)'
 extern "C" vaddr stackInit(vaddr stack, ptr_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3);
-// save stack to 'currSP', switch to stack in 'nextSP', then call 'postFunc(currStack, lock)'
-extern "C" void stackSwitch(StackContext* currStack, PostFunc postFunc, vaddr* currSP, vaddr nextSP);
+// save stack to 'currSP', switch to stack in 'nextSP', then call 'postFunc(currFred)'
+extern "C" void stackSwitch(Fred* currFred, PostFunc postFunc, vaddr* currSP, vaddr nextSP);
 
 #endif /* _stack_h_ */

@@ -10,7 +10,7 @@ class FibreSupport():
         FibreSupport.saved = False
 
     def stop_handler(event):
-        if (gdb.lookup_symbol("_lfGlobalStackList")[0] == None):
+        if (gdb.lookup_symbol("_lfGlobalFredList")[0] == None):
             print("WARNING: no fibre debugging support - did you enable TESTING_ENABLE_DEBUGGING?")
             return
         FibreSupport.list = []
@@ -18,17 +18,17 @@ class FibreSupport():
         FibreSupport.threads = {}
         FibreSupport.saved = True
         # traverse runtime stack list to build internal list of fibres
-        _lfGlobalStackList = gdb.parse_and_eval("_lfGlobalStackList")
+        _lfGlobalFredList = gdb.parse_and_eval("_lfGlobalFredList")
         DebugListLink = gdb.parse_and_eval("DebugListLink")
-        first = _lfGlobalStackList['anchorLink'].address
-        next = _lfGlobalStackList['anchorLink']['link'][DebugListLink]['next']
+        first = _lfGlobalFredList['anchorLink'].address
+        next = _lfGlobalFredList['anchorLink']['link'][DebugListLink]['next']
         while (next != first):
             FibreSupport.list.append(next)
             next = next['link'][DebugListLink]['next']
         orig_thread = gdb.selected_thread()
         for thread in gdb.selected_inferior().threads():
             thread.switch()
-            currStack = str(gdb.parse_and_eval("Context::data.currStack"))
+            currFred = str(gdb.parse_and_eval("Context::data.currFred"))
             # Cache the registers for this thread, in case it represents
             # a fibre
             rsp = str(gdb.parse_and_eval("$rsp")).split(None, 1)[0]
@@ -38,9 +38,9 @@ class FibreSupport():
                     'rsp': rsp,
                     'rbp': rbp,
                     'rip': rip,
-                    'currStack': currStack
+                    'currFred': currFred
             }
-            FibreSupport.active[currStack] = {
+            FibreSupport.active[currFred] = {
                     'rsp': rsp,
                     'rbp': rbp,
                     'rip': rip,
@@ -56,14 +56,14 @@ class FibreSupport():
             rsp = FibreSupport.threads[thread.num]['rsp']
             rbp = FibreSupport.threads[thread.num]['rbp']
             rip = FibreSupport.threads[thread.num]['rip']
-            currStack = FibreSupport.threads[thread.num]['currStack']
+            currFred = FibreSupport.threads[thread.num]['currFred']
 
             FibreSupport.prep_frame()
             # restore original register context
             gdb.execute("set $rsp = " + str(rsp))
             gdb.execute("set $rbp = " + str(rbp))
             gdb.execute("set $rip = " + str(rip))
-            gdb.execute("set Context::data.currStack = " + str(currStack))
+            gdb.execute("set Context::data.currFred = " + str(currFred))
         orig_thread.switch()
         FibreSupport.saved = False
 
@@ -78,11 +78,11 @@ class FibreSupport():
 
     def set_fibre(arg, silent=False):
         # if current pthread: use current register context
-        if (arg == gdb.parse_and_eval("Context::data.currStack")):
+        if (arg == gdb.parse_and_eval("Context::data.currFred")):
             return True
         # Check active fibre cache in case this fibre is in it
         # (FibreSupport.active is more up-to-date than
-        # StackContext for retrieving stack pointers)
+        # Fred for retrieving stack pointers)
         argstr = str(arg)
         if (argstr in FibreSupport.active):
             FibreSupport.active[argstr]['thread'].switch()
@@ -107,14 +107,14 @@ class FibreSupport():
         gdb.execute("set $rsp = " + str(rsp))
         gdb.execute("set $rbp = " + str(rbp))
         gdb.execute("set $rip = " + str(rip))
-        # set Context::data.currStack to point to the correct stack
-        gdb.execute("set Context::data.currStack = " + argstr)
+        # set Context::data.currFred to point to the correct fred
+        gdb.execute("set Context::data.currFred = " + argstr)
         return True
 
     def backtrace(arg):
         currframe = FibreSupport.prep_frame()
         # save register context
-        currStack = str(gdb.parse_and_eval("Context::data.currStack"))
+        currFred = str(gdb.parse_and_eval("Context::data.currFred"))
         tmprsp = str(gdb.parse_and_eval("$rsp")).split(None, 1)[0]
         tmprbp = str(gdb.parse_and_eval("$rbp")).split(None, 1)[0]
         tmprip = str(gdb.parse_and_eval("$rip")).split(None, 1)[0]
@@ -127,7 +127,7 @@ class FibreSupport():
         gdb.execute("set $rsp = " + str(tmprsp))
         gdb.execute("set $rbp = " + str(tmprbp))
         gdb.execute("set $rip = " + str(tmprip))
-        gdb.execute("set Context::data.currStack = " + currStack)
+        gdb.execute("set Context::data.currFred = " + currFred)
         # restore stack frame
         currframe.select()
 
@@ -136,7 +136,7 @@ class FibreSupport():
     def get_frame(arg):
         currframe = FibreSupport.prep_frame()
         # save register context
-        currStack = str(gdb.parse_and_eval("Context::data.currStack"))
+        currFred = str(gdb.parse_and_eval("Context::data.currFred"))
         tmprsp = str(gdb.parse_and_eval("$rsp")).split(None, 1)[0]
         tmprbp = str(gdb.parse_and_eval("$rbp")).split(None, 1)[0]
         tmprip = str(gdb.parse_and_eval("$rip")).split(None, 1)[0]
@@ -155,7 +155,7 @@ class FibreSupport():
             gdb.execute("set $rsp = " + str(tmprsp))
             gdb.execute("set $rbp = " + str(tmprbp))
             gdb.execute("set $rip = " + str(tmprip))
-            gdb.execute("set Context::data.currStack = " + currStack)
+            gdb.execute("set Context::data.currFred = " + currFred)
             # restore stack frame
             currframe.select()
         return result
@@ -263,7 +263,7 @@ class InfoFibres(gdb.Command):
     def invoke(self, arg, from_tty):
         if (not FibreSupport.saved):
             return
-        curr = str(gdb.parse_and_eval("Context::data.currStack"))
+        curr = str(gdb.parse_and_eval("Context::data.currFred"))
         try:
             if (arg != None and int(arg) >= 0):
                 self.print_grouped_fibres(curr, int(arg))

@@ -21,7 +21,7 @@
 #include "runtime/Debug.h"
 #include "runtime/SpinLocks.h"
 #include "runtime/Stats.h"
-#include "runtime/StackContext.h"
+#include "runtime/Fred.h"
 #include "runtime-glue/RuntimeContext.h"
 #include "runtime-glue/RuntimeLock.h"
 #include "runtime-glue/RuntimePreemption.h"
@@ -32,15 +32,15 @@
 /****************************** Basics ******************************/
 
 struct Suspender { // funnel suspend calls through this class for access control
-  static void prepareRace(StackContext& stack) {
-    stack.prepareResumeRace(_friend<Suspender>());
+  static void prepareRace(Fred& fred) {
+    fred.prepareResumeRace(_friend<Suspender>());
   }
 
   template<bool DisablePreemption=true>
-  static ptr_t suspend(StackContext& stack) {
+  static ptr_t suspend(Fred& fred) {
     if (DisablePreemption) RuntimeDisablePreemption();
-    ptr_t result = stack.suspend(_friend<Suspender>());
-    DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(&stack), " continuing");
+    ptr_t result = fred.suspend(_friend<Suspender>());
+    DBG::outl(DBG::Level::Blocking, "Fred ", FmtHex(&fred), " continuing");
     RuntimeEnablePreemption();
     return result;
   }
@@ -52,7 +52,7 @@ enum SemaphoreResult : size_t { SemaphoreTimeout = 0, SemaphoreSucess = 1, Semap
 
 class TimerQueue {
   WorkerLock lock;
-  std::multimap<Time,StackContext*> queue;
+  std::multimap<Time,Fred*> queue;
   TimerStats* stats;
 
 public:
@@ -70,10 +70,10 @@ public:
         newTime = iter->first - now; // time to next timeout
       break;
       }
-      StackContext* sc = iter->second;
-      if (sc->raceResume(&queue)) {
+      Fred* f = iter->second;
+      if (f->raceResume(&queue)) {
         iter = queue.erase(iter);
-        sc->resume();
+        f->resume();
       } else {
         iter = std::next(iter);
       }
@@ -84,15 +84,15 @@ public:
     return retcode;
   }
 
-  // Note that StackContext::prepareSuspend must have been called already!
-  ptr_t blockTimeout(StackContext& cs, const Time& relTimeout, const Time& absTimeout) {
+  // Note that Fred::prepareSuspend must have been called already!
+  ptr_t blockTimeout(Fred& cf, const Time& relTimeout, const Time& absTimeout) {
     // set up queue node
     lock.acquire();
-    std::multimap<Time,StackContext*>::iterator iter = queue.insert( {absTimeout, &cs} );
+    std::multimap<Time,Fred*>::iterator iter = queue.insert( {absTimeout, &cf} );
     if (iter == queue.begin()) Runtime::Timer::newTimeout(relTimeout);
     lock.release();
     // suspend
-    ptr_t winner = Suspender::suspend(cs);
+    ptr_t winner = Suspender::suspend(cf);
     if (winner == &queue) return nullptr; // timer expired
     // clean up
     ScopedLock<WorkerLock> sl(lock);
@@ -101,40 +101,40 @@ public:
   }
 };
 
-static inline bool sleepStack(const Time& timeout, TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) {
-  StackContext* cs = Context::CurrStack();
-  DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(cs), " sleep ", timeout);
-  Suspender::prepareRace(*cs);
-  return tq.blockTimeout(*cs, timeout, timeout + Runtime::Timer::now()) == nullptr;
+static inline bool sleepFred(const Time& timeout, TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) {
+  Fred* cf = Context::CurrFred();
+  DBG::outl(DBG::Level::Blocking, "Fred ", FmtHex(cf), " sleep ", timeout);
+  Suspender::prepareRace(*cf);
+  return tq.blockTimeout(*cf, timeout, timeout + Runtime::Timer::now()) == nullptr;
 }
 
 /****************************** Common Locked Synchronization ******************************/
 
 class BlockingQueue {
   struct Node : public DoubleLink<Node> { // need separate node for timeout & cancellation
-    StackContext& stack;
-    Node(StackContext& cs) : stack(cs) {}
+    Fred& fred;
+    Node(Fred& cf) : fred(cf) {}
   };
   IntrusiveList<Node> queue;
 
-  ptr_t blockHelper(StackContext& cs) {
-    return Suspender::suspend(cs);
+  ptr_t blockHelper(Fred& cf) {
+    return Suspender::suspend(cf);
   }
-  ptr_t blockHelper(StackContext& cs, const Time& relTimeout, const Time& absTimeout, TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) {
-    return tq.blockTimeout(cs, relTimeout, absTimeout);
+  ptr_t blockHelper(Fred& cf, const Time& relTimeout, const Time& absTimeout, TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) {
+    return tq.blockTimeout(cf, relTimeout, absTimeout);
   }
 
   template<typename Lock, typename...Args>
   bool blockInternal(Lock& lock, const Args&... args) {
     // set up queue node
-    StackContext* cs = Context::CurrStack();
-    Node node(*cs);
-    DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(cs), " blocking on ", FmtHex(&queue));
-    Suspender::prepareRace(*cs);
+    Fred* cf = Context::CurrFred();
+    Node node(*cf);
+    DBG::outl(DBG::Level::Blocking, "Fred ", FmtHex(cf), " blocking on ", FmtHex(&queue));
+    Suspender::prepareRace(*cf);
     queue.push_back(node);
     lock.release();
     // block, potentially with timeout
-    ptr_t winner = blockHelper(*cs, args...);
+    ptr_t winner = blockHelper(*cf, args...);
     if (winner == &queue) return true; // blocking completed;
     // clean up
     ScopedLock<Lock> sl(lock);
@@ -166,14 +166,14 @@ public:
   }
 
   template<bool Enqueue = true>
-  StackContext* unblock() {                     // Note that caller must hold lock
+  Fred* unblock() {                     // Note that caller must hold lock
     for (Node* node = queue.front(); node != queue.edge(); node = IntrusiveList<Node>::next(*node)) {
-      StackContext* sc = &node->stack;
-      if (sc->raceResume(&queue)) {
+      Fred* f = &node->fred;
+      if (f->raceResume(&queue)) {
         IntrusiveList<Node>::remove(*node);
-        DBG::outl(DBG::Level::Blocking, "Stack ", FmtHex(sc), " resume from ", FmtHex(&queue));
-        if (Enqueue) sc->resume();
-        return sc;
+        DBG::outl(DBG::Level::Blocking, "Fred ", FmtHex(f), " resume from ", FmtHex(&queue));
+        if (Enqueue) f->resume();
+        return f;
       }
     }
     return nullptr;
@@ -221,10 +221,10 @@ public:
   SemaphoreResult unlockP(Args&... args) { lock.acquire(); unlock(args...); return internalP(true); }
 
   template<bool Enqueue = true, bool TryOnly = false>
-  StackContext* V() {
+  Fred* V() {
     ScopedLock<Lock> al(lock);
-    StackContext* sc = bq.template unblock<Enqueue>();
-    if (sc) return sc;
+    Fred* f = bq.template unblock<Enqueue>();
+    if (f) return f;
     if (TryOnly) return nullptr;
     if (Binary) counter = 1;
     else counter += 1;
@@ -232,31 +232,31 @@ public:
   }
 
   template<bool Enqueue = true>
-  StackContext* tryV() { return V<Enqueue,true>(); }
+  Fred* tryV() { return V<Enqueue,true>(); }
 
   template<bool Enqueue = true, bool TryOnly = false>
-  StackContext* release() { return V<Enqueue,TryOnly>(); }
+  Fred* release() { return V<Enqueue,TryOnly>(); }
 };
 
 template<typename Lock, bool Fifo, typename BQ = BlockingQueue>
 class LockedMutex {
   Lock lock;
-  StackContext* owner;
+  Fred* owner;
   BQ bq;
 
 protected:
   template<bool OwnerLock, typename... Args>
   bool internalAcquire(const Args&... args) {
-    StackContext* cs = Context::CurrStack();
-    if (OwnerLock && cs == owner) return true;
-    RASSERT(cs != owner, FmtHex(cs), FmtHex(owner));
+    Fred* cf = Context::CurrFred();
+    if (OwnerLock && cf == owner) return true;
+    RASSERT(cf != owner, FmtHex(cf), FmtHex(owner));
     for (;;) {
       lock.acquire();
       if (!owner) break;
       if (!bq.block(lock, args...)) return false; // timeout
       if (Fifo) return true; // owner set via baton passing
     }
-    owner = cs;
+    owner = cf;
     lock.release();
     return true;
   }
@@ -276,7 +276,7 @@ public:
 
   void release() {
     ScopedLock<Lock> al(lock);
-    RASSERT(owner == Context::CurrStack(), FmtHex(owner));
+    RASSERT(owner == Context::CurrFred(), FmtHex(owner));
     if (Fifo) {
       owner = bq.unblock();
     } else {
@@ -410,8 +410,8 @@ public:
 
 protected:
   union {                             // 'waiter' set <-> 'state == Waiting'
-    StackContext* waiter;
-    State         state;
+    Fred* waiter;
+    State state;
   };
 
 public:
@@ -422,7 +422,7 @@ public:
 
   bool wait(Lock& lock) {             // returns false, if detached
     if (state == Running) {
-      waiter = Context::CurrStack();
+      waiter = Context::CurrFred();
       lock.release();
       Suspender::suspend(*waiter);
       lock.acquire();                 // reacquire lock to check state
@@ -494,7 +494,7 @@ public:
 template<typename Lock = DummyLock>
 class LimitedSemaphore0 {
   Lock lock;
-  FlexStackQueueMPSC queue;
+  FlexFredQueueMPSC queue;
 
 public:
   explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
@@ -503,17 +503,17 @@ public:
 
   SemaphoreResult P(bool wait = true) {
     RASSERT0(wait);
-    StackContext* cs = Context::CurrStack();
+    Fred* cf = Context::CurrFred();
     RuntimeDisablePreemption();
-    queue.push(*cs);
-    Suspender::suspend<false>(*cs);
+    queue.push(*cf);
+    Suspender::suspend<false>(*cf);
     return SemaphoreSucess;
   }
 
   template<bool Enqueue = true, bool DirectSwitch = false>
-  StackContext* V() {
+  Fred* V() {
     ScopedLock<Lock> sl(lock);
-    StackContext* next;
+    Fred* next;
     for (;;) {
       next = queue.pop();
       if (next) break;
@@ -528,7 +528,7 @@ public:
 template<typename Lock = DummyLock>
 class LimitedSemaphore1 {
   Lock lock;
-  FlexStackQueueNemesis queue;
+  FlexFredQueueNemesis queue;
 
 public:
   explicit LimitedSemaphore1(ssize_t c = 1) { RASSERT(c == 1, c); }
@@ -537,20 +537,20 @@ public:
 
   SemaphoreResult P(bool wait = true) {
     RASSERT0(wait);
-    StackContext* cs = Context::CurrStack();
+    Fred* cf = Context::CurrFred();
     RuntimeDisablePreemption();
-    if (!queue.push(*cs)) {
+    if (!queue.push(*cf)) {
       RuntimeEnablePreemption();
       return SemaphoreWasOpen;
     }
-    Suspender::suspend<false>(*cs);
+    Suspender::suspend<false>(*cf);
     return SemaphoreSucess;
   }
 
   template<bool Enqueue = true, bool DirectSwitch = false>
-  StackContext* V() {
+  Fred* V() {
     ScopedLock<Lock> sl(lock);
-    StackContext* next = nullptr;
+    Fred* next = nullptr;
     queue.pop(next);
     if (!next) return nullptr;
     if (Enqueue) next->resume<DirectSwitch>();
@@ -582,7 +582,7 @@ template<typename Lock = BinaryLock<>>
 class FastBarrier {
   size_t target;
   volatile size_t counter;
-  FlexStackQueueMPSC queue;
+  FlexFredQueueMPSC queue;
   Lock lock;
 
 public:
@@ -596,46 +596,46 @@ public:
     // group of other threads, but itself not continue.  However, one thread
     // of each group must be receive a "special" return code.  With POSIX
     // threads, this is PTHREAD_BARRIER_SERIAL_THREAD - here it's 'true'.
-    StackContext* cs = Context::CurrStack();
-    Suspender::prepareRace(*cs);
+    Fred* cf = Context::CurrFred();
+    Suspender::prepareRace(*cf);
     RuntimeDisablePreemption();
-    queue.push(*cs);
+    queue.push(*cf);
     bool park = __atomic_add_fetch(&counter, 1, __ATOMIC_RELAXED) % target;
     if (!park) {
       __atomic_sub_fetch(&counter, target, __ATOMIC_RELAXED);
       park = true;
       ScopedLock<Lock> sl(lock);
       for (size_t i = 0; i < target; i += 1) {
-        StackContext* next;
+        Fred* next;
         for (;;) {
           next = queue.pop();
           if (next) break;
           Pause();
         }
-        if (next == cs) {
+        if (next == cf) {
           park = false; // don't suspend self
         } else {
           // if caller ends up suspending, set special return code for last waiter in loop
-          if ((i == target - 1) && park) next->raceResume(cs);
+          if ((i == target - 1) && park) next->raceResume(cf);
           next->resume();
         }
       }
     }
-    if (park) return Suspender::suspend<false>(*cs);
+    if (park) return Suspender::suspend<false>(*cf);
     else RuntimeEnablePreemption();
-    return cs;
+    return cf;
   }
 };
 
 /****************************** Compound Types ******************************/
 
 template<typename Semaphore, bool Binary = false>
-class StackContextBenaphore {
+class FredBenaphore {
   Benaphore<Binary> ben;
   Semaphore sem;
 
 public:
-  explicit StackContextBenaphore(ssize_t c) : ben(c), sem(0) {}
+  explicit FredBenaphore(ssize_t c) : ben(c), sem(0) {}
   void cleanup() { sem.cleanup();  }
 
   SemaphoreResult P()          { return ben.P() ? SemaphoreWasOpen : sem.P(); }
@@ -643,7 +643,7 @@ public:
   SemaphoreResult P(bool wait) { return wait ? P() : tryP(); }
 
   template<bool Enqueue = true>
-  StackContext* V() {
+  Fred* V() {
     if (ben.V()) return nullptr;
     return sem.template V<Enqueue>();
   }
@@ -651,7 +651,7 @@ public:
 
 template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount>
 class SpinMutex {
-  StackContext* owner;
+  Fred* owner;
   Semaphore sem;
 
   template<typename... Args>
@@ -660,22 +660,22 @@ class SpinMutex {
   template<typename... Args>
   bool tryOnly(bool wait) { return !wait; }
 
-  bool tryLock(StackContext* cs) {
-    StackContext* exp = nullptr;
-    return __atomic_compare_exchange_n(&owner, &exp, cs, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+  bool tryLock(Fred* cf) {
+    Fred* exp = nullptr;
+    return __atomic_compare_exchange_n(&owner, &exp, cf, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
   }
 
 protected:
   template<bool OwnerLock, typename... Args>
   bool internalAcquire(const Args&... args) {
-    StackContext* cs = Context::CurrStack();
-    if (OwnerLock && cs == owner) return true;
-    RASSERT(cs != owner, FmtHex(cs), FmtHex(owner));
-    if (tryOnly(args...)) return tryLock(cs);
+    Fred* cf = Context::CurrFred();
+    if (OwnerLock && cf == owner) return true;
+    RASSERT(cf != owner, FmtHex(cf), FmtHex(owner));
+    if (tryOnly(args...)) return tryLock(cf);
     int cnt = 0;
     int spin = SpinStart;
     for (;;) {
-      if (tryLock(cs)) return true;
+      if (tryLock(cf)) return true;
       if (cnt < SpinCount) {
         for (int i = 0; i < spin; i += 1) Pause();
         if (spin < SpinEnd) spin += spin;
@@ -701,9 +701,9 @@ public:
   bool tryAcquire() { return acquire(false); }
 
   void release() {
-    RASSERT(owner == Context::CurrStack(), FmtHex(owner));
+    RASSERT(owner == Context::CurrFred(), FmtHex(owner));
     owner = nullptr;
-    StackContext* next = sem.template V<false>(); // memory sync via sem.V()
+    Fred* next = sem.template V<false>(); // memory sync via sem.V()
     if (next) next->resume();
   }
 };
@@ -746,9 +746,9 @@ class Mutex : public SpinMutex<LockedSemaphore<Lock, true>, 0, 0, 0> {};
 #endif
 
 #if TESTING_MUTEX_SPIN
-typedef SpinMutex<StackContextBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 4, 1024, 16> FastMutex;
+typedef SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 4, 1024, 16> FastMutex;
 #else
-typedef SpinMutex<StackContextBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 0, 0, 0> FastMutex;
+typedef SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 0, 0, 0> FastMutex;
 #endif
 
 #endif /* _BlockingSync_h_ */

@@ -255,7 +255,7 @@ inline void *fibre_getspecific(fibre_key_t key) {
 
 /** @brief Park fibre (indefinite sleep). */
 inline int fibre_park() {
-  Suspender::suspend(*Context::CurrStack());
+  Suspender::suspend(*CurrFibre());
   return 0;
 }
 
