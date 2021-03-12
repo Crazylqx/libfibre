@@ -18,40 +18,39 @@
 #define _Scheduler_h_ 1
 
 #include "runtime/BaseProcessor.h"
-#include "runtime-glue/RuntimeLock.h"
 
 #if TESTING_LOADBALANCING
 
 class LoadManager {
   volatile ssize_t fredCounter;
   WorkerLock       procLock;
-  ProcessorList    waitingProcs;
-  FlexFredList     waitingFreds;
+  ProcessorStack   waitingProcs;
+  FlexFredQueue    waitingFreds;
 
   LoadManagerStats* stats;
 
   Fred* block(BaseProcessor& proc) {
     procLock.acquire();
     if (waitingFreds.empty()) {
-      waitingProcs.push_front(proc);
+      waitingProcs.push(proc);
       procLock.release();
       return proc.suspend(_friend<LoadManager>());
     } else {
-      Fred* nextFred = waitingFreds.pop_front();
+      Fred* nextFred = waitingFreds.pop();
       procLock.release();
       return nextFred;
     }
   }
 
-  void unblock(Fred& f) {
+  void unblock(Fred& fred) {
     procLock.acquire();
     if (waitingProcs.empty()) {
-      waitingFreds.push_back(f);
+      waitingFreds.push(fred);
       procLock.release();
     } else {
-      BaseProcessor* nextProc = waitingProcs.pop_front();
+      BaseProcessor* nextProc = waitingProcs.pop();
       procLock.release();
-      nextProc->resume(_friend<LoadManager>(), &f);
+      nextProc->resume(&fred, _friend<LoadManager>());
     }
   }
 
@@ -70,12 +69,10 @@ public:
 
   Fred* getReadyFred(BaseProcessor& proc) {
     stats->tasks.count();
-    ssize_t blockedCount = - __atomic_sub_fetch(&fredCounter, 1, __ATOMIC_RELAXED);
-    if (blockedCount > 0) {
-      stats->blocks.count(blockedCount);
-      return block(proc);
-    }
-    return nullptr;
+    ssize_t fredCount = __atomic_fetch_sub(&fredCounter, 1, __ATOMIC_RELAXED);
+    if (fredCount > 0) return nullptr;
+    stats->blocks.count(1-fredCount); // number of procs waiting including this one
+    return block(proc);
   }
 
   bool addReadyFred(Fred& f) {

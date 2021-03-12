@@ -78,8 +78,8 @@ public:
 };
 
 class BaseProcessor;
-typedef IntrusiveList<BaseProcessor,0,2> ProcessorList;
-typedef IntrusiveRing<BaseProcessor,1,2> ProcessorRing;
+typedef IntrusiveStack<BaseProcessor,0,2> ProcessorStack;
+typedef IntrusiveRing <BaseProcessor,1,2> ProcessorRing;
 
 class BaseProcessor : public DoubleLink<BaseProcessor,2> {
   inline Fred* tryLocal();
@@ -87,22 +87,17 @@ class BaseProcessor : public DoubleLink<BaseProcessor,2> {
   inline Fred* tryStage();
   inline Fred* trySteal();
   inline Fred* scheduleInternal();
+  bool addReadyFred(Fred& f);
 #else
   Benaphore<OsSemaphore> readyCount;
 #endif
   ReadyQueue readyQueue;
-
-  void idleLoopTerminate();
 
   void enqueueDirect(Fred& f) {
     DBG::outl(DBG::Level::Scheduling, "Fred ", FmtHex(&f), " queueing on ", FmtHex(this));
     stats->enq.count();
     readyQueue.enqueue(f);
   }
-
-#if TESTING_LOADBALANCING
-  bool addReadyFred(Fred& f);
-#endif
 
 protected:
   Scheduler& scheduler;
@@ -163,7 +158,7 @@ public:
     return handoverFred;
   }
 
-  void resume(_friend<LoadManager>, Fred* f = nullptr) {
+  void resume(Fred* f, _friend<LoadManager>) {
     stats->wake.count();
     handoverFred = f;
     haltNotify.V();

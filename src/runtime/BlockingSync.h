@@ -406,7 +406,7 @@ template<typename Lock>
 class SynchronizedFlag {
 
 public:
-  enum State { Running = 0, Dummy = 1, Posted = 2, Detached = 4 };
+  enum State : uintptr_t { Running = 0, Dummy = 1, Posted = 2, Detached = 4 };
 
 protected:
   union {                             // 'waiter' set <-> 'state == Waiting'
@@ -423,8 +423,9 @@ public:
   bool wait(Lock& lock) {             // returns false, if detached
     if (state == Running) {
       waiter = Context::CurrFred();
-      lock.release();
-      Suspender::suspend(*waiter);
+      Fred* temp = waiter;            // use a copy, since waiter might be...
+      lock.release();                 // ... overwritten after releasing lock
+      Suspender::suspend(*temp);
       lock.acquire();                 // reacquire lock to check state
     }
     if (state == Posted) return true;
@@ -433,7 +434,7 @@ public:
   }
 
   bool post() {                       // returns false, if already detached
-    RASSERT0(state != Posted);       // check for spurious posts
+    RASSERT0(state != Posted);        // check for spurious posts
     if (state == Detached) return false;
     if (state != Running) waiter->resume();
     state = Posted;

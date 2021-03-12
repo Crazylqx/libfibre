@@ -65,6 +65,10 @@ inline Fred* BaseProcessor::scheduleInternal() {
   if ((nextFred = trySteal())) return nextFred;
   return nullptr;
 }
+
+bool BaseProcessor::addReadyFred(Fred& f) {
+  return scheduler.addReadyFred(f);
+}
 #endif
 
 void BaseProcessor::idleLoop() {
@@ -101,12 +105,6 @@ void BaseProcessor::idleLoop() {
 #endif
   }
 }
-
-#if TESTING_LOADBALANCING
-bool BaseProcessor::addReadyFred(Fred& f) {
-  return scheduler.addReadyFred(f);
-}
-#endif
 
 Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
 #if TESTING_IDLE_SPIN
