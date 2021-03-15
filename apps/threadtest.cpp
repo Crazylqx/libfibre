@@ -69,7 +69,7 @@ typedef cpuset_t cpu_set_t;
 static unsigned int duration = 10;
 static unsigned int fibreCount = 4;
 static unsigned int lockCount = 1;
-#if defined WITH_TIMEOUTS
+#if defined HASTIMEDLOCK
 static unsigned int timeout = 1000;
 #endif
 static unsigned int threadCount = 2;
@@ -126,14 +126,14 @@ static void alarmHandler(int) {
 static void usage(const char* prog) {
   fprintf(stdout, "usage:\n");
   fprintf(stdout, " %s -d <duration (secs)> -f <total fibres> -l <locks> -t <system threads> -u <unlocked work> -w <locked work> -L <lock type (B,S,T,Y)> -a -c -s -y -Y", prog);
-#if defined WITH_TIMEOUTS
+#if defined HASTIMEDLOCK
   fprintf(stdout, " -o <timeout in nsec>\n");
 #else
   fprintf(stdout, "\n");
 #endif
   fprintf(stdout, "defaults:\n");
 	fprintf(stdout, " -d 10 -f 4 -l 1 -t 2 -u 10000 -w 10000 -L B");
-#if defined WITH_TIMEOUTS
+#if defined HASTIMEDLOCK
   fprintf(stdout, " -o 1000\n");
 #else
   fprintf(stdout, "\n");
@@ -157,7 +157,7 @@ static bool opts(int argc, char** argv) {
     case 'd': duration = atoi(optarg); break;
     case 'f': fibreCount = atoi(optarg); break;
     case 'l': lockCount = atoi(optarg); break;
-#if defined WITH_TIMEOUTS
+#if defined HASTIMEDLOCK
     case 'o': timeout = atoi(optarg); break;
 #endif
     case 'r': randomizedFlag = true; break;
@@ -194,7 +194,7 @@ static bool opts(int argc, char** argv) {
     case 'Y':
     case 'S':
 #endif
-#if defined WITH_TIMEOUTS
+#if defined HASTIMEDLOCK
     case 'T':
 #endif
     case 'B': break;
@@ -363,26 +363,27 @@ static void worker(void* arg) {
     switch (lockType) {
       // regular blocking lock
       case 'B': shim_mutex_lock(&locks[lck].mtx); break;
-#if defined WITH_TIMEOUTS
-      case 'T':
-        if (!shim_mutex_timedlock(&locks[lck].mtx, randomizedFlag ? pseudoRandom() % timeout : timeout)) {
-          workers[num].failed += 1;
-          goto lock_failed;
-        } else break;
-#endif
 #if defined HASTRYLOCK
       // plain spin lock
       case 'S': while (!shim_mutex_trylock(&locks[lck].mtx)) Pause(); break;
       // yield-based busy-locking (as in qthreads, boost)
       case 'Y': while (!shim_mutex_trylock(&locks[lck].mtx)) shim_yield(); break;
 #endif
+#if defined HASTIMEDLOCK
+      case 'T':
+        if (!shim_mutex_timedlock(&locks[lck].mtx, randomizedFlag ? pseudoRandom() % timeout : timeout)) {
+          workers[num].failed += 1;
+          goto lock_failed;
+        } else break;
+#endif
       default: fprintf(stderr, "internal error: lock type\n"); abort();
     }
+    locks[lck].counter += 1;
     dowork(buffer, work_locked);
-    workers[num].counter += 1;
+    workers[num].counter += 2;
     locks[lck].counter += 1;
     shim_mutex_unlock(&locks[lck].mtx);
-#if defined WITH_TIMEOUTS
+#if defined HASTIMEDLOCK
 lock_failed:
 #endif
     if (yieldFlag) shim_yield();
@@ -425,7 +426,7 @@ int main(int argc, char* argv[]) {
   if (!yieldExperiment) {
     printf(" locked work: %u", work_locked);
     printf(" unlocked work: %u", work_unlocked);
-#if defined WITH_TIMEOUTS
+#if defined HASTIMEDLOCK
     if (lockType == 'T') printf(" timeout: %u", timeout);
 #endif
     if (randomizedFlag) printf(" randomized");
@@ -590,17 +591,6 @@ int main(int argc, char* argv[]) {
     fsum += workers[i].failed;
     fsum2 += pow(workers[i].failed, 2);
   }
-  unsigned long long wavg = wsum/fibreCount;
-  unsigned long long wstd = (unsigned long long)sqrt(wsum2 / fibreCount - pow(wavg, 2));
-  printf("loops/fibre - total: %llu rate: %llu average: %llu stddev: %llu\n", wsum, wsum/duration, wavg, wstd);
-#if defined WITH_TIMEOUTS
-  unsigned long long favg = fsum/fibreCount;
-  unsigned long long fstd = (unsigned long long)sqrt(fsum2 / fibreCount - pow(favg, 2));
-  if (lockType == 'T') {
-    printf("fails/fibre - total: %llu rate: %llu average: %llu stddev: %llu\n", fsum, fsum/duration, favg, fstd);
-  }
-#endif
-
   // collect and print lock results
   unsigned long long lsum = 0;
   double lsum2 = 0;
@@ -608,11 +598,34 @@ int main(int argc, char* argv[]) {
     lsum += locks[i].counter;
     lsum2 += pow(locks[i].counter, 2);
   }
+
+  // check correctness
+  int exitcode = 0;
+  if (!yieldExperiment && wsum != lsum) {
+    printf("CHECKSUM ERROR: total work %llu != %llu total lock\n", wsum, lsum);
+    exitcode = 1;
+  }
+
+  // correct for double-counting during loop - make output comparable to earlier versions
+  wsum /= 2; wsum2 /= 4;
+  lsum /= 2; lsum2 /= 4;
+
+  // print all results
+  unsigned long long wavg = wsum/fibreCount;
+  unsigned long long wstd = (unsigned long long)sqrt(wsum2 / fibreCount - pow(wavg, 2));
+  printf("loops/fibre - total: %llu rate: %llu average: %llu stddev: %llu\n", wsum, wsum/duration, wavg, wstd);
   unsigned long long lavg = lsum/lockCount;
   unsigned long long lstd = (unsigned long long)sqrt(lsum2 / lockCount - pow(lavg, 2));
   if (!yieldExperiment) {
-    printf( "loops/lock  - total: %llu rate: %llu average: %llu stddev: %llu\n", lsum, lsum/duration, lavg, lstd );
+    printf("loops/lock  - total: %llu rate: %llu average: %llu stddev: %llu\n", lsum, lsum/duration, lavg, lstd );
   }
+#if defined HASTIMEDLOCK
+  unsigned long long favg = fsum/fibreCount;
+  unsigned long long fstd = (unsigned long long)sqrt(fsum2 / fibreCount - pow(favg, 2));
+  if (lockType == 'T') {
+    printf("fails/fibre - total: %llu rate: %llu average: %llu stddev: %llu\n", fsum, fsum/duration, favg, fstd);
+  }
+#endif
 
   // print timing information
   if (yieldExperiment) {
@@ -620,13 +633,8 @@ int main(int argc, char* argv[]) {
     printf("time per yield: %lld\n", diff_to_ns(endTime, startTime) / (wsum / threadCount));
   }
 
-  if (!yieldExperiment && wsum != lsum) {
-    printf("CHECKSUM ERROR: total work %llu != %llu total lock\n", wsum, lsum);
-    exit(1);
-  }
-
   // exit hard for performance experiments
-  exit(0);
+  exit(exitcode);
 
   // clean up
   free(workers);

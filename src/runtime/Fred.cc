@@ -80,18 +80,6 @@ void Fred::postTerminate(Fred* prevFred) {
   RuntimeFredDestroy(*prevFred, _friend<Fred>());
 }
 
-void Fred::suspendInternal() {
-  switchFred<Suspend>(Context::CurrProcessor().scheduleFull(_friend<Fred>()));
-}
-
-void Fred::resumeInternal() {
-  processor->enqueueResume(*this, _friend<Fred>());
-}
-
-void Fred::resumeDirect() {
-  yieldResume(*this);
-}
-
 // a new fred starts in stubInit() and then jumps to this routine
 extern "C" void invokeFred(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) {
   CHECK_PREEMPTION(0);
@@ -99,6 +87,18 @@ extern "C" void invokeFred(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3)
   RuntimeStartFred(func, arg1, arg2, arg3);
   RuntimeDisablePreemption();
   Fred::terminate();
+}
+
+void Fred::resumeDirect() {
+  Context::CurrFred()->yieldResume(*this);
+}
+
+void Fred::resumeInternal() {
+  processor->enqueueResume(*this, _friend<Fred>());
+}
+
+void Fred::suspendInternal() {
+  switchFred<Suspend>(Context::CurrProcessor().scheduleFull(_friend<Fred>()));
 }
 
 inline void Fred::yieldTo(Fred& nextFred) {

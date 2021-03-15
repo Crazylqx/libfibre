@@ -3,9 +3,6 @@
 
 #include "libfibre/fibre.h"
 
-#define WITH_TIMEOUTS 1
-#define HASTRYLOCK 1
-
 #define CurrCluster   Context::CurrCluster
 
 typedef Fibre          shim_thread_t;
@@ -16,6 +13,8 @@ typedef FibreBarrier   shim_barrier_t;
 typedef OwnerMutex<FibreMutex> shim_mutex_t;
 #else
 typedef FibreMutex     shim_mutex_t;
+#define HASTRYLOCK 1
+#define HASTIMEDLOCK 1
 #endif
 
 static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg, bool bg = false) {
@@ -25,7 +24,6 @@ static inline void shim_thread_destroy(shim_thread_t* tid) { delete tid; }
 static inline void shim_yield() { Fibre::yield(); }
 
 #if TESTING_LOCK_RECURSION
-#undef HASTRYLOCK
 static inline void shim_mutex_init(shim_mutex_t* mtx)    {
   new (mtx) shim_mutex_t;
   mtx->enableRecursion();

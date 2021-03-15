@@ -652,7 +652,7 @@ public:
 
 template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount>
 class SpinMutex {
-  Fred* owner;
+  Fred* volatile owner;
   Semaphore sem;
 
   template<typename... Args>
@@ -703,8 +703,8 @@ public:
 
   void release() {
     RASSERT(owner == Context::CurrFred(), FmtHex(owner));
-    owner = nullptr;
     Fred* next = sem.template V<false>(); // memory sync via sem.V()
+    owner = nullptr;                      // open 'owner' only after memory sync!
     if (next) next->resume();
   }
 };

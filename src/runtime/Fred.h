@@ -91,9 +91,11 @@ class Fred : public DoubleLink<Fred,FredLinkCount> {
   static void postSuspend  (Fred* prevFred);
   static void postTerminate(Fred* prevFred);
 
-  void suspendInternal();
-  void resumeInternal();
   void resumeDirect();
+  void resumeInternal();
+
+  // these routines must be called with 'this' being the current fred
+  void suspendInternal();
   inline void yieldTo(Fred& nextFred);
   inline void yieldResume(Fred& nextFred);
   inline void yieldForce();
