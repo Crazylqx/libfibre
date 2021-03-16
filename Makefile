@@ -15,11 +15,9 @@ ifeq ($(strip $(MAKEFLAGS)),)
 MAKEFLAGS=-j $(NPROC)
 endif
 
-.PHONY: lib apps extra vclean doc cleandoc Makefile.local
+.PHONY: all lib apps doc cleandoc clean vclean extra Makefile.local
 
-.DEFAULT:
-	+nice -10 $(MAKE) -C src $@
-	+nice -10 $(MAKE) -C apps $@
+all: lib apps
 
 lib:
 	+nice -10 $(MAKE) -C src all
@@ -27,15 +25,19 @@ lib:
 apps:
 	+nice -10 $(MAKE) -C apps all
 
-extra: all
-	+nice -10 $(MAKE) -C apps $@
-
-vclean: cleandoc clean
-
 doc:
 	+nice -10 $(MAKE) -C doc doc
 
 cleandoc:
 	+nice -10 $(MAKE) -C doc clean
+
+clean:
+	+nice -10 $(MAKE) -C src clean
+	+nice -10 $(MAKE) -C apps clean
+
+vclean: cleandoc clean
+
+extra: all
+	+nice -10 $(MAKE) -C apps extra
 
 -include Makefile.local # development/testing targets, not for release

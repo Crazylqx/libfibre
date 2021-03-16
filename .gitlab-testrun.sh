@@ -72,8 +72,9 @@ function prep_0() {
 }
 
 function run_0() {
-	./apps/threadtest || exit 1
-	./apps/threadtest -o 10000 -r -L T || exit 1
+	c=$(expr $count \* 2)
+	./apps/threadtest -t $c -f $(expr $c \* $c) || exit 1
+	./apps/threadtest -t $c -f $(expr $c \* $c) -o 10000 -r -L T || exit 1
 	run_memcached 0
 }
 

@@ -98,7 +98,7 @@ void BaseProcessor::idleLoop() {
     yieldDirect(*nextFred);
 #endif
 #else /* TESTING_LOADBALANCING */
-    readyCount.P();
+    if (!readyCount.P()) readySem.P();
     Fred* nextFred = tryLocal();
     RASSERT0(nextFred);
     yieldDirect(*nextFred);

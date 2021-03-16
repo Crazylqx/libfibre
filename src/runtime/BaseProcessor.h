@@ -89,7 +89,8 @@ class BaseProcessor : public DoubleLink<BaseProcessor,2> {
   inline Fred* scheduleInternal();
   bool addReadyFred(Fred& f);
 #else
-  Benaphore<OsSemaphore> readyCount;
+  Benaphore<> readyCount;
+  OsSemaphore readySem;
 #endif
   ReadyQueue readyQueue;
 
@@ -136,7 +137,7 @@ public:
     if (!addReadyFred(f)) enqueueDirect(f);
 #else
     enqueueDirect(f);
-    readyCount.V();
+    if (!readyCount.V()) readySem.V();
 #endif
   }
 

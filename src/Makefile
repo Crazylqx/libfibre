@@ -40,9 +40,9 @@ $(COBJECTS): %.o: %.c
 $(AOBJECTS): %.o: %.S
 	$(CC) $(CFLAGS) -MMD -c $< -o $@
 
-$(OBJECTS): errnoname/errnoname.h
+$(OBJECTS) errnoname/errnoname.c: errnoname/errnoname.h
 
-errnoname/errnoname.h errnoname/errnoname.c &:
+errnoname/errnoname.h:
 	git submodule update --init errnoname
 
 clean:

@@ -43,9 +43,11 @@ static inline void shim_mutex_init(shim_mutex_t* mtx)    { new (mtx) shim_mutex_
 static inline void shim_mutex_lock(shim_mutex_t* mtx)    { mtx->acquire(); }
 static inline bool shim_mutex_trylock(shim_mutex_t* mtx) { return mtx->tryAcquire(); }
 static inline void shim_mutex_unlock(shim_mutex_t* mtx)  { mtx->release(); }
+#if HASTIMEDLOCK
 static inline bool shim_mutex_timedlock(shim_mutex_t* mtx, unsigned int timeout) {
   return mtx->acquire(Runtime::Timer::now() + Time::fromNS(timeout));
 }
+#endif
 #endif
 
 static inline void shim_mutex_destroy(shim_mutex_t* mtx) {}

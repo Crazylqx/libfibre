@@ -121,7 +121,7 @@ Fibre* Cluster::registerWorker(_friend<EventScope>) {
 pthread_t Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
   Worker* worker = new Worker(*this);
   Fibre* initFibre = new Fibre(*worker);
-  if (initFunc) {
+  if (initFunc) {   // run init routine in dedicated fibre, so it can block
     initFibre->setup((ptr_t)initFunc, initArg);
   } else {
     initFibre->setup((ptr_t)initDummy, nullptr);
@@ -131,12 +131,12 @@ pthread_t Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
   pthread_attr_t attr;
   SYSCALL(pthread_attr_init(&attr));
   SYSCALL(pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED));
-#if __linux__ // FreeBSD jemalloc segfaults when trying to use minimum stack
+#if __linux__       // FreeBSD jemalloc segfaults when trying to use minimum stack
   SYSCALL(pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN));
 #endif
   SYSCALL(pthread_create(&tid, &attr, (funcptr1_t)threadHelper, &args));
   SYSCALL(pthread_attr_destroy(&attr));
-  delete initFibre;
+  delete initFibre; // also synchronization that 'args' not needed anymore
   return tid;
 }
 
