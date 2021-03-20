@@ -513,13 +513,14 @@ public:
 
   template<bool Enqueue = true, bool DirectSwitch = false>
   Fred* V() {
-    ScopedLock<Lock> sl(lock);
     Fred* next;
+    lock.acquire();
     for (;;) {
       next = queue.pop();
       if (next) break;
       Pause();
     }
+    lock.release();
     if (Enqueue) next->resume<DirectSwitch>();
     return next;
   }
@@ -550,11 +551,11 @@ public:
 
   template<bool Enqueue = true, bool DirectSwitch = false>
   Fred* V() {
-    ScopedLock<Lock> sl(lock);
     Fred* next = nullptr;
+    lock.acquire();
     queue.pop(next);
-    if (!next) return nullptr;
-    if (Enqueue) next->resume<DirectSwitch>();
+    lock.release();
+    if (next && Enqueue) next->resume<DirectSwitch>();
     return next;
   }
 };
@@ -703,8 +704,8 @@ public:
 
   void release() {
     RASSERT(owner == Context::CurrFred(), FmtHex(owner));
-    Fred* next = sem.template V<false>(); // memory sync via sem.V()
-    owner = nullptr;                      // open 'owner' only after memory sync!
+    __atomic_store_n(&owner, nullptr, __ATOMIC_SEQ_CST);
+    Fred* next = sem.template V<false>();
     if (next) next->resume();
   }
 };

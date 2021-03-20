@@ -49,20 +49,11 @@ typedef cpuset_t cpu_set_t;
 #endif
 
 #ifdef VARIANT
-
-#ifndef SYSCALL
-#include "syscall_macro.h"
-#define SYSCALL(call)   SYSCALL_CMP(call,==,0,0)
-#define SYSCALLIO(call) SYSCALL_CMP(call,>=,0,0)
-#endif /* SYSCALL */
-
-#include VARIANT
 #include "runtime/Platform.h"
-
+#include "syscall_macro.h"
+#include VARIANT
 #else
-
 #include "include/libfibre.h"
-
 #endif /* VARIANT */
 
 // configuration default settings
@@ -417,6 +408,16 @@ int main(int argc, char* argv[]) {
   printf("threads: %u workers: %u", threadCount, fibreCount);
   if (!yieldExperiment) {
     printf(" locks: %u", lockCount);
+    switch (lockType) {
+      case 'B': printf(" blocking"); break;
+      case 'S': printf(" spin"); break;
+      case 'Y': printf(" yield"); break;
+#if HASTIMEDLOCK
+      case 'T': printf(" timeout: %u", timeout);
+                if (randomizedFlag) printf(" randomized");
+                break;
+#endif
+    }
     if (affinityFlag) printf(" affinity");
     if (serialFlag) printf(" serial");
     if (yieldFlag) printf(" yield");
@@ -426,10 +427,6 @@ int main(int argc, char* argv[]) {
   if (!yieldExperiment) {
     printf(" locked work: %u", work_locked);
     printf(" unlocked work: %u", work_unlocked);
-#if HASTIMEDLOCK
-    if (lockType == 'T') printf(" timeout: %u", timeout);
-#endif
-    if (randomizedFlag) printf(" randomized");
   }
   printf("\n");
 

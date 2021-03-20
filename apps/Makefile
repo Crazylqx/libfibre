@@ -79,7 +79,7 @@ gwebserver: webserver.go
 #	go get -u github.com/valyala/fasthttp
 #	go get -u github.com/valyala/fasthttp/reuseport
 #	go build -gcflags='-l=4' -o $@ $<
-	go build -o $@ $<
+	GO111MODULE=auto go build -o $@ $<
 
 pwebserver: webserver.cpp include/pthreads.h
 	$(CXX) -Iinclude -DVARIANT=\"pthreads.h\" $(CXXFLAGS) -DPTHREADS $< -o $@ -lrt

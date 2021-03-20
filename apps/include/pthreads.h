@@ -7,6 +7,7 @@ extern "C" { // needed for __cforall
 }
 
 #define HASTRYLOCK 1
+#define HASTIMEDLOCK 1
 
 typedef pthread_t         shim_thread_t;
 typedef pthread_mutex_t   shim_mutex_t;
@@ -40,6 +41,17 @@ static inline void shim_mutex_destroy(shim_mutex_t* mtx) { SYSCALL(pthread_mutex
 static inline void shim_mutex_lock(shim_mutex_t* mtx)    { SYSCALL(pthread_mutex_lock(mtx)); }
 static inline bool shim_mutex_trylock(shim_mutex_t* mtx) { return pthread_mutex_trylock(mtx) == 0; }
 static inline void shim_mutex_unlock(shim_mutex_t* mtx)  { SYSCALL(pthread_mutex_unlock(mtx)); }
+static inline bool shim_mutex_timedlock(shim_mutex_t* mtx, unsigned int timeout) {
+  struct timespec ts;
+  if (timeout < 1000000000) {
+    ts.tv_sec = 0;
+    ts.tv_nsec = timeout;
+  } else {
+    ts.tv_sec = timeout / 1000000000;
+    ts.tv_nsec = timeout % 1000000000;
+  }
+  return TRY_SYSCALL(pthread_mutex_timedlock(mtx, &ts), ETIMEDOUT) == 0;
+}
 
 static inline void shim_cond_init(shim_cond_t* cond)                    { SYSCALL(pthread_cond_init(cond, nullptr)); }
 static inline void shim_cond_destroy(shim_cond_t* cond)                 { SYSCALL(pthread_cond_destroy(cond)); }

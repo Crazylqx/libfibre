@@ -44,7 +44,7 @@ static inline void _SYSCALLabortUnlock() {}
 #ifndef SYSCALL_CMP
 #define SYSCALL_CMP(call,cmp,expected,errcode) ({\
   int ret ## __COUNTER__ = call;\
-  if slowpath(!(ret ## __COUNTER__ cmp expected || ret ## __COUNTER__ == errcode || _SysErrno() == errcode)) {\
+  if slowpath(!(ret ## __COUNTER__ cmp expected || ret ## __COUNTER__ == errcode || (errcode != 0 && _SysErrno() == errcode))) {\
     _SYSCALLabortLock();\
     printf("FAILED SYSCALL at %s:%d\n%s\nEXPECTED %s %lli RETURN: %d errno: %d %s\n", __FILE__, __LINE__, #call, #cmp, (long long)expected, ret ## __COUNTER__, _SysErrno(), errnoname(_SysErrno()));\
     _SYSCALLabortUnlock();\

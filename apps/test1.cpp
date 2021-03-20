@@ -7,7 +7,8 @@ using namespace std;
 
 static volatile size_t counter = 0;
 
-static FibreMutex testmtx;
+static FibreMutex testmtx1;
+static FibreMutex testmtx2;
 
 static fibre_once_t once_test = PTHREAD_ONCE_INIT;
 static fibre_key_t key_test;
@@ -29,9 +30,10 @@ static void f1main() {
   cout << "F1 2" << endl;
   cout << "F1 3" << endl;
   for (size_t i = 0; i < 100000; i += 1) {
-    testmtx.acquire();
+    ScopedLock<FibreMutex> sl(testmtx2);
+    testmtx1.acquire();
     counter += 1;
-    testmtx.release();
+    testmtx1.release();
   }
   cout << "F1 specific " << (char)(uintptr_t)fibre_getspecific(key_test) << endl;
 }
@@ -44,9 +46,10 @@ static void f2main() {
   cout << "F2 2" << endl;
   cout << "F2 3" << endl;
   for (size_t i = 0; i < 100000; i += 1) {
-    testmtx.acquire();
+    ScopedLock<FibreMutex> sl(testmtx2);
+    testmtx1.acquire();
     counter += 1;
-    testmtx.release();
+    testmtx1.release();
   }
   cout << "F2 specific " << (char)(uintptr_t)fibre_getspecific(key_test) << endl;
 }
@@ -70,10 +73,10 @@ static void f3main() {
 
 int main(int argc, char** argv) {
   FibreInit();
-  pid_t p = SYSCALL(FibreFork());
+  pid_t p = SYSCALLIO(FibreFork());
   cout << "Hello world " << getpid() << endl;
   if (p) {
-    SYSCALL(waitpid(p, nullptr, 0));
+    SYSCALLIO(waitpid(p, nullptr, 0));
     cout << "Child " << p << " finished" << endl;
   }
   Time ct;

@@ -17,12 +17,12 @@ endif
 
 .PHONY: all lib apps doc cleandoc clean vclean extra Makefile.local
 
-all: lib apps
+all: apps
 
 lib:
 	+nice -10 $(MAKE) -C src all
 
-apps:
+apps: lib
 	+nice -10 $(MAKE) -C apps all
 
 doc:

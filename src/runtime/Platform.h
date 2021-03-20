@@ -147,14 +147,8 @@ static inline constexpr int alignment( T x ) {
 
 #if defined(__x86_64__)
 
-#if defined(__clang__) || defined(__cforall) // avoid include file problems
-static inline void Pause(void) { asm volatile("pause"); }
-#else
-#include <xmmintrin.h> // _mm_pause
-static inline void Pause(void) { _mm_pause(); }
-#endif
-
-static inline void MemoryFence(void) { asm volatile("mfence" ::: "memory"); }
+static inline void Pause()       { asm volatile("pause"); }
+static inline void MemoryFence() { asm volatile("mfence" ::: "memory"); }
 
 typedef uint64_t mword;
 typedef  int64_t sword;
