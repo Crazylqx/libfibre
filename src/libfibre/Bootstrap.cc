@@ -34,6 +34,14 @@ GlobalFredList*       _lfGlobalFredList = &_dummy3; // Fibre.h
 
 #if TESTING_ENABLE_STATISTICS
 IntrusiveQueue<StatsObject>* StatsObject::lst = nullptr ; // Stats.h
+static std::ios ioFormatFlags(nullptr);
+
+static void _lfStatsPrint() {
+  std::cout.copyfmt(ioFormatFlags);
+  char* env = getenv("FibrePrintStats");
+  if (env) StatsObject::printAll(std::cout, env[0] == 't' || env[0] == 'T');
+  delete StatsObject::lst;
+}
 #endif
 
 // ******************** BOOTSTRAP *************************
@@ -49,53 +57,26 @@ static const char* DebugOptions[] = {
 
 static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug options mismatch");
 
-// bootstrap definitions
-static std::atomic<int> _bootstrapCounter(0);
-#if TESTING_ENABLE_STATISTICS
-static std::ios ioFormatFlags(NULL);
-#endif
-
-_Bootstrapper::_Bootstrapper() {
-  if (++_bootstrapCounter == 1) {
-#if TESTING_ENABLE_STATISTICS
-    StatsObject::lst = new IntrusiveQueue<StatsObject>;
-#endif
-    // bootstrap system via event scope
-    char* env = getenv("FibreDebugString");
-    if (env) DBG::init(DebugOptions, env, false);
-  }
-}
-
-_Bootstrapper::~_Bootstrapper() {
-  if (--_bootstrapCounter == 0) {
-#if TESTING_ENABLE_STATISTICS
-    if (StatsObject::lst) {
-      std::cout.copyfmt(ioFormatFlags);
-      if (getenv("FibrePrintStats")) StatsObject::printAll(std::cout, getenv("FibrePrintTotals"));
-      delete StatsObject::lst;
-    }
-#endif
-  }
-}
-
-static struct _Bootstrapper2 {
-  _Bootstrapper2() {
-#if TESTING_ENABLE_STATISTICS
-    // _Bootstrapper::_Bootstrapper() would be too early - before libstdc++ initializations
-    ioFormatFlags.copyfmt(std::cout);
-#endif
-  }
-} _lfBootstrap2;
-
-// definition here ensures that boot strapper object has been created
 EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
+  char* env = getenv("FibreDebugString");
+  if (env) DBG::init(DebugOptions, env, false);
+#if TESTING_ENABLE_STATISTICS
+  StatsObject::lst = new IntrusiveQueue<StatsObject>;
+  ioFormatFlags.copyfmt(std::cout);
+  SYSCALL(atexit(_lfStatsPrint));
+#endif
   return EventScope::bootstrap(pollerCount, workerCount);
 }
 
 pid_t FibreFork() {
   Context::CurrEventScope().preFork();
   pid_t ret = fork();
-  if (ret == 0) Context::CurrEventScope().postFork(); // child: clean up runtime system
+  if (ret == 0) {
+#if TESTING_ENABLE_STATISTICS
+    new (StatsObject::lst) IntrusiveQueue<StatsObject>;
+#endif
+    Context::CurrEventScope().postFork(); // child: clean up runtime system
+  }
   return ret;
 }
 
