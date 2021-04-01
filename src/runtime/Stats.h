@@ -27,14 +27,17 @@ typedef long long Number;
 #if TESTING_ENABLE_STATISTICS
 
 class StatsObject : public SingleLink<StatsObject> {
-  void* obj;
+  cptr_t object;
+  cptr_t parent;
   const char* name;
+  const size_t sort;
+  static void printRecursive(const StatsObject* o, ostream& os, size_t depth);
 public:
   static IntrusiveQueue<StatsObject>* lst;
-  StatsObject(void* o, const char* n = "Object") : obj(o), name(n) { lst->push(*this); }
+  StatsObject(cptr_t o, cptr_t p, const char* n, const size_t s) : object(o), parent(p), name(n), sort(s) { lst->push(*this); }
   virtual ~StatsObject() {}
-  virtual bool print(ostream& os);
-  static void printAll(ostream& os);
+  virtual void print(ostream& os) const;
+  static void printAll(ostream& os, bool totals);
 };
 
 class Counter {
@@ -115,7 +118,7 @@ inline ostream& operator<<(ostream& os, const HashTable<N>& x) {
 
 class StatsObject {
 public:
-  StatsObject(void*, const char*) {}
+  StatsObject(cptr_t, cptr_t, const char*, const size_t) {}
 };
 
 class Counter {
@@ -138,71 +141,15 @@ public:
 
 #endif /* TESTING_ENABLE_STATISTICS */
 
-struct ProcessorStats : public StatsObject {
-  Counter enq;
-  Average bulk;
-  Counter deq;
-  Counter correction;
-  Counter handover;
-  Counter stage;
-  Counter borrow;
-  Counter steal;
-  Counter idle;
-  Counter wake;
-  ProcessorStats(void* o, const char* n = "Processor") : StatsObject(o, n) {}
-  bool print(ostream& os);
-  void aggregate(const ProcessorStats& x) {
-    enq.aggregate(x.enq);
-    deq.aggregate(x.deq);
-    correction.aggregate(x.correction);
-    handover.aggregate(x.handover);
-    stage.aggregate(x.stage);
-    borrow.aggregate(x.borrow);
-    steal.aggregate(x.steal);
-    idle.aggregate(x.idle);
-    wake.aggregate(x.wake);
-  }
-};
-
-struct LoadManagerStats : public StatsObject {
-  Counter tasks;
-  HashTable<64> blocks;
-  LoadManagerStats(void* o, const char* n = "LoadManager") : StatsObject(o, n) {}
-  bool print(ostream& os);
-  void aggregate(const LoadManagerStats& x) {
-    tasks.aggregate(x.tasks);
-  }
-};
-
-struct ClusterStats : public StatsObject {
-  Counter procs;
-  Counter sleeps;
-  ClusterStats(void* o, const char* n = "Cluster") : StatsObject(o, n) {}
-  bool print(ostream& os);
-  void aggregate(const ClusterStats& x) {
-    procs.aggregate(x.procs);
-    sleeps.aggregate(x.sleeps);
-  }
-};
-
-struct TimerStats : public StatsObject {
-  Average events;
-  TimerStats(void* o, const char* n = "Timer") : StatsObject(o, n) {}
-  bool print(ostream& os);
-  void aggregate(const TimerStats& x) {
-    events.aggregate(x.events);
-  }
-};
-
-struct IOStats : public StatsObject {
+struct EventScopeStats : public StatsObject {
   Counter srvconn;
   Counter cliconn;
   Counter resets;
   Counter calls;
   Counter fails;
-  IOStats(void* o, const char* n = "IO") : StatsObject(o, n) {}
-  bool print(ostream& os);
-  void aggregate(const IOStats& x) {
+  EventScopeStats(cptr_t o, cptr_t p, const char* n = "EventScope   ") : StatsObject(o, p, n, 0) {}
+  void print(ostream& os) const;
+  void aggregate(const EventScopeStats& x) {
     srvconn.aggregate(x.srvconn);
     cliconn.aggregate(x.cliconn);
     resets.aggregate(x.resets);
@@ -216,8 +163,8 @@ struct PollerStats : public StatsObject {
   Counter blocks;
   Counter empty;
   Average events;
-  PollerStats(void* o, const char* n = "Poller") : StatsObject(o, n) {}
-  bool print(ostream& os);
+  PollerStats(cptr_t o, cptr_t p, const char* n = "Poller") : StatsObject(o, p, n, 0) {}
+  void print(ostream& os) const;
   void aggregate(const PollerStats& x) {
     regs.aggregate(x.regs);
     blocks.aggregate(x.blocks);
@@ -225,5 +172,73 @@ struct PollerStats : public StatsObject {
     events.aggregate(x.events);
   }
 };
+
+struct TimerStats : public StatsObject {
+  Average events;
+  TimerStats(cptr_t o, cptr_t p, const char* n = "Timer       ") : StatsObject(o, p, n, 1) {}
+  void print(ostream& os) const;
+  void aggregate(const TimerStats& x) {
+    events.aggregate(x.events);
+  }
+};
+
+struct ClusterStats : public StatsObject {
+  Counter procs;
+  Counter sleeps;
+  ClusterStats(cptr_t o, cptr_t p, const char* n = "Cluster     ") : StatsObject(o, p, n, 2) {}
+  void print(ostream& os) const;
+  void aggregate(const ClusterStats& x) {
+    procs.aggregate(x.procs);
+    sleeps.aggregate(x.sleeps);
+  }
+};
+
+struct LoadManagerStats : public StatsObject {
+  Counter tasks;
+  HashTable<64> blocks;
+  LoadManagerStats(cptr_t o, cptr_t p, const char* n = "LoadManager") : StatsObject(o, p, n, 1) {}
+  void print(ostream& os) const;
+  void aggregate(const LoadManagerStats& x) {
+    tasks.aggregate(x.tasks);
+  }
+};
+
+struct ProcessorStats : public StatsObject {
+  Counter enq;
+  Average bulk;
+  Counter deq;
+  Counter correction;
+  Counter handover;
+  Counter stage;
+  Counter borrow;
+  Counter steal;
+  Counter idle;
+  Counter wake;
+  ProcessorStats(cptr_t o, cptr_t p, const char* n = "Processor  ") : StatsObject(o, p, n, 2) {}
+  void print(ostream& os) const;
+  void aggregate(const ProcessorStats& x) {
+    enq.aggregate(x.enq);
+    deq.aggregate(x.deq);
+    correction.aggregate(x.correction);
+    handover.aggregate(x.handover);
+    stage.aggregate(x.stage);
+    borrow.aggregate(x.borrow);
+    steal.aggregate(x.steal);
+    idle.aggregate(x.idle);
+    wake.aggregate(x.wake);
+  }
+};
+
+/*
+  sort order for output:
+  0 EventScope
+  0 Poller
+  1 Timer
+  2 Cluster
+  0  Poller
+  1  LoadManager
+  2  Processor
+  0   Poller
+*/
 
 #endif /* _Stats_h_ */

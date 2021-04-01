@@ -55,7 +55,7 @@ class LoadManager {
   }
 
 public:
-  LoadManager() : fredCounter(0) { stats = new LoadManagerStats(this); }
+  LoadManager(cptr_t parent) : fredCounter(0) { stats = new LoadManagerStats(this, parent); }
 
 #if TESTING_OPTIMISTIC_ISRS
   void reportReadyFred()  { __atomic_sub_fetch(&fredCounter, 1, __ATOMIC_RELAXED); }
@@ -84,11 +84,13 @@ public:
 
 #else
 
-class LoadManager {};
+struct LoadManager {
+  LoadManager(cptr_t parent) {}
+};
 
 #endif
 
-class Scheduler : public LoadManager {
+class Scheduler {
 protected:
   WorkerLock     ringLock;
   size_t         ringCount;
@@ -96,7 +98,8 @@ protected:
   BaseProcessor  stagingProc;
 
 public:
-  Scheduler() : ringCount(0), placeProc(nullptr), stagingProc(*this, "Staging") {}
+  LoadManager loadManager;
+  Scheduler() : ringCount(0), placeProc(nullptr), stagingProc(*this, "Staging    "), loadManager(this) {}
   ~Scheduler() {
     ScopedLock<WorkerLock> sl(ringLock);
     RASSERT(!ringCount, ringCount);

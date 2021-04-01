@@ -56,8 +56,8 @@ class TimerQueue {
   TimerStats* stats;
 
 public:
-  TimerQueue() { stats = new TimerStats(this); }
-  void reinit() { new (stats) TimerStats(this); }
+  TimerQueue(cptr_t parent) { stats = new TimerStats(this, parent); }
+  void reinit(cptr_t parent) { new (stats) TimerStats(this, parent); }
   bool empty() const { return queue.empty(); }
 
   bool checkExpiry(const Time& now, Time& newTime) {

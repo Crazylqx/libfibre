@@ -67,14 +67,14 @@ inline Fred* BaseProcessor::scheduleInternal() {
 }
 
 bool BaseProcessor::addReadyFred(Fred& f) {
-  return scheduler.addReadyFred(f);
+  return scheduler.loadManager.addReadyFred(f);
 }
 #endif
 
 void BaseProcessor::idleLoop() {
   for (;;) {
 #if TESTING_LOADBALANCING
-    Fred* nextFred = scheduler.getReadyFred(*this);
+    Fred* nextFred = scheduler.loadManager.getReadyFred(*this);
     if (nextFred) {
       stats->handover.count();
       yieldDirect(*nextFred);
@@ -88,7 +88,7 @@ void BaseProcessor::idleLoop() {
     }
     // might have gotten a token, but not a stack -> correct
     stats->correction.count();
-    scheduler.correctReadyFred();
+    scheduler.loadManager.correctReadyFred();
 #else /* TESTING_OPTIMISTIC_ISRS */
     for (;;) {
       nextFred = scheduleInternal();
@@ -117,11 +117,11 @@ Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
 #if TESTING_OPTIMISTIC_ISRS
     Fred* nextFred = scheduleInternal();
     if (nextFred) {
-      scheduler.reportReadyFred();
+      scheduler.loadManager.reportReadyFred();
       return *nextFred;
     }
 #else /* TESTING_OPTIMISTIC_ISRS */
-    if (scheduler.tryGetReadyFred()) {
+    if (scheduler.loadManager.tryGetReadyFred()) {
       for (;;) {
         Fred* nextFred = scheduleInternal();
         if (nextFred) return *nextFred;

@@ -72,8 +72,8 @@ protected:
   inline void notifyAll(int evcnt);
 
 public:
-  BasePoller(EventScope& es, const char* n = "BasePoller") : eventScope(es), pollTerminate(false) {
-    stats = new PollerStats(this, n);
+  BasePoller(EventScope& es, cptr_t parent, const char* n = "BasePoller") : eventScope(es), pollTerminate(false) {
+    stats = new PollerStats(this, parent, n);
 #if __FreeBSD__
     pollFD = SYSCALLIO(kqueue());
 #else // __linux__ below
@@ -135,7 +135,7 @@ class BaseThreadPoller : public BasePoller {
   pthread_t pollThread;
 
 protected:
-  BaseThreadPoller(EventScope& es, const char* n) : BasePoller(es, n) {}
+  BaseThreadPoller(EventScope& es, cptr_t parent, const char* n) : BasePoller(es, parent, n) {}
   void start(void *(*loopSetup)(void*)) {
     SYSCALL(pthread_create(&pollThread, nullptr, loopSetup, this));
   }
@@ -173,7 +173,7 @@ class PollerFibre : public BasePoller {
   inline void pollLoop();
   static void pollLoopSetup(PollerFibre*);
 public:
-  PollerFibre(EventScope&, BaseProcessor&, bool bg = true);
+  PollerFibre(EventScope&, BaseProcessor&, cptr_t parent, bool bg = true);
   ~PollerFibre();
   void start();
 };
@@ -181,7 +181,7 @@ public:
 class PollerThread : public BaseThreadPoller {
   static void* pollLoopSetup(void*);
 public:
-  PollerThread(EventScope& es, BaseProcessor&) : BaseThreadPoller(es, "PollerThread") {}
+  PollerThread(EventScope& es, BaseProcessor&, cptr_t parent) : BaseThreadPoller(es, parent, "PollerThread") {}
   void prePoll(_friend<BaseThreadPoller>) {}
   void start() { BaseThreadPoller::start(pollLoopSetup); }
 };
@@ -197,7 +197,7 @@ public:
   static const int extraTimerFD = 0;
 #endif
 
-  MasterPoller(EventScope& es, unsigned long fdCount, _friend<EventScope>) : BaseThreadPoller(es, "MasterPoller") {
+  MasterPoller(EventScope& es, unsigned long fdCount, _friend<EventScope>) : BaseThreadPoller(es, &es, "MasterPoller") {
     BaseThreadPoller::start(pollLoopSetup);
 #if __FreeBSD__
     timerFD = fdCount - 1;

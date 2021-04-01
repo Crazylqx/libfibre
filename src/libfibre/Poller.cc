@@ -112,8 +112,8 @@ void PollerFibre::pollLoopSetup(PollerFibre* This) {
   This->pollLoop();
 }
 
-PollerFibre::PollerFibre(EventScope& es, BaseProcessor& proc, bool bg)
-: BasePoller(es, "PollerFibre") {
+PollerFibre::PollerFibre(EventScope& es, BaseProcessor& proc, cptr_t parent, bool bg)
+: BasePoller(es, parent, "PollerFibre") {
   pollFibre = new Fibre(proc);
   if (bg) pollFibre->setPriority(LowPriority);
 }

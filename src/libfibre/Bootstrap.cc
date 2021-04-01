@@ -71,7 +71,7 @@ _Bootstrapper::~_Bootstrapper() {
 #if TESTING_ENABLE_STATISTICS
     if (StatsObject::lst) {
       std::cout.copyfmt(ioFormatFlags);
-      StatsObject::printAll(std::cout);
+      if (getenv("FibrePrintStats")) StatsObject::printAll(std::cout, getenv("FibrePrintTotals"));
       delete StatsObject::lst;
     }
 #endif

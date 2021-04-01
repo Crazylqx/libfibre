@@ -17,80 +17,115 @@
 #include "runtime/Basics.h"
 #include "runtime/Stats.h"
 
+#include <cstring>
+#include <map>
+
 #if TESTING_ENABLE_STATISTICS
 
-static ProcessorStats*   totalProcessorStats   = nullptr;
-static LoadManagerStats* totalLoadManagerStats = nullptr;
-static ClusterStats*     totalClusterStats     = nullptr;
+static EventScopeStats*  totalEventScopeStats  = nullptr;
 static TimerStats*       totalTimerStats       = nullptr;
-static IOStats*          totalIOStats          = nullptr;
 static PollerStats*      totalPollerStats      = nullptr;
+static ClusterStats*     totalClusterStats     = nullptr;
+static LoadManagerStats* totalLoadManagerStats = nullptr;
+static ProcessorStats*   totalProcessorStats   = nullptr;
 
-bool StatsObject::print(ostream& os) {
-  os << name << ' ' << FmtHex(obj);
-  return true;
+struct PrintStatsNode {
+  cptr_t object;
+  size_t sort;
+  const char* name;
+  bool operator<(const PrintStatsNode& x) const {
+    if (object != x.object) return object < x.object;
+    if (sort != x.sort) return sort < x.sort;
+    return name[0] < x.name[0];
+  }
+};
+
+static std::multimap<PrintStatsNode,const StatsObject*> statsMap;
+
+void StatsObject::printRecursive(const StatsObject* o, ostream& os, size_t depth) {
+  cptr_t next = nullptr;
+  if (o) {
+    next = o->object;
+    for (size_t i = 0; i < depth; i += 1) os << ' ';
+    o->print(os);
+    os << std::endl;
+    delete o;
+    depth += 1;
+  }
+  for (;;) {
+    auto iter = statsMap.lower_bound( {next, 0, ""} );
+    if (iter == statsMap.end() || iter->first.object != next) break;
+    o = iter->second;
+    statsMap.erase(iter);
+    printRecursive(o, os, depth);
+  }
 }
 
-void StatsObject::printAll(ostream& os) {
-  totalProcessorStats   = new ProcessorStats  (0, "Processor (total)");
-  totalLoadManagerStats = new LoadManagerStats(0, "LoadManager (total)");
-  totalClusterStats     = new ClusterStats    (0, "Cluster (total)");
-  totalTimerStats       = new TimerStats      (0, "Timer (total)");
-  totalIOStats          = new IOStats         (0, "IO (total)");
-  totalPollerStats      = new PollerStats     (0, "Poller (total)");
+void StatsObject::print(ostream& os) const {
+  os << name << ' ' << FmtHex(object);
+}
+
+void StatsObject::printAll(ostream& os, bool totals) {
   while (!lst->empty()) {
-    StatsObject* o = lst->pop();
-    if (o->print(os)) os << std::endl;
+    const StatsObject* o = lst->pop();
+    statsMap.insert( {{o->parent, o->sort, o->name}, o} );
+  }
+
+  totalEventScopeStats  = new EventScopeStats (nullptr, nullptr, "EventScope ");
+  totalPollerStats      = new PollerStats     (nullptr, nullptr, "Poller     ");
+  totalTimerStats       = new TimerStats      (nullptr, nullptr, "Timer      ");
+  totalClusterStats     = new ClusterStats    (nullptr, nullptr, "Cluster    ");
+  totalLoadManagerStats = new LoadManagerStats(nullptr, nullptr, "LoadManager");
+  totalProcessorStats   = new ProcessorStats  (nullptr, nullptr, "Processor  ");
+
+  printRecursive(nullptr, os, 0);
+
+  if (!totals) return;
+
+  os << "TOTALS:" << std::endl;
+
+  while (!lst->empty()) {
+    const StatsObject* o = lst->pop();
+    o->print(os);
+    os << std::endl;
     delete o;
   }
 }
 
-bool ProcessorStats::print(ostream& os) {
-  if (totalProcessorStats && this != totalProcessorStats) totalProcessorStats->aggregate(*this);
-  if (enq + bulk + deq + correction + handover + stage + steal + borrow == 0) return false;
-  StatsObject::print(os);
-  os << " E:" << enq << " U:" << bulk << " D:" << deq << " C:" << correction << " H:" << handover << " S:" << stage << " B:" << borrow << " T:" << steal << " I:" << idle << " W:" << wake;
-  return true;
-}
-
-bool LoadManagerStats::print(ostream& os) {
-  if (totalLoadManagerStats && this != totalLoadManagerStats) totalLoadManagerStats->aggregate(*this);
-  if (tasks == 0) return false;
-  StatsObject::print(os);
-  os << tasks << blocks;
-  return true;
-}
-
-bool ClusterStats::print(ostream& os) {
-  if (totalClusterStats && this != totalClusterStats) totalClusterStats->aggregate(*this);
-  if (sleeps == 0) return false;
-  StatsObject::print(os);
-  os << procs << sleeps;
-  return true;
-}
-
-bool TimerStats::print(ostream& os) {
-  if (totalTimerStats && this != totalTimerStats) totalTimerStats->aggregate(*this);
-  if (events == 0) return false;
-  StatsObject::print(os);
-  os << events;
-  return true;
-}
-
-bool IOStats::print(ostream& os) {
-  if (totalIOStats && this != totalIOStats) totalIOStats->aggregate(*this);
-  if (srvconn + cliconn + resets == 0) return false;
+void EventScopeStats::print(ostream& os) const {
+  if (totalEventScopeStats && this != totalEventScopeStats) totalEventScopeStats->aggregate(*this);
   StatsObject::print(os);
   os << " srvconn:" << srvconn << " cliconn:" << cliconn << " resets:" << resets << " calls:" << calls << " fails:" << fails;
-  return true;
 }
 
-bool PollerStats::print(ostream& os) {
+void PollerStats::print(ostream& os) const {
   if (totalPollerStats && this != totalPollerStats) totalPollerStats->aggregate(*this);
-  if (empty + events == 0) return false;
   StatsObject::print(os);
-  os << regs << blocks << empty << events;
-  return true;
+  os << " regs:" << regs << " blocks:" << blocks << " empty:" << empty << " events:" << events;
+}
+
+void TimerStats::print(ostream& os) const {
+  if (totalTimerStats && this != totalTimerStats) totalTimerStats->aggregate(*this);
+  StatsObject::print(os);
+  os << " events:" << events;
+}
+
+void ClusterStats::print(ostream& os) const {
+  if (totalClusterStats && this != totalClusterStats) totalClusterStats->aggregate(*this);
+  StatsObject::print(os);
+  os << " procs:" << procs << " sleeps:" << sleeps;
+}
+
+void LoadManagerStats::print(ostream& os) const {
+  if (totalLoadManagerStats && this != totalLoadManagerStats) totalLoadManagerStats->aggregate(*this);
+  StatsObject::print(os);
+  os << " tasks:" << tasks << " blocks:" << blocks;
+}
+
+void ProcessorStats::print(ostream& os) const {
+  if (totalProcessorStats && this != totalProcessorStats) totalProcessorStats->aggregate(*this);
+  StatsObject::print(os);
+  os << " E:" << enq << " U:" << bulk << " D:" << deq << " C:" << correction << " H:" << handover << " S:" << stage << " B:" << borrow << " T:" << steal << " I:" << idle << " W:" << wake;
 }
 
 #endif /* TESTING_ENABLE_STATISTICS */

@@ -53,7 +53,7 @@ void install(Fibre* fib, BaseProcessor* bp, Cluster* cl, EventScope* es, _friend
   data.currCluster = cl;
   data.currScope   = es;
 #if TESTING_PROCESSOR_POLLER
-  data.currPoller = new PollerFibre(*es, *bp, false);
+  data.currPoller = new PollerFibre(*es, *bp, bp, false);
   data.currPoller->start();
 #endif
 }

@@ -60,9 +60,9 @@ class Cluster : public Scheduler {
   static void maintenance(Cluster* cl);
 
   Cluster(EventScope& es, size_t pcnt) : scope(es), pollCount(pcnt), pauseProc(nullptr) {
-    stats = new ClusterStats(this);
+    stats = new ClusterStats(this, &es);
     pollVec = (PollerType*)new char[sizeof(PollerType[pollCount])];
-    for (size_t p = 0; p < pollCount; p += 1) new (&pollVec[p]) PollerType(scope, stagingProc);
+    for (size_t p = 0; p < pollCount; p += 1) new (&pollVec[p]) PollerType(scope, stagingProc, this);
   }
 
   void start() { for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start(); }
@@ -98,16 +98,16 @@ public:
     RASSERT(ringCount == 1, ringCount);
   }
 
-  void postFork1(_friend<EventScope>) {
-    new (stats) ClusterStats(this);
+  void postFork1(cptr_t parent, _friend<EventScope>) {
+    new (stats) ClusterStats(this, parent);
     for (size_t p = 0; p < pollCount; p += 1) {
       pollVec[p].~PollerType();
-      new (&pollVec[p]) PollerType(scope, stagingProc);
+      new (&pollVec[p]) PollerType(scope, stagingProc, this);
     }
 #if TESTING_PROCESSOR_POLLER
     PollerFibre* procPoller = &Context::CurrPoller();
     procPoller->~PollerFibre();
-    new (procPoller) PollerFibre(Context::CurrEventScope(), Context::CurrProcessor(), false);
+    new (procPoller) PollerFibre(Context::CurrEventScope(), Context::CurrProcessor(), this, false);
 #endif
   }
 

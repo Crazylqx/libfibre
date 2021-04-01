@@ -99,9 +99,9 @@ class EventScope {
     This->initIO();
   }
 
-  EventScope(size_t pollerCount) : diskCluster(nullptr) {
+  EventScope(size_t pollerCount) : timerQueue(this), diskCluster(nullptr) {
     RASSERT0(pollerCount > 0);
-    stats = new IOStats(this);
+    stats = new EventScopeStats(this, nullptr);
     mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>());   // create main cluster
   }
 
@@ -117,7 +117,7 @@ class EventScope {
   }
 
 public:
-  IOStats* stats;
+  EventScopeStats* stats;
 
   /** Create an event scope during bootstrap. */
   static EventScope* bootstrap(size_t pollerCount = 1, size_t workerCount = 1) {
@@ -150,11 +150,11 @@ public:
   }
 
   void postFork() {
-    new (stats) IOStats(this);
-    timerQueue.reinit();
+    new (stats) EventScopeStats(this, nullptr);
+    timerQueue.reinit(this);
     delete masterPoller;
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
-    mainCluster->postFork1(_friend<EventScope>());
+    mainCluster->postFork1(this, _friend<EventScope>());
     for (int f = 0; f < fdCount; f += 1) {
       RASSERT(fdSyncVector[f].rdSem.getValue() >= 0, f);
       RASSERT(fdSyncVector[f].wrSem.getValue() >= 0, f);

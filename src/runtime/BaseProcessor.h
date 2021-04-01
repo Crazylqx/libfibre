@@ -116,8 +116,8 @@ protected:
   }
 
 public:
-  BaseProcessor(Scheduler& c, const char* n = "Processor") : scheduler(c), idleFred(nullptr), haltNotify(0), handoverFred(nullptr) {
-    stats = new ProcessorStats(this, n);
+  BaseProcessor(Scheduler& c, const char* n = "Processor  ") : scheduler(c), idleFred(nullptr), haltNotify(0), handoverFred(nullptr) {
+    stats = new ProcessorStats(this, &c, n);
   }
 
   Scheduler& getScheduler() { return scheduler; }

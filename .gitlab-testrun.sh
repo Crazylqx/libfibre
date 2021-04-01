@@ -54,7 +54,7 @@ function post() {
 
 function run_memcached() {
 	for ((i=0;i<5;i+=1)); do
-		$TASKSET_SERVER memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24 &
+		FibrePrintStats=1 $TASKSET_SERVER memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24 &
 		sleep 3
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --loadonly
 		echo LOADED
@@ -73,8 +73,8 @@ function prep_0() {
 
 function run_0() {
 	c=$(expr $count \* 2)
-	./apps/threadtest -t $c -f $(expr $c \* $c) || exit 1
-	./apps/threadtest -t $c -f $(expr $c \* $c) -o 10000 -r -L T || exit 1
+	FibrePrintStats=1 ./apps/threadtest -t $c -f $(expr $c \* $c) || exit 1
+	FibrePrintStats=1 ./apps/threadtest -t $c -f $(expr $c \* $c) -o 10000 -r -L T || exit 1
 	run_memcached 0
 }
 
@@ -86,7 +86,7 @@ function prep_1() {
 function run_1() {
 	[ "$(uname -s)" = "FreeBSD" ] && return
 	echo -n "STACKTEST: "
-	apps/stacktest > stacktest.out && echo SUCCESS || echo FAILURE
+	FibrePrintStats=1 apps/stacktest > stacktest.out && echo SUCCESS || echo FAILURE
 }
 
 function prep_2() {
