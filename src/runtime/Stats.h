@@ -104,6 +104,9 @@ public:
   void count(size_t n) {
     bucket[n % N].count();
   }
+  void aggregate(const HashTable<N>& x) {
+    for (size_t n = 0; n < N; n += 1) bucket[n].aggregate(x.bucket[n]);
+  }
 };
 
 template<size_t N>
@@ -195,11 +198,14 @@ struct ClusterStats : public StatsObject {
 
 struct LoadManagerStats : public StatsObject {
   Counter tasks;
-  HashTable<64> blocks;
+  HashTable<64> ready;
+  HashTable<64> blocked;
   LoadManagerStats(cptr_t o, cptr_t p, const char* n = "LoadManager") : StatsObject(o, p, n, 1) {}
   void print(ostream& os) const;
   void aggregate(const LoadManagerStats& x) {
     tasks.aggregate(x.tasks);
+    ready.aggregate(x.ready);
+    blocked.aggregate(x.blocked);
   }
 };
 

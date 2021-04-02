@@ -119,7 +119,7 @@ void ClusterStats::print(ostream& os) const {
 void LoadManagerStats::print(ostream& os) const {
   if (totalLoadManagerStats && this != totalLoadManagerStats) totalLoadManagerStats->aggregate(*this);
   StatsObject::print(os);
-  os << " tasks:" << tasks << " blocks:" << blocks;
+  os << " tasks:" << tasks << " ready (log2):" << ready << " blocked:" << blocked;
 }
 
 void ProcessorStats::print(ostream& os) const {

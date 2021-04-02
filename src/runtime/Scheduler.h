@@ -70,9 +70,13 @@ public:
   Fred* getReadyFred(BaseProcessor& proc) {
     stats->tasks.count();
     ssize_t fredCount = __atomic_fetch_sub(&fredCounter, 1, __ATOMIC_RELAXED);
-    if (fredCount > 0) return nullptr;
-    stats->blocks.count(1-fredCount); // number of procs waiting including this one
-    return block(proc);
+    if (fredCount > 0) {
+      stats->ready.count(floorlog2(fredCount)); // number of freds ready (log-scale)
+      return nullptr;
+    } else {
+      stats->blocked.count(1-fredCount);        // number of procs waiting including this one
+      return block(proc);
+    }
   }
 
   bool addReadyFred(Fred& f) {
