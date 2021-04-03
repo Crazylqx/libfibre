@@ -56,7 +56,7 @@ class TimerQueue {
   TimerStats* stats;
 
 public:
-  TimerQueue(cptr_t parent) { stats = new TimerStats(this, parent); }
+  TimerQueue(cptr_t parent = nullptr) { stats = new TimerStats(this, parent); }
   void reinit(cptr_t parent) { new (stats) TimerStats(this, parent); }
   bool empty() const { return queue.empty(); }
 
@@ -704,7 +704,7 @@ public:
 
   void release() {
     RASSERT(owner == Context::CurrFred(), FmtHex(owner));
-    __atomic_store_n(&owner, nullptr, __ATOMIC_SEQ_CST);
+    owner = nullptr; // store order guaranteed with TSO
     Fred* next = sem.template V<false>();
     if (next) next->resume();
   }

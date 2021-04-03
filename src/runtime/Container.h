@@ -92,6 +92,8 @@ public:
   const Node*        front() const { return head; }
   Node*              back()        { return tail; }
   const Node*        back()  const { return tail; }
+  Node*              edge()        { return Sentinel; }
+  const Node*        edge()  const { return Sentinel; }
 
   static Node*       next(      Node& elem) { return Next(elem); }
   static const Node* next(const Node& elem) { return Next(elem); }

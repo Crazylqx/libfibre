@@ -405,7 +405,7 @@ int main(int argc, char* argv[]) {
   if (!opts(argc, argv)) exit(1);
 
   // print configuration
-  printf("threads: %u workers: %u", threadCount, fibreCount);
+  printf("threads: %u fibres: %u", threadCount, fibreCount);
   if (!yieldExperiment) {
     printf(" locks: %u", lockCount);
     switch (lockType) {

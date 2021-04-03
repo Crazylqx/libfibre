@@ -61,6 +61,12 @@ void StatsObject::printRecursive(const StatsObject* o, ostream& os, size_t depth
   }
 }
 
+void StatsObject::reset() {}
+
+void StatsObject::resetAll(int) {
+  for (StatsObject* o = lst->front(); o != lst->edge(); o = lst->next(*o)) o->reset();
+}
+
 void StatsObject::print(ostream& os) const {
   os << name << ' ' << FmtHex(object);
 }

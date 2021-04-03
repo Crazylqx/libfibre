@@ -36,6 +36,8 @@ public:
   static IntrusiveQueue<StatsObject>* lst;
   StatsObject(cptr_t o, cptr_t p, const char* n, const size_t s) : object(o), parent(p), name(n), sort(s) { lst->push(*this); }
   virtual ~StatsObject() {}
+  virtual void reset();
+  static void resetAll(int);
   virtual void print(ostream& os) const;
   static void printAll(ostream& os, bool totals);
 };
@@ -55,6 +57,9 @@ public:
   }
   void aggregate(const Counter& x) {
     cnt += x.cnt;
+  }
+  void reset() {
+    cnt = 0;
   }
 }; 
 
@@ -88,6 +93,11 @@ public:
     sqsum += x.sqsum;
     Counter::aggregate(x);
   }
+  void reset() {
+    sum = 0;
+    sqsum = 0;
+    cnt = 0;
+  }
 };
 
 inline ostream& operator<<(ostream& os, const Average& x) {
@@ -106,6 +116,9 @@ public:
   }
   void aggregate(const HashTable<N>& x) {
     for (size_t n = 0; n < N; n += 1) bucket[n].aggregate(x.bucket[n]);
+  }
+  void reset() {
+    for (size_t n = 0; n < N; n += 1) bucket[n].reset();
   }
 };
 
@@ -128,18 +141,22 @@ class Counter {
 public:
   void count(Number n = 1) {}
   void aggregate(const Counter& x) {}
+  void reset() {}
 }; 
 
 class Average : protected Counter {
 public:
   void add(Number val) {}
   void aggregate(const Average& x) {}
+  void reset() {}
 };
 
 template<size_t N>
 class HashTable {
 public:
   void count(size_t n) {}
+  void aggregate(const HashTable<N>) {}
+  void reset() {}
 };
 
 #endif /* TESTING_ENABLE_STATISTICS */
@@ -159,6 +176,13 @@ struct EventScopeStats : public StatsObject {
     calls.aggregate(x.calls);
     fails.aggregate(x.fails);
   }
+  virtual void reset() {
+    srvconn.reset();
+    cliconn.reset();
+    resets.reset();
+    calls.reset();
+    fails.reset();
+  }
 };
 
 struct PollerStats : public StatsObject {
@@ -174,6 +198,12 @@ struct PollerStats : public StatsObject {
     empty.aggregate(x.empty);
     events.aggregate(x.events);
   }
+  virtual void reset() {
+    regs.reset();
+    blocks.reset();
+    empty.reset();
+    events.reset();
+  }
 };
 
 struct TimerStats : public StatsObject {
@@ -182,6 +212,9 @@ struct TimerStats : public StatsObject {
   void print(ostream& os) const;
   void aggregate(const TimerStats& x) {
     events.aggregate(x.events);
+  }
+  virtual void reset() {
+    events.reset();
   }
 };
 
@@ -193,6 +226,10 @@ struct ClusterStats : public StatsObject {
   void aggregate(const ClusterStats& x) {
     procs.aggregate(x.procs);
     sleeps.aggregate(x.sleeps);
+  }
+  virtual void reset() {
+    procs.reset();
+    sleeps.reset();
   }
 };
 
@@ -206,6 +243,11 @@ struct LoadManagerStats : public StatsObject {
     tasks.aggregate(x.tasks);
     ready.aggregate(x.ready);
     blocked.aggregate(x.blocked);
+  }
+  virtual void reset() {
+    tasks.reset();
+    ready.reset();
+    blocked.reset();
   }
 };
 
@@ -232,6 +274,17 @@ struct ProcessorStats : public StatsObject {
     steal.aggregate(x.steal);
     idle.aggregate(x.idle);
     wake.aggregate(x.wake);
+  }
+  virtual void reset() {
+    enq.reset();
+    deq.reset();
+    correction.reset();
+    handover.reset();
+    stage.reset();
+    borrow.reset();
+    steal.reset();
+    idle.reset();
+    wake.reset();
   }
 };
 

@@ -17,6 +17,7 @@
 #include "libfibre/fibre.h"
 
 #include <atomic>
+#include <csignal>
 #include <iostream>
 #include <cxxabi.h>   // see _lfAbort
 #include <execinfo.h> // see _lfAbort
@@ -64,6 +65,16 @@ EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
   StatsObject::lst = new IntrusiveQueue<StatsObject>;
   ioFormatFlags.copyfmt(std::cout);
   SYSCALL(atexit(_lfStatsPrint));
+  env = getenv("FibreStatsSignal");
+  if (env) {
+    int signum = strtol(env, NULL, 10);
+    if (signum == 0) signum = SIGUSR1;
+    struct sigaction sa;
+    sa.sa_handler = StatsObject::resetAll;
+    sa.sa_flags = SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+    SYSCALL(sigaction(signum, &sa, 0));
+  }
 #endif
   return EventScope::bootstrap(pollerCount, workerCount);
 }
