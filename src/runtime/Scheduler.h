@@ -57,15 +57,10 @@ class LoadManager {
 public:
   LoadManager(cptr_t parent) : fredCounter(0) { stats = new LoadManagerStats(this, parent); }
 
-#if TESTING_OPTIMISTIC_ISRS
-  void reportReadyFred()  { __atomic_sub_fetch(&fredCounter, 1, __ATOMIC_RELAXED); }
-  void correctReadyFred() { __atomic_add_fetch(&fredCounter, 1, __ATOMIC_RELAXED); }
-#else
   bool tryGetReadyFred() {
     ssize_t c = fredCounter;
     return (c > 0) && __atomic_compare_exchange_n(&fredCounter, &c, c-1, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
   }
-#endif
 
   Fred* getReadyFred(BaseProcessor& proc) {
     stats->tasks.count();

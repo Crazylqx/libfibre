@@ -43,10 +43,6 @@ inline Fred* BaseProcessor::tryStage() {
 inline Fred* BaseProcessor::trySteal() {
   BaseProcessor* victim = this;
   for (;;) {
-#if TESTING_OPTIMISTIC_ISRS
-    Fred* l = tryLocal();
-    if (l) return l;
-#endif
     victim = ProcessorRing::next(*victim);
     if (victim == this) return nullptr;
     Fred* f = victim->readyQueue.tryDequeue();
@@ -87,30 +83,12 @@ void BaseProcessor::idleLoop() {
     if (nextFred) {
       stats->handover.count();
 #if TESTING_STICKY_STEALING
-      if (!nextFred->getAffinity()) {
-        nextFred->changeProcessor(*this, _friend<BaseProcessor>());
-      }
+      if (!nextFred->getAffinity()) nextFred->changeProcessor(*this, _friend<BaseProcessor>());
 #endif
-      yieldDirect(*nextFred);
-  continue;
-    }
-#if TESTING_OPTIMISTIC_ISRS
-    nextFred = scheduleInternal();
-    if (nextFred) {
-      yieldDirect(*nextFred);
-  continue;
-    }
-    // might have gotten a token, but not a stack -> correct
-    stats->correction.count();
-    scheduler.loadManager.correctReadyFred();
-#else /* TESTING_OPTIMISTIC_ISRS */
-    for (;;) {
-      nextFred = scheduleInternal();
-      if (nextFred) break;
-      Pause();
+    } else {
+      do nextFred = scheduleInternal(); while (!nextFred);
     }
     yieldDirect(*nextFred);
-#endif
 #else /* TESTING_LOADBALANCING */
     if (!readyCount.P()) readySem.P();
     Fred* nextFred = tryLocal();
@@ -128,21 +106,12 @@ Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
 #endif
   for (size_t i = 0; i < SpinMax; i += 1) {
 #if TESTING_LOADBALANCING
-#if TESTING_OPTIMISTIC_ISRS
-    Fred* nextFred = scheduleInternal();
-    if (nextFred) {
-      scheduler.loadManager.reportReadyFred();
-      return *nextFred;
-    }
-#else /* TESTING_OPTIMISTIC_ISRS */
     if (scheduler.loadManager.tryGetReadyFred()) {
       for (;;) {
         Fred* nextFred = scheduleInternal();
         if (nextFred) return *nextFred;
-        Pause();
       }
     }
-#endif
 #else /* TESTING_LOADBALANCING */
     if (readyCount.tryP()) {
       Fred* nextFred = tryLocal();

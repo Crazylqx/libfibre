@@ -253,9 +253,7 @@ struct LoadManagerStats : public StatsObject {
 
 struct ProcessorStats : public StatsObject {
   Counter enq;
-  Average bulk;
   Counter deq;
-  Counter correction;
   Counter handover;
   Counter stage;
   Counter borrow;
@@ -267,7 +265,6 @@ struct ProcessorStats : public StatsObject {
   void aggregate(const ProcessorStats& x) {
     enq.aggregate(x.enq);
     deq.aggregate(x.deq);
-    correction.aggregate(x.correction);
     handover.aggregate(x.handover);
     stage.aggregate(x.stage);
     borrow.aggregate(x.borrow);
@@ -278,7 +275,6 @@ struct ProcessorStats : public StatsObject {
   virtual void reset() {
     enq.reset();
     deq.reset();
-    correction.reset();
     handover.reset();
     stage.reset();
     borrow.reset();

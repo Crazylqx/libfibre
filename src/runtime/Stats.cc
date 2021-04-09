@@ -131,7 +131,7 @@ void LoadManagerStats::print(ostream& os) const {
 void ProcessorStats::print(ostream& os) const {
   if (totalProcessorStats && this != totalProcessorStats) totalProcessorStats->aggregate(*this);
   StatsObject::print(os);
-  os << " E:" << enq << " U:" << bulk << " D:" << deq << " C:" << correction << " H:" << handover << " S:" << stage << " B:" << borrow << " T:" << steal << " I:" << idle << " W:" << wake;
+  os << " E:" << enq << " D:" << deq << " H:" << handover << " S:" << stage << " B:" << borrow << " T:" << steal << " I:" << idle << " W:" << wake;
 }
 
 #endif /* TESTING_ENABLE_STATISTICS */

@@ -7,7 +7,6 @@
 // **** general options - alternative design
 
 #define TESTING_LOADBALANCING         1 // enable load balancing using ISRS
-//#define TESTING_OPTIMISTIC_ISRS       1 // search fibre first, correct later for ISRS
 //#define TESTING_STICKY_STEALING       1 // enable sticky work-stealing
 //#define TESTING_SHARED_READYQUEUE     1 // use shared ready queue, instead of stealing
 //#define TESTING_LOCKED_READYQUEUE     1 // locked vs. lock-free ready queue
