@@ -19,10 +19,17 @@
 
 #include "runtime/Container.h"
 
+
 #include <ostream>
 using std::ostream;
 
 typedef long long Number;
+
+#ifdef KERNEL
+static inline Number sqrt(Number x) { return x; }
+#else
+#include <cmath>
+#endif
 
 #if TESTING_ENABLE_STATISTICS
 
@@ -48,10 +55,6 @@ protected:
 public:
   Counter() : cnt(0) {}
   operator Number() const { return cnt; }
-  Number operator()() const { return sum(); }
-  Number sum() const {
-    return cnt;
-  }
   void count(Number n = 1) {
     __atomic_add_fetch( &cnt, n, __ATOMIC_RELAXED);
   }
@@ -64,39 +67,40 @@ public:
 }; 
 
 inline ostream& operator<<(ostream& os, const Counter& x) {
-  os << ' ' << std::fixed << x.sum();
+  os << ' ' << std::fixed << (Number)x;
   return os;
 }
 
 class Average : public Counter {
+  using Counter::cnt;
   volatile Number sum;
   volatile Number sqsum;
-  using Counter::cnt;
 public:
-  Average() : sum(0), sqsum(0) {}
-  Number operator()() const { return average(); }
   Number average() const {
     if (!cnt) return 0;
     return sum/cnt;
   }
   Number variance() const {
     if (!cnt) return 0;
-    return (sqsum - (sum*sum) / cnt) / cnt;
+    return sqrt((sqsum - (sum*sum) / cnt) / cnt);
   }
-  void add(Number val) {
+public:
+  Average() : sum(0), sqsum(0) {}
+  Number operator()() const { return average(); }
+  void count(Number val) {
+    Counter::count();
     __atomic_add_fetch( &sum, val, __ATOMIC_RELAXED);
     __atomic_add_fetch( &sqsum, val*val, __ATOMIC_RELAXED);
-    Counter::count();
   }
   void aggregate(const Average& x) {
+    Counter::aggregate(x);
     sum += x.sum;
     sqsum += x.sqsum;
-    Counter::aggregate(x);
   }
   void reset() {
+    cnt = 0;
     sum = 0;
     sqsum = 0;
-    cnt = 0;
   }
 };
 
@@ -107,7 +111,7 @@ inline ostream& operator<<(ostream& os, const Average& x) {
 }
 
 template<size_t N>
-class HashTable {
+struct HashTable {
   Counter bucket[N];
 public:
   Number operator[](size_t n) const { return bucket[n]; }
@@ -130,32 +134,57 @@ inline ostream& operator<<(ostream& os, const HashTable<N>& x) {
   return os;
 }
 
+struct Distribution {
+  Average average;
+  HashTable<bitsize<Number>()> hashTable;
+public:
+  void count(size_t n) {
+    average.count(n);
+    hashTable.count(floorlog2(n));
+  }
+  void aggregate(const Distribution& x) {
+    average.aggregate(x.average);
+    hashTable.aggregate(x.hashTable);
+  }
+  void reset() {
+    average.reset();
+    hashTable.reset();
+  }
+};
+
+inline ostream& operator<<(ostream& os, const Distribution& x) {
+  os << x.average << x.hashTable;
+  return os;
+}
+
 #else
 
-class StatsObject {
-public:
+struct StatsObject {
   StatsObject(cptr_t, cptr_t, const char*, const size_t) {}
 };
 
-class Counter {
-public:
+struct Counter {
   void count(Number n = 1) {}
   void aggregate(const Counter& x) {}
   void reset() {}
-}; 
+};
 
-class Average : protected Counter {
-public:
-  void add(Number val) {}
+struct Average {
+  void count(Number val) {}
   void aggregate(const Average& x) {}
   void reset() {}
 };
 
 template<size_t N>
-class HashTable {
-public:
-  void count(size_t n) {}
-  void aggregate(const HashTable<N>) {}
+struct HashTable {
+  void count(Number val) {}
+  void aggregate(const HashTable<N>& x) {}
+  void reset() {}
+};
+
+struct Distribution {
+  void count(Number val) {}
+  void aggregate(const Distribution& x) {}
   void reset() {}
 };
 
@@ -189,7 +218,7 @@ struct PollerStats : public StatsObject {
   Counter regs;
   Counter blocks;
   Counter empty;
-  Average events;
+  Distribution events;
   PollerStats(cptr_t o, cptr_t p, const char* n = "Poller") : StatsObject(o, p, n, 0) {}
   void print(ostream& os) const;
   void aggregate(const PollerStats& x) {
@@ -207,7 +236,7 @@ struct PollerStats : public StatsObject {
 };
 
 struct TimerStats : public StatsObject {
-  Average events;
+  Distribution events;
   TimerStats(cptr_t o, cptr_t p, const char* n = "Timer       ") : StatsObject(o, p, n, 1) {}
   void print(ostream& os) const;
   void aggregate(const TimerStats& x) {
@@ -234,18 +263,15 @@ struct ClusterStats : public StatsObject {
 };
 
 struct LoadManagerStats : public StatsObject {
-  Counter tasks;
-  HashTable<64> ready;
-  HashTable<64> blocked;
+  Distribution ready;
+  Distribution blocked;
   LoadManagerStats(cptr_t o, cptr_t p, const char* n = "LoadManager") : StatsObject(o, p, n, 1) {}
   void print(ostream& os) const;
   void aggregate(const LoadManagerStats& x) {
-    tasks.aggregate(x.tasks);
     ready.aggregate(x.ready);
     blocked.aggregate(x.blocked);
   }
   virtual void reset() {
-    tasks.reset();
     ready.reset();
     blocked.reset();
   }

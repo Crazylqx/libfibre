@@ -80,7 +80,7 @@ public:
       cnt += 1;
     }
     lock.release();
-    stats->events.add(cnt);
+    stats->events.count(cnt);
     return retcode;
   }
 

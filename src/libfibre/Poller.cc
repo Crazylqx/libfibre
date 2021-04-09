@@ -50,7 +50,7 @@ inline Fred* BasePoller::notifyOne(EventType& ev) {
 }
 
 inline void BasePoller::notifyAll(int evcnt) {
-  stats->events.add(evcnt);
+  stats->events.count(evcnt);
   for (int e = 0; e < evcnt; e += 1) notifyOne(events[e]);
 }
 
