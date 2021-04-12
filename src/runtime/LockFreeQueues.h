@@ -125,6 +125,7 @@ class QueueStub {
       }
       while (!Next(*stub)) Pause();                 // producer in push()
       head = Next(*stub);                           // remove stub
+      Next(*stub) = nullptr;                        // invalidate link
       push(*stub);                                  // re-append stub at end
     }
     return true;
@@ -132,7 +133,8 @@ class QueueStub {
 
 public:
   QueueStub() : stub(static_cast<Node*>(&anchorLink)) {
-    head = tail = Next(*stub) = stub;
+    head = tail = stub;
+    Next(*stub) = nullptr;                             // invalidate link
     if (Blocking) tail = (Node*)(uintptr_t(tail) | 1); // mark queue empty
   }
   bool empty() const { return (head == stub && tail == stub); }

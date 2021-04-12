@@ -53,7 +53,7 @@ function post() {
 }
 
 function run_memcached() {
-	for ((i=0;i<5;i+=1)); do
+	for ((i=0;i<3;i+=1)); do
 		FibrePrintStats=1 $TASKSET_SERVER memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24 &
 		sleep 3
 		mutilate -s0 -r 100000 -K fb_key -V fb_value --loadonly
@@ -138,7 +138,7 @@ function run_6() {
 }
 
 function prep_7() {
-	sed -i -e 's/.* TESTING_NEMESIS_READYQUEUE .*/#undef TESTING_NEMESIS_READYQUEUE/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_NEMESIS_READYQUEUE .*/#undef TESTING_NEMESIS_READYQUEUE/' src/runtime/testoptions.h
 	echo memcached
 }
 
