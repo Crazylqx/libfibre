@@ -31,7 +31,7 @@ In addition, the following students (in alphabetical order) have helped with var
 - Peiran Hong (API/Apache)
 - Matthew May (suspend/timeout)
 - Wen Shi (gdb extension)
-- Kai Sun (ARM64 support)
+- Kai Sun (ARM64 support, locktest script)
 - Shuangyi Tong (event scopes)
 - Gan Wang (API/Apache)
 

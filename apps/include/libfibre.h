@@ -12,7 +12,7 @@ typedef FibreBarrier   shim_barrier_t;
 #if TESTING_LOCK_RECURSION
 typedef OwnerMutex<FibreMutex> shim_mutex_t;
 #else
-typedef FibreMutex     shim_mutex_t;
+typedef FibreMutex shim_mutex_t;
 #define HASTRYLOCK 1
 #define HASTIMEDLOCK 1
 #endif
@@ -40,9 +40,14 @@ static inline void shim_mutex_unlock(shim_mutex_t* mtx)  {
 }
 #else
 static inline void shim_mutex_init(shim_mutex_t* mtx)    { new (mtx) shim_mutex_t; }
-static inline void shim_mutex_lock(shim_mutex_t* mtx)    { mtx->acquire(); }
-static inline bool shim_mutex_trylock(shim_mutex_t* mtx) { return mtx->tryAcquire(); }
-static inline void shim_mutex_unlock(shim_mutex_t* mtx)  { mtx->release(); }
+template<typename... Args>
+static inline void shim_mutex_lock(shim_mutex_t* mtx, Args&&... args)    { mtx->acquire(args...); }
+template<typename... Args>
+static inline void shim_mutex_unlock(shim_mutex_t* mtx, Args&&... args)  { mtx->release(args...); }
+#if HASTRYLOCK
+template<typename... Args>
+static inline bool shim_mutex_trylock(shim_mutex_t* mtx, Args&&... args) { return mtx->tryAcquire(args...); }
+#endif
 #if HASTIMEDLOCK
 static inline bool shim_mutex_timedlock(shim_mutex_t* mtx, unsigned int timeout) {
   return mtx->acquire(Runtime::Timer::now() + Time::fromNS(timeout));
