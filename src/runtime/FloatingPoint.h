@@ -58,9 +58,20 @@ public:
   }
 };
 
+#elif defined(__aarch64__)
+
+class FloatingPointFlags {
+public:
+  FloatingPointFlags() {}
+  FloatingPointFlags(bool) {}
+  void save() {}
+  void restore() {}
+};
+
+class FloatingPointContext; // not available for __aarch64__ yet
 
 #else
-#error unsupported architecture: only __x86_64__ supported at this time
+#error unsupported architecture: only __x86_64__ or __aarch64__ supported at this time
 #endif
 
 #endif /* _FloatingPoint_h_ */

@@ -530,7 +530,7 @@ public:
 template<typename Lock = DummyLock>
 class LimitedSemaphore1 {
   Lock lock;
-  FlexFredQueueNemesis queue;
+  FlexFredQueueNemesis queue; // QueueStub does not have pop(next) interface
 
 public:
   explicit LimitedSemaphore1(ssize_t c = 1) { RASSERT(c == 1, c); }
@@ -664,7 +664,7 @@ class SpinMutex {
 
   bool tryLock(Fred* cf) {
     Fred* exp = nullptr;
-    return __atomic_compare_exchange_n(&owner, &exp, cf, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+    return __atomic_compare_exchange_n(&owner, &exp, cf, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
   }
 
 protected:
@@ -704,7 +704,7 @@ public:
 
   void release() {
     RASSERT(owner == Context::CurrFred(), FmtHex(owner));
-    owner = nullptr; // store order guaranteed with TSO
+    __atomic_store_n(&owner, nullptr, __ATOMIC_RELEASE);
     Fred* next = sem.template V<false>();
     if (next) next->resume();
   }

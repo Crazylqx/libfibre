@@ -76,8 +76,66 @@
   popq %rbp
 .endm
 
+#elif defined(__aarch64__)
+
+.set ISRFRAME, 160                    /* stack alignment 16 */
+
+.macro ISR_PUSH                       /* ISRFRAME bytes pushed */
+  stp x0, x1,   [sp, -160]!           /* pre-index: SP - 160 */
+  stp x2, x3,   [sp, 16]
+  stp x4, x5,   [sp, 32]
+  stp x6, x7,   [sp, 48]
+  stp x8, x9,   [sp, 64]
+  stp x10, x11, [sp, 80]
+  stp x12, x13, [sp, 96]
+  stp x14, x15, [sp, 112]
+  stp x16, x17, [sp, 128]
+  str x18,      [sp, 144]
+.endm
+
+.macro ISR_POP                        /* ISRFRAME bytes popped */
+  ldr x18,      [sp, 144]
+  ldp x16, x17, [sp, 128]
+  ldp x14, x15, [sp, 112]
+  ldp x12, x13, [sp, 96]
+  ldp x10, x11, [sp, 80]
+  ldp x8, x9,   [sp, 64]
+  ldp x6, x7,   [sp, 48]
+  ldp x4, x5,   [sp, 32]
+  ldp x2, x3,   [sp, 16]
+  ldp x0, x1,   [sp], 160             /* post-index: SP + 160 */
+.endm
+
+.macro STACK_PUSH
+  stp x29, x30, [sp, -160]!           /* pre-index: SP - 160 */
+  mov x29, sp                         /* produce clean stack for debugging */
+  stp x27, x28, [sp, 16]
+  stp x25, x26, [sp, 32]
+  stp x23, x24, [sp, 48]
+  stp x21, x22, [sp, 64]
+  stp x19, x20, [sp, 80]
+  stp d8,  d9,  [sp, 96]              /* low 64-bit of FP regs  v7-v15 */
+  stp d10, d11, [sp, 112]
+  stp d12, d13, [sp, 128]
+  stp d14, d15, [sp, 144]
+
+.endm
+
+.macro STACK_POP
+  ldp d14, d15, [sp, 144]             /* low 64-bit of FP regs  v7-v15 */
+  ldp d12, d13, [sp, 128]
+  ldp d10, d11, [sp, 112]
+  ldp d8,  d9,  [sp, 96]
+  ldp x19, x20, [sp, 80]
+  ldp x21, x22, [sp, 64]
+  ldp x23, x24, [sp, 48]
+  ldp x25, x26, [sp, 32]
+  ldp x27, x28, [sp, 16]
+  ldp x29, x30, [sp], 160             /* post-index: SP + 160 */
+.endm
+
 #else
-#error unsupported architecture: only __x86_64__ supported at this time
+#error unsupported architecture: only __x86_64__ or __aarch64__ supported at this time
 #endif
 
 #endif /* _StackFrame_h_ */

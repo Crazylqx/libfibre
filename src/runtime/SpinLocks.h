@@ -20,7 +20,7 @@
 #include "runtime/Basics.h"
 
 template<typename T>
-static inline bool _CAS(T volatile *ptr, T expected, T desired, int success_memorder = __ATOMIC_SEQ_CST, int failure_memorder = __ATOMIC_RELAXED) {
+static inline bool _CAS(T volatile *ptr, T expected, T desired, int success_memorder = __ATOMIC_ACQUIRE, int failure_memorder = __ATOMIC_RELAXED) {
   T* exp = &expected;
   return __atomic_compare_exchange_n(ptr, exp, desired, false, success_memorder, failure_memorder);
 }
@@ -35,12 +35,12 @@ public:
   BinaryLock() : locked(false) {}
   bool tryAcquire() {
     if (locked) return false;
-    return !__atomic_test_and_set(&locked, __ATOMIC_SEQ_CST);
+    return !__atomic_test_and_set(&locked, __ATOMIC_ACQUIRE);
   }
   void acquire() {
     size_t spin = SpinStart;
     for (;;) {
-      if fastpath(!__atomic_test_and_set(&locked, __ATOMIC_SEQ_CST)) break;
+      if fastpath(!__atomic_test_and_set(&locked, __ATOMIC_ACQUIRE)) break;
       for (size_t i = 0; i < spin; i += 1) Pause();
       if (spin < SpinEnd) spin += spin;
       while (locked) Pause();
@@ -48,7 +48,7 @@ public:
   }
   void release() {
     RASSERT0(locked);
-    __atomic_clear(&locked, __ATOMIC_SEQ_CST);
+    __atomic_clear(&locked, __ATOMIC_RELEASE);
   }
 } __caligned;
 
@@ -85,7 +85,7 @@ public:
   size_t release(T caller) {
     RASSERT0(owner == caller);
     counter = full ? 0 : (counter - 1);
-    if (counter == 0) __atomic_store_n(&owner, noOwner, __ATOMIC_SEQ_CST);
+    if (counter == 0) __atomic_store_n(&owner, noOwner, __ATOMIC_RELEASE);
     return counter;
   }
 } __caligned;
@@ -103,12 +103,12 @@ public:
     return _CAS(&ticket, tryticket, tryticket + 1);
   }
   void acquire() {
-    size_t myticket = __atomic_fetch_add(&ticket, 1, __ATOMIC_SEQ_CST);
-    while slowpath(myticket != serving) Pause();
+    size_t myticket = __atomic_fetch_add(&ticket, 1, __ATOMIC_RELAXED);
+    while slowpath(myticket != __atomic_load_n(&serving, __ATOMIC_ACQUIRE)) Pause();
   }
   void release() {
     RASSERT0(sword(ticket-serving) > 0);
-    __atomic_fetch_add(&serving, 1, __ATOMIC_SEQ_CST);
+    __atomic_fetch_add(&serving, 1, __ATOMIC_RELEASE);
   }
 } __caligned;
 
@@ -128,21 +128,21 @@ public:
   MCSLock() : tail(nullptr) {}
   bool tryAcquire(Node& n) {
     n.next = nullptr;
-    return ((tail == nullptr) && _CAS(&tail, (Node*)nullptr, &n, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+    return (tail == nullptr) && _CAS(&tail, (Node*)nullptr, &n, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
   }
   void acquire(Node& n) {
     n.next = nullptr;
     Node* prev = __atomic_exchange_n(&tail, &n, __ATOMIC_SEQ_CST);
     if (!prev) return;
-    n.wait = true;   // store order guaranteed with TSO
-    prev->next = &n; // store order guaranteed with TSO
+    n.wait = true;
+    __atomic_store_n(&prev->next, &n, __ATOMIC_RELEASE);
     while slowpath(n.wait) Pause();
   }
   void release(Node& n) {
     RASSERT0(tail != nullptr);
     // could check 'n.next' first, but no memory consistency then
     if (_CAS(&tail, &n, (Node*)nullptr, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return;
-    while slowpath(!n.next) Pause();
+    while slowpath(!__atomic_load_n(&n.next, __ATOMIC_ACQUIRE)) Pause();
     n.next->wait = false;
   }
 } __caligned;
@@ -168,8 +168,8 @@ public:
   }
   void release() {
     RASSERT0(state != 0);
-    if (state < 0) __atomic_add_fetch(&state, 1, __ATOMIC_SEQ_CST);
-    else __atomic_sub_fetch(&state, 1, __ATOMIC_SEQ_CST);
+    if (state < 0) __atomic_add_fetch(&state, 1, __ATOMIC_RELEASE);
+    else __atomic_sub_fetch(&state, 1, __ATOMIC_RELEASE);
   }
 } __caligned;
 

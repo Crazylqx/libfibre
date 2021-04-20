@@ -108,7 +108,7 @@ class QueueStub {
   Link anchorLink;
   Node* stub;
   Node* head;
-  Node* tail;
+  Node* volatile tail;
 
   // peek/pop operate in chunks of elements and re-append stub after each chunk
   // after re-appending stub, tail points to stub, if no further insertions -> empty!

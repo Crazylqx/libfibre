@@ -80,6 +80,7 @@ function run_0() {
 
 function prep_1() {
 	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
+	[ "$(uname -m)" = "aarch64" ] && echo skip && return
 	sed -i -e 's/DYNSTACK=.*/DYNSTACK=1/' Makefile.config
 }
 
@@ -172,6 +173,7 @@ if [ $(git diff | wc -l) -ne 0 ] && [ "$1" != "-f" ]; then
 fi
 
 for ((e=0;e<=$emax;e+=1)); do
+	echo "========== RUNNING EXPERIMENT $e =========="
 	addon=$(prep_$e)
 	pre $addon
 	run_$e

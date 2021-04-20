@@ -136,7 +136,7 @@ static inline constexpr int alignment( T x ) {
   return lsb(x);
 }
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(__aarch64__)
 
 typedef   int64_t sword;
 typedef  uint64_t mword;
@@ -154,7 +154,7 @@ static const vaddr stackAlignment  = 16;
 template <typename T> static inline constexpr size_t bitsize() { return sizeof(T) * 8; }
 
 #else
-#error unsupported architecture: only __x86_64__ supported at this time
+#error unsupported architecture: only __x86_64__ or __aarch64__ supported at this time
 #endif
 
 #if defined(__x86_64__)
@@ -162,8 +162,13 @@ template <typename T> static inline constexpr size_t bitsize() { return sizeof(T
 static inline void Pause()       { asm volatile("pause"); }
 static inline void MemoryFence() { asm volatile("mfence" ::: "memory"); }
 
+#elif defined(__aarch64__)
+
+static inline void Pause()       { asm volatile("yield"); }
+static inline void MemoryFence() { asm volatile("dmb sy" ::: "memory"); }
+
 #else
-#error unsupported architecture: only __x86_64__ supported at this time
+#error unsupported architecture: only __x86_64__ or __aarch64__ supported at this time
 #endif
 
 template<size_t N>
