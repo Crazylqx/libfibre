@@ -14,19 +14,22 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
-# ISR_PUSH/POP: save callee-owned registers during asynchronous interrupt
-# caller-owned regs automatically saved by compiler code during routine calls
+#ifndef _StackFrame_h_
+#define _StackFrame_h_ 1
 
-# STACK_PUSH/POP: save caller-owned registers during synchronous stack switch
-# callee-owned regs automatically saved by compiler code before routine calls
+// ISR_PUSH/POP: save callee-owned registers during asynchronous interrupt
+// caller-owned regs automatically saved by compiler code during routine calls
+
+// STACK_PUSH/POP: save caller-owned registers during synchronous stack switch
+// callee-owned regs automatically saved by compiler code before routine calls
 
 #if defined(__x86_64__)
 
-# GCC: arguments in %rdi, %rsi, %rdx, %rcx , %r8, %r9, see 'System V AMD64 ABI' in
-# see http://en.wikipedia.org/wiki/X86_calling_conventions
+// GCC: arguments in %rdi, %rsi, %rdx, %rcx , %r8, %r9, see 'System V AMD64 ABI' in
+// see http://en.wikipedia.org/wiki/X86_calling_conventions
 
-# caller- vs. callee-owned registers
-# see http://x86-64.org/documentation/abi.pdf, Sec 3.2.1
+// caller- vs. callee-owned registers
+// see http://x86-64.org/documentation/abi.pdf, Sec 3.2.1
 
 .set ISRFRAME, 72
 
@@ -76,3 +79,5 @@
 #else
 #error unsupported architecture: only __x86_64__ supported at this time
 #endif
+
+#endif /* _StackFrame_h_ */

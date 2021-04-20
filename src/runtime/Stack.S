@@ -14,7 +14,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
-#include "runtime/RegistersOnStack.HS"
+#include "runtime/StackFrame.h"
 
 .text
 
@@ -22,53 +22,53 @@
 
 .align 8
 .globl stackDirect
-stackDirect:                # stack pointer, func, arg1, arg2, arg3
-	movq %rdi, %rsp           # set stack pointer
-	movq %rsi, %rax           # save 'func' in %rax
-	movq %rdx, %rdi           # put arg1 in place
-	movq %rcx, %rsi           # put arg2 in place
-	movq %r8,  %rdx           # put arg3 in place
-#	movq %r9,  %rcx           # put arg4 in place # not needed
-	pushq $0                  # previous %rip = 0 (fake stack frame)
-	pushq $0                  # previous %rbp = 0
-	movq %rsp, %rbp           # set base pointer
-	jmp *%rax                 # invoke 'func'
+stackDirect:                // stack pointer, func, arg1, arg2, arg3
+	movq %rdi, %rsp           // set stack pointer
+	movq %rsi, %rax           // save 'func' in %rax
+	movq %rdx, %rdi           // put arg1 in place
+	movq %rcx, %rsi           // put arg2 in place
+	movq %r8,  %rdx           // put arg3 in place
+//movq %r9,  %rcx           // put arg4 in place // not needed
+	pushq $0                  // previous %rip = 0 (fake stack frame)
+	pushq $0                  // previous %rbp = 0
+	movq %rsp, %rbp           // set base pointer
+	jmp *%rax                 // invoke 'func'
 
 .align 8
 .globl stackInit
-stackInit:                  # stack, func, arg1, arg2, arg3 -> new stack
-	movq %rsi, -64(%rdi)      # store 'func' for stub function (via %rbx)
-	movq %rdx, -56(%rdi)      # store 'arg1' for stub function (via %r12)
-	movq %rcx, -48(%rdi)      # store 'arg2' for stub function (via %r13)
-	movq %r8,  -40(%rdi)      # store 'arg3' for stub function (via %r14)
-	movq $0,   -32(%rdi)      # indirectly set %r15 to 0
-	movq $0,   -24(%rdi)      # indirectly set %rbp to 0
-#	movq $stubInit, -16(%rdi) # push stubInit function as return address
-	leaq stubInit(%rip), %rax # alternative: use RIP-relative addressing
-	movq %rax, -16(%rdi)      # to push stubInit function as return address
-	leaq -64(%rdi), %rax      # return stack address, size 64: cf. STACK_PUSH
+stackInit:                  // stack, func, arg1, arg2, arg3 -> new stack
+	movq %rsi, -64(%rdi)      // store 'func' for stub function (via %rbx)
+	movq %rdx, -56(%rdi)      // store 'arg1' for stub function (via %r12)
+	movq %rcx, -48(%rdi)      // store 'arg2' for stub function (via %r13)
+	movq %r8,  -40(%rdi)      // store 'arg3' for stub function (via %r14)
+	movq $0,   -32(%rdi)      // indirectly set %r15 to 0
+	movq $0,   -24(%rdi)      // indirectly set %rbp to 0
+//movq $stubInit, -16(%rdi) // push stubInit function as return address
+	leaq stubInit(%rip), %rax // alternative: use RIP-relative addressing
+	movq %rax, -16(%rdi)      // to push stubInit function as return address
+	leaq -64(%rdi), %rax      // return stack address, size 64: cf. STACK_PUSH
 	retq
 
 .align 8
-stubInit:                   # stub needed to pass arguments to 'invokeFred'
-	movq %rbx, %rdi           # 'func'
-	movq %r12, %rsi           # 'arg1'
-	movq %r13, %rdx           # 'arg2'
-	movq %r14, %rcx           # 'arg3'
-#	movq %r15, %r8            # 'arg4' not needed
-	pushq %rbp                # previous %rip = 0 (fake stack frame)
-	pushq %rbp                # previous %rbp = 0
-	movq %rsp, %rbp           # set base pointer
+stubInit:                   // stub needed to pass arguments to 'invokeFred'
+	movq %rbx, %rdi           // 'func'
+	movq %r12, %rsi           // 'arg1'
+	movq %r13, %rdx           // 'arg2'
+	movq %r14, %rcx           // 'arg3'
+//movq %r15, %r8            // 'arg4' not needed
+	pushq %rbp                // previous %rip = 0 (fake stack frame)
+	pushq %rbp                // previous %rbp = 0
+	movq %rsp, %rbp           // set base pointer
 	jmp invokeFred@PLT
 
 .align 8
 .globl stackSwitch
-stackSwitch:                # (currStack, postFunc, &currSP, nextSP)
-	STACK_PUSH                # save register context
-	movq %rsp, (%rdx)         # save current stack pointer
-	movq %rcx, %rsp           # load next stack pointer
-	STACK_POP                 # restore register context
-	jmp *%rsi                 # %rdi set -> return directly from postFunc
+stackSwitch:                // (currStack, postFunc, &currSP, nextSP)
+	STACK_PUSH                // save register context
+	movq %rsp, (%rdx)         // save current stack pointer
+	movq %rcx, %rsp           // load next stack pointer
+	STACK_POP                 // restore register context
+	jmp *%rsi                 // %rdi set -> return directly from postFunc
 
 #else
 #error unsupported architecture: only __x86_64__ supported at this time

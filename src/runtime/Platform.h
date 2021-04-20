@@ -22,15 +22,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef uintptr_t vaddr;
-typedef uintptr_t paddr;
-
-typedef       void*    ptr_t;
-typedef const void*   cptr_t;
-
-typedef       char     buf_t;
-typedef       char* bufptr_t;
-
 // expressions
 #define fastpath(x) (__builtin_expect((bool(x)),true))
 #define slowpath(x) (__builtin_expect((bool(x)),false))
@@ -147,24 +138,29 @@ static inline constexpr int alignment( T x ) {
 
 #if defined(__x86_64__)
 
-static inline void Pause()       { asm volatile("pause"); }
-static inline void MemoryFence() { asm volatile("mfence" ::: "memory"); }
+typedef   int64_t sword;
+typedef  uint64_t mword;
+typedef uintptr_t vaddr;
+typedef uintptr_t paddr;
 
-typedef uint64_t mword;
-typedef  int64_t sword;
+typedef       void*    ptr_t;
+typedef const void*   cptr_t;
+
+typedef       char     buf_t;
+typedef       char* bufptr_t;
 
 static const vaddr stackAlignment  = 16;
 
-static const size_t pageoffsetbits = 12;
-static const size_t pagetablebits  = 9;
-static const size_t pagelevels     = 4;
-#if defined(__cplusplus)
-static const size_t pagebits       = pageoffsetbits + pagetablebits * pagelevels;
-static const size_t framebits      = pageoffsetbits + 40;
-static const size_t ptentries      = 1 << pagetablebits;
+template <typename T> static inline constexpr size_t bitsize() { return sizeof(T) * 8; }
+
+#else
+#error unsupported architecture: only __x86_64__ supported at this time
 #endif
 
-template <typename T> static inline constexpr size_t bitsize() { return sizeof(T) * 8; }
+#if defined(__x86_64__)
+
+static inline void Pause()       { asm volatile("pause"); }
+static inline void MemoryFence() { asm volatile("mfence" ::: "memory"); }
 
 #else
 #error unsupported architecture: only __x86_64__ supported at this time
@@ -251,23 +247,5 @@ static inline mword multiscan(const mword* data, bool findset = true) {
 }
 
 #endif
-
-template<unsigned int N>
-static constexpr size_t pagesizebits() {
-  static_assert( N <= pagelevels + 1, "page level template violation" );
-  return pageoffsetbits + (N-1) * pagetablebits;
-}
-
-template<unsigned int N>
-static constexpr size_t pagesize() {
-  static_assert( N <= pagelevels, "page level template violation" );
-  return pow2<size_t>(pagesizebits<N>());
-}
-
-template<unsigned int N>
-static constexpr size_t pageoffset(uintptr_t addr) {
-  static_assert( N <= pagelevels, "page level template violation" );
-  return addr & bitmask<uintptr_t>(pagesizebits<N>());
-}
 
 #endif /* _Platform_h_ */

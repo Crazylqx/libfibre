@@ -54,8 +54,8 @@ struct fibre_attr_t {
   bool background;
   Cluster* cluster;
   void init() {
-    stackSize = defaultStackSize;
-    guardSize = defaultStackGuard;
+    stackSize = 0;
+    guardSize = 0;
     detached = false;
     background = false;
     cluster = &Context::CurrCluster();
@@ -183,7 +183,7 @@ inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *(*start
   if (!attr) {
     f = new Fibre;
   } else {
-    f = new Fibre(*attr->cluster, attr->stackSize, attr->background, attr->guardSize);
+    f = new Fibre(*attr->cluster, attr->background, attr->stackSize, attr->guardSize);
     if (attr->detached) f->detach();
   }
   *thread = f->run(start_routine, arg);

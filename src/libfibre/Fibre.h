@@ -26,6 +26,8 @@
 #include <vector>
 #include <sys/mman.h> // mmap, munmap, mprotect
 
+extern size_t _lfPagesize; // Bootstrap.cc
+
 #ifdef SPLIT_STACK
 extern "C" void __splitstack_block_signals(int* next, int* prev);
 extern "C" void __splitstack_block_signals_context(void *context[10], int* next, int* prev);
@@ -33,11 +35,10 @@ extern "C" void __splitstack_getcontext(void *context[10]);
 extern "C" void __splitstack_setcontext(void *context[10]);
 extern "C" void *__splitstack_makecontext(size_t, void *context[10], size_t *);
 extern "C" void __splitstack_releasecontext(void *context[10]);
-static const size_t defaultStackSize  =  2 * pagesize<1>();
-static const size_t defaultStackGuard =  0 * pagesize<1>();
+static const size_t defaultStackSize  = 4096;
 #else
-static const size_t defaultStackSize  = 16 * pagesize<1>();
-static const size_t defaultStackGuard =  1 * pagesize<1>();
+static const size_t defaultStackSize  = 65536;
+static const size_t defaultStackGuard = 4096;
 #endif
 
 #if TESTING_ENABLE_DEBUGGING
@@ -116,14 +117,16 @@ class Fibre : public Fred, public FibreSpecific {
   SyncPoint<WorkerLock> done;  // synchronization (join) at destructor
 
   size_t stackAlloc(size_t size, size_t guard) {
+    if (!size) size = defaultStackSize;
 #ifdef SPLIT_STACK
     vaddr stackBottom = (vaddr)__splitstack_makecontext(size, splitStackContext, &size);
     int off = 0; // do not block signals (blocking signals is slow!)
     __splitstack_block_signals_context(splitStackContext, &off, nullptr);
 #else
     // check that requested size/guard is a multiple of page size
-    RASSERT(aligned(size, pagesize<1>()), size);
-    RASSERT(aligned(guard, pagesize<1>()), guard);
+    if (!guard) guard = defaultStackGuard;
+    RASSERT(aligned(size, _lfPagesize), size);
+    RASSERT(aligned(guard, _lfPagesize), size);
     // reserve/map size + protection
     size += guard;
     // add PROT_EXEC here to make stack executable (needed for nested C functions)
@@ -168,16 +171,16 @@ public:
   struct ExitException {};
 
   /** Constructor. */
-  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), size_t size = defaultStackSize, bool background = false, size_t guard = defaultStackGuard)
+  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), bool background = false, size_t size = 0, size_t guard = 0)
   : Fred(sched, background), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
   /** Constructor setting affinity to processor. */
-  Fibre(BaseProcessor &sp, size_t size = defaultStackSize, size_t guard = defaultStackGuard)
+  Fibre(BaseProcessor &sp, size_t size = 0, size_t guard = 0)
   : Fred(sp, true), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
   /** Constructor to immediately start fibre with `func(arg)`. */
   Fibre(funcvoid1_t func, ptr_t arg, bool background = false)
-  : Fibre(Context::CurrProcessor().getScheduler(), defaultStackSize, background) { run(func, arg); }
+  : Fibre(Context::CurrProcessor().getScheduler(), background) { run(func, arg); }
 
   // constructor for idle loop or main loop (bootstrap) on existing pthread stack
   Fibre(BaseProcessor &p, _friend<Cluster>)

@@ -25,6 +25,7 @@
 // various global objects and pointers
 static WorkerLock     _dummy1;
 WorkerLock*           _lfDebugOutputLock = &_dummy1; // RuntimeDebug.h
+size_t                _lfPagesize = 0;
 
 #if TESTING_ENABLE_DEBUGGING
 static WorkerLock     _dummy2;
@@ -59,6 +60,7 @@ static const char* DebugOptions[] = {
 static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug options mismatch");
 
 EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
+  _lfPagesize = sysconf(_SC_PAGESIZE);
   char* env = getenv("FibreDebugString");
   if (env) DBG::init(DebugOptions, env, false);
 #if TESTING_ENABLE_STATISTICS
