@@ -526,40 +526,6 @@ public:
   }
 };
 
-// NOTE: on queue after P and before V
-template<typename Lock = DummyLock>
-class LimitedSemaphore1 {
-  Lock lock;
-  FlexFredQueueNemesis queue; // QueueStub does not have pop(next) interface
-
-public:
-  explicit LimitedSemaphore1(ssize_t c = 1) { RASSERT(c == 1, c); }
-  ~LimitedSemaphore1() { cleanup(); }
-  void cleanup() { RASSERT0(queue.empty()); }
-
-  SemaphoreResult P(bool wait = true) {
-    RASSERT0(wait);
-    Fred* cf = Context::CurrFred();
-    RuntimeDisablePreemption();
-    if (!queue.push(*cf)) {
-      RuntimeEnablePreemption();
-      return SemaphoreWasOpen;
-    }
-    Suspender::suspend<false>(*cf);
-    return SemaphoreSucess;
-  }
-
-  template<bool Enqueue = true, bool DirectSwitch = false>
-  Fred* V() {
-    Fred* next = nullptr;
-    lock.acquire();
-    queue.pop(next);
-    lock.release();
-    if (next && Enqueue) next->resume<DirectSwitch>();
-    return next;
-  }
-};
-
 class SimpleMutex0 {
   Benaphore<> ben;
   LimitedSemaphore0<> sem;
@@ -569,15 +535,6 @@ public:
   bool acquire()    { return ben.P() || sem.P(); }
   bool tryAcquire() { return ben.tryP(); }
   void release()    { if (!ben.V()) sem.V(); }
-};
-
-class SimpleMutex1 {
-  LimitedSemaphore1<> sem;
-
-public:
-  SimpleMutex1() : sem(1) {}
-  bool acquire() { return sem.P(); }
-  void release() { sem.V(); }
 };
 
 template<typename Lock = BinaryLock<>>

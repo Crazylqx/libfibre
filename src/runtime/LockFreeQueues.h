@@ -39,27 +39,29 @@ public:
 
   bool tryPushEmpty(Node& elem) { return tryPushEmpty(elem, elem); }
 
-  Node* push(Node& first, Node& last) {
+  bool push(Node& first, Node& last) {
     RASSERT(!Next(last), FmtHex(&last));       // assume link invalidated at pop
-    // make sure writes to 'next' are not reordered with this update
     Node* prev = __atomic_exchange_n(&tail, &last, __ATOMIC_SEQ_CST); // swing tail to last of new element(s)
-    if (prev) Next(*prev) = &first;
-    return prev;
+    if (!prev) return true;
+    Next(*prev) = &first;
+    return false;
   }
 
-  Node* push(Node& elem) { return push(elem, elem); }
+  bool push(Node& elem) { return push(elem, elem); }
 
-  Node* next(Node& elem) {
+  Node* pop(Node& elem) {
     Node* expected = &elem;
     if (__atomic_compare_exchange_n(&tail, &expected, nullptr, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return nullptr;
     while (!Next(elem)) Pause();               // producer in push()
-    return Next(elem);
+    Node* next = Next(elem);
+    Next(elem) = nullptr;                      // invalidate link
+    return next;
   }
 };
 
 // https://doi.org/10.1109/CCGRID.2006.31, similar to MCS lock
 // note that modifications to 'head' need to be integrated with basic MCS operations in this particular way
-// pop() inherits the potential stall from MCS queue's next() (see base class above)
+// pop() inherits the potential stall from MCS queue's pop() (see base class above)
 template<typename Node, Node* volatile&(*Next)(Node&)>
 class QueueNemesis : public QueueMCS<Node,Next> {
   Node* volatile head;
@@ -67,26 +69,25 @@ class QueueNemesis : public QueueMCS<Node,Next> {
 public:
   QueueNemesis() : head(nullptr) {}
 
-  Node* push(Node& first, Node& last) {
-    Node* prev = QueueMCS<Node,Next>::push(first, last);
-    if (!prev) head = &first;
-    return prev;
+  bool push(Node& first, Node& last) {
+    if (!QueueMCS<Node,Next>::push(first, last)) return false;
+    head = &first;
+    return true;
   }
 
-  Node* push(Node& elem) { return push(elem, elem); }
+  bool push(Node& elem) { return push(elem, elem); }
 
   Node* pop(Node*& next) {
     if (!head) return nullptr;
     Node* elem = head;                         // return head
-    if (Next(*elem)) {
-      head = next = Next(*elem);
-      MemoryFence();                           // force memory sync
+    head = Next(*elem);
+    if (head) {
+      next = head;
+      Next(*elem) = nullptr;                   // invalidate link
     } else {
-      head = nullptr; // store nullptr in head before potential modification of tail in next()
-      next = QueueMCS<Node,Next>::next(*elem); // memory sync in next()
-      if (next) head = next;
+      next = QueueMCS<Node,Next>::pop(*elem);  // memory sync, potential atomic swing of tail
+      if (next) head = next;                   // head update is safe, if queue not empty
     }
-    Next(*elem) = nullptr;                     // invalidate link
     return elem;
   }
 
