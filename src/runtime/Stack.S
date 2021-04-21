@@ -20,8 +20,9 @@
 
 #if defined(__x86_64__)
 
-.align 8
+.p2align 4
 .globl stackDirect
+.type stackDirect, @function
 stackDirect:                // stack pointer, func, arg1, arg2, arg3
 	movq %rdi, %rsp           // set stack pointer
 	movq %rsi, %rax           // save 'func' in %rax
@@ -33,9 +34,11 @@ stackDirect:                // stack pointer, func, arg1, arg2, arg3
 	pushq $0                  // previous %rbp = 0
 	movq %rsp, %rbp           // set base pointer
 	jmp *%rax                 // invoke 'func'
+.size stackDirect, .-stackDirect
 
-.align 8
+.p2align 4
 .globl stackInit
+.type stackInit, @function
 stackInit:                  // stack, func, arg1, arg2, arg3 -> new stack
 	movq %rsi, -64(%rdi)      // store 'func' for stub function (via %rbx)
 	movq %rdx, -56(%rdi)      // store 'arg1' for stub function (via %r12)
@@ -48,8 +51,10 @@ stackInit:                  // stack, func, arg1, arg2, arg3 -> new stack
 	movq %rax, -16(%rdi)      // to push stubInit function as return address
 	leaq -64(%rdi), %rax      // return stack address, size 64: cf. STACK_PUSH
 	retq
+.size stackInit, .-stackInit
 
-.align 8
+.p2align 4
+.type stubInit, @function
 stubInit:                   // stub needed to pass arguments to 'invokeFred'
 	movq %rbx, %rdi           // 'func'
 	movq %r12, %rsi           // 'arg1'
@@ -60,20 +65,25 @@ stubInit:                   // stub needed to pass arguments to 'invokeFred'
 	pushq %rbp                // previous %rbp = 0
 	movq %rsp, %rbp           // set base pointer
 	jmp invokeFred@PLT
+.size stubInit, .-stubInit
 
-.align 8
+.p2align 4
 .globl stackSwitch
+.type stackSwitch, @function
 stackSwitch:                // (currStack, postFunc, &currSP, nextSP)
 	STACK_PUSH                // save register context
 	movq %rsp, (%rdx)         // save current stack pointer
 	movq %rcx, %rsp           // load next stack pointer
 	STACK_POP                 // restore register context
 	jmp *%rsi                 // %rdi set -> return directly from postFunc
+.size stackSwitch, .-stackSwitch
 
 #elif defined(__aarch64__)
 
-.align 8
+.align  2
+.p2align 3,,7
 .globl stackDirect
+.type stackDirect, @function
 stackDirect:                // stack pointer, func, arg1, arg2, arg3
   mov sp, x0                // set stack pointer
   mov x9, x1                // save 'func' in x9
@@ -84,9 +94,12 @@ stackDirect:                // stack pointer, func, arg1, arg2, arg3
   stp xzr, xzr, [sp, -16]!  // previous x29 (fp) = 0; previous x30 (lr) = 0 (fake stack frame)
   mov x29, sp               // set frame pointer
   br x9                     // invoke 'func'
+.size stackDirect, .-stackDirect
 
-.align 8
+.align  2
+.p2align 3,,7
 .globl stackInit
+.type stackInit, @function
 stackInit:                  // stack, func, arg1, arg2, arg3 -> new stack
   ldr x9, =stubInit         // load stubInit function address into x9
   stp xzr, x9,  [x0, -160]! // indirectly set x29 (fp) to 0; push stubInit function as return address - x30 (lr)
@@ -100,8 +113,11 @@ stackInit:                  // stack, func, arg1, arg2, arg3 -> new stack
   stp xzr, xzr, [x0, 128]   // indirectly set d12, d13 to 0
   stp xzr, xzr, [x0, 144]   // indirectly set d14, d15 to 0
   ret                       // return stack address (x0), size 96: cf. STACK_PUSH
+.size stackInit, .-stackInit
 
-.align 8
+.align  2
+.p2align 3,,7
+.type stubInit, @function
 stubInit:                   // stub needed to pass arguments to 'invokeFred'
   mov x0, x19               // 'func'
   mov x1, x20               // 'arg1'
@@ -111,9 +127,12 @@ stubInit:                   // stub needed to pass arguments to 'invokeFred'
   stp xzr, xzr, [sp, -16]!  // previous x29 (fp) = 0; previous x30 (lr) = 0 (fake stack frame)
   mov x29, sp               // set frame pointer
   b invokeFred
+.size stubInit, .-stubInit
 
-.align 8
+.align  2
+.p2align 3,,7
 .globl stackSwitch
+.type stackSwitch, @function
 stackSwitch:                // (currStack, postFunc, &currSP, nextSP)
   STACK_PUSH                // save register context
   mov x9, sp                // copy current stack pointer into an integer register
@@ -121,6 +140,7 @@ stackSwitch:                // (currStack, postFunc, &currSP, nextSP)
   mov sp, x3                // load next stack pointer
   STACK_POP                 // restore register context
   br x1                     // x0 set -> return directly from postFunc
+.size stackSwitch, .-stackSwitch
 
 #else
 #error unsupported architecture: only __x86_64__ or __aarch64__ supported at this time

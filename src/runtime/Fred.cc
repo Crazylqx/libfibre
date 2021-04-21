@@ -57,7 +57,7 @@ void Fred::postIdle(Fred*) {
 // yield -> resume right away
 void Fred::postYield(Fred* prevFred) {
   CHECK_PREEMPTION(0);
-  prevFred->processor->enqueueDirect(*prevFred, _friend<Fred>());
+  prevFred->processor->enqueueFred(*prevFred, _friend<Fred>());
 }
 
 // yield -> resume right away
@@ -152,7 +152,7 @@ void Fred::preempt() {
 void Fred::terminate() {
   CHECK_PREEMPTION(0);
   Context::CurrFred()->switchFred<Terminate>(Context::CurrProcessor().scheduleFull(_friend<Fred>()));
-  unreachable();
+  RABORT0();
 }
 
 void Fred::rebalance() {

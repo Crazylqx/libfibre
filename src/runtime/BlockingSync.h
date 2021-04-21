@@ -526,6 +526,7 @@ public:
   }
 };
 
+template<bool DirectSwitch>
 class SimpleMutex0 {
   Benaphore<> ben;
   LimitedSemaphore0<> sem;
@@ -534,7 +535,8 @@ public:
   SimpleMutex0() : ben(1), sem(0) {}
   bool acquire()    { return ben.P() || sem.P(); }
   bool tryAcquire() { return ben.tryP(); }
-  void release()    { if (!ben.V()) sem.V(); }
+  void release()    { if (!ben.V()) sem.V<true,DirectSwitch>(); }
+  bool acquire(const Time& timeout) { RABORT("timeout not implementated for SimpleMutex0"); }
 };
 
 template<typename Lock = BinaryLock<>>
@@ -600,6 +602,7 @@ public:
   SemaphoreResult P()          { return ben.P() ? SemaphoreWasOpen : sem.P(); }
   SemaphoreResult tryP()       { return ben.tryP() ? SemaphoreWasOpen : SemaphoreTimeout; }
   SemaphoreResult P(bool wait) { return wait ? P() : tryP(); }
+  SemaphoreResult P(const Time& timeout) { RABORT("timeout not implementated for FredBenaphore"); }
 
   template<bool Enqueue = true>
   Fred* V() {

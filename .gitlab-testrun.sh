@@ -81,7 +81,7 @@ function run_0() {
 function prep_1() {
 	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
 	[ "$(uname -m)" = "aarch64" ] && echo skip && return
-	sed -i -e 's/DYNSTACK=.*/DYNSTACK=1/' Makefile.config
+	sed -i -e 's/DYNSTACK?=.*/DYNSTACK?=1/' Makefile.config
 }
 
 function run_1() {

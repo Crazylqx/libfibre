@@ -78,6 +78,16 @@ EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
     SYSCALL(sigaction(signum, &sa, 0));
   }
 #endif
+  env = getenv("FibrePollerCount");
+  if (env) {
+    int cnt = atoi(env);
+    if (cnt > 0) pollerCount = cnt;
+  }
+  env = getenv("FibreWorkerCount");
+  if (env) {
+    int cnt = atoi(env);
+    if (cnt > 0) workerCount = cnt;
+  }
   return EventScope::bootstrap(pollerCount, workerCount);
 }
 

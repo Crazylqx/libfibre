@@ -597,11 +597,7 @@ int main(int argc, char* argv[]) {
   }
 
   // check correctness
-  int exitcode = 0;
-  if (!yieldExperiment && wsum != lsum) {
-    printf("CHECKSUM ERROR: total work %llu != %llu total lock\n", wsum, lsum);
-    exitcode = 1;
-  }
+  int exitcode = (!yieldExperiment && wsum != lsum);
 
   // correct for double-counting during loop - make output comparable to earlier versions
   wsum /= 2; wsum2 /= 4;
@@ -631,6 +627,7 @@ int main(int argc, char* argv[]) {
   }
 
   // exit hard for performance experiments
+  if (exitcode) printf("CHECKSUM ERROR: total work %llu != %llu total lock\n", wsum, lsum);
   exit(exitcode);
 
   // clean up

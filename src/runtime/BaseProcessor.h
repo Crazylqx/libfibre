@@ -94,7 +94,7 @@ class BaseProcessor : public DoubleLink<BaseProcessor,2> {
 #endif
   ReadyQueue readyQueue;
 
-  void enqueueDirect(Fred& f) {
+  void enqueueFred(Fred& f) {
     DBG::outl(DBG::Level::Scheduling, "Fred ", FmtHex(&f), " queueing on ", FmtHex(this));
     stats->enq.count();
     readyQueue.enqueue(f);
@@ -128,15 +128,15 @@ public:
   }
 #endif
 
-  void enqueueDirect(Fred& f, _friend<Fred>) {
-    enqueueDirect(f);
+  void enqueueFred(Fred& f, _friend<Fred>) {
+    enqueueFred(f);
   }
 
   void enqueueResume(Fred& f, _friend<Fred>) {
 #if TESTING_LOADBALANCING
-    if (!addReadyFred(f)) enqueueDirect(f);
+    if (!addReadyFred(f)) enqueueFred(f);
 #else
-    enqueueDirect(f);
+    enqueueFred(f);
     if (!readyCount.V()) readySem.V();
 #endif
   }

@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # trylock:timedlock:lockname
 TYPES=(
   "1:0:BinaryLock<>"
@@ -61,6 +63,7 @@ for t in "${!TYPES[@]}"; do
       ./apps/threadtest -d 60 -f 1024 -t 32 -l 4 -w 1000 -u 1000 -L ${LOCKTYPE} || exit 1
     }
   done
+  rm -f compile.out
   git checkout apps
 done
 exit 0
