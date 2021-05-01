@@ -5,14 +5,15 @@ TYPES=(
   "1:0:BinaryLock<>"
   "1:0:TicketLock"
   "1:0:MCSLock"
-  "1:0:SimpleMutex0"
+  "1:0:SimpleMutex0<true>"
+  "1:0:SimpleMutex0<false>"
   "1:1:LockedMutex<WorkerLock, true>"
   "1:1:LockedMutex<WorkerLock, false>"
   "1:1:SpinMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16>"
   "1:1:SpinMutex<LockedSemaphore<WorkerLock, true>, 0, 0, 0>"
   "1:0:SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>, true>, 4, 1024, 16>"
   "1:0:SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>, true>, 0, 0, 0>"
-  "1:1:OwnerMutex<FibreMutex>"
+  "1:1:OwnerMutex<FredMutex>"
   "1:0:OwnerMutex<FastMutex>"
 )
 
@@ -45,7 +46,7 @@ for t in "${!TYPES[@]}"; do
 	MUTEXLOCK=$(echo ${TYPES[$t]}|cut -f3 -d:)
 	HASTRYLOCK=$(echo ${TYPES[$t]}|cut -f1 -d:)
 	HASTIMEDLOCK=$(echo ${TYPES[$t]}|cut -f2 -d:)
-  sed -i -e "s/typedef FibreMutex shim_mutex_t;/typedef ${MUTEXLOCK} shim_mutex_t;/" apps/include/libfibre.h
+  sed -i -e "s/typedef FredMutex shim_mutex_t;/typedef ${MUTEXLOCK} shim_mutex_t;/" apps/include/libfibre.h
   sed -i -e "s/#define HASTRYLOCK 1/#define HASTRYLOCK ${HASTRYLOCK}/" apps/include/libfibre.h
   sed -i -e "s/#define HASTIMEDLOCK 1/#define HASTIMEDLOCK ${HASTIMEDLOCK}/" apps/include/libfibre.h
 

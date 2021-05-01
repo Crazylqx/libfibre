@@ -7,8 +7,8 @@ using namespace std;
 
 static volatile size_t counter = 0;
 
-static FibreMutex testmtx1;
-static FibreMutex testmtx2;
+static FredMutex testmtx1;
+static FredMutex testmtx2;
 
 static fibre_once_t once_test = PTHREAD_ONCE_INIT;
 static fibre_key_t key_test;
@@ -30,7 +30,7 @@ static void f1main() {
   cout << "F1 2" << endl;
   cout << "F1 3" << endl;
   for (size_t i = 0; i < 100000; i += 1) {
-    ScopedLock<FibreMutex> sl(testmtx2);
+    ScopedLock<FredMutex> sl(testmtx2);
     testmtx1.acquire();
     counter += 1;
     testmtx1.release();
@@ -46,7 +46,7 @@ static void f2main() {
   cout << "F2 2" << endl;
   cout << "F2 3" << endl;
   for (size_t i = 0; i < 100000; i += 1) {
-    ScopedLock<FibreMutex> sl(testmtx2);
+    ScopedLock<FredMutex> sl(testmtx2);
     testmtx1.acquire();
     counter += 1;
     testmtx1.release();
@@ -54,7 +54,7 @@ static void f2main() {
   cout << "F2 specific " << (char)(uintptr_t)fibre_getspecific(key_test) << endl;
 }
 
-static FibreSemaphore tmx(0);
+static FredSemaphore tmx(0);
 
 static void f3main() {
   fibre_once(&once_test, once_init);

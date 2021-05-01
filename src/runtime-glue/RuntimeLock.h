@@ -19,8 +19,8 @@
 
 #include "libfibre/OsLocks.h"
 
-#if TESTING_LOCK_SPIN
-typedef OsLock<4,TESTING_LOCK_SPIN,1> WorkerLock;
+#if defined(WORKER_LOCK_TYPE)
+typedef WORKER_LOCK_TYPE WorkerLock;
 #else
 typedef OsLock<0,0,0> WorkerLock;
 #endif

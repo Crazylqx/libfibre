@@ -5,14 +5,14 @@
 
 #define CurrCluster   Context::CurrCluster
 
-typedef Fibre          shim_thread_t;
-typedef FibreCondition shim_cond_t;
-typedef FibreBarrier   shim_barrier_t;
+typedef Fibre         shim_thread_t;
+typedef FredCondition shim_cond_t;
+typedef FredBarrier   shim_barrier_t;
 
 #if TESTING_LOCK_RECURSION
-typedef OwnerMutex<FibreMutex> shim_mutex_t;
+typedef OwnerMutex<FredMutex> shim_mutex_t;
 #else
-typedef FibreMutex shim_mutex_t;
+typedef FredMutex shim_mutex_t;
 #define HASTRYLOCK 1
 #define HASTIMEDLOCK 1
 #endif
@@ -62,7 +62,7 @@ static inline void shim_cond_destroy(shim_cond_t* cond)                 {}
 static inline void shim_cond_wait(shim_cond_t* cond, shim_mutex_t* mtx) { cond->wait(*mtx); }
 static inline void shim_cond_signal(shim_cond_t* cond)                  { cond->signal(); }
 
-static inline shim_barrier_t* shim_barrier_create(size_t cnt) { return new FibreBarrier(cnt); }
+static inline shim_barrier_t* shim_barrier_create(size_t cnt) { return new shim_barrier_t(cnt); }
 static inline void shim_barrier_destroy(shim_barrier_t* barr) { delete barr; }
 static inline void shim_barrier_wait(shim_barrier_t* barr)    { barr->wait(); }
 

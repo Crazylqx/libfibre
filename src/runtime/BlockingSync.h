@@ -533,13 +533,17 @@ class SimpleMutex0 {
 
 public:
   SimpleMutex0() : ben(1), sem(0) {}
+  void cleanup() {
+    RASSERT(ben.getValue() == 1, FmtHex(this));
+    sem.cleanup();
+  }
   bool acquire()    { return ben.P() || sem.P(); }
   bool tryAcquire() { return ben.tryP(); }
   void release()    { if (!ben.V()) sem.V<true,DirectSwitch>(); }
   bool acquire(const Time& timeout) { RABORT("timeout not implementated for SimpleMutex0"); }
 };
 
-template<typename Lock = BinaryLock<>>
+template<typename Lock>
 class FastBarrier {
   size_t target;
   volatile size_t counter;
@@ -696,21 +700,21 @@ public:
   }
 };
 
-template<typename Lock>
-#if TESTING_MUTEX_FIFO
-class Mutex : public LockedMutex<Lock, true> {};
-#elif TESTING_MUTEX_BARGING
-class Mutex : public LockedMutex<Lock, false> {};
-#elif TESTING_MUTEX_SPIN
-class Mutex : public SpinMutex<LockedSemaphore<Lock, true>, 4, 1024, 16> {};
-#else
-class Mutex : public SpinMutex<LockedSemaphore<Lock, true>, 0, 0, 0> {};
-#endif
-
-#if TESTING_MUTEX_SPIN
-typedef SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 4, 1024, 16> FastMutex;
+#if defined(FAST_MUTEX_TYPE)
+typedef FAST_MUTEX_TYPE FastMutex;
 #else
 typedef SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 0, 0, 0> FastMutex;
 #endif
+
+#if defined(FRED_MUTEX_TYPE)
+typedef FRED_MUTEX_TYPE FredMutex;
+#else
+typedef SpinMutex<LockedSemaphore<WorkerLock, true>, 0, 0, 0> FredMutex;
+#endif
+
+typedef Condition<>                 FredCondition;
+typedef LockedSemaphore<WorkerLock> FredSemaphore;
+typedef LockedRWLock<WorkerLock>    FredRWLock;
+typedef LockedBarrier<WorkerLock>   FredBarrier;
 
 #endif /* _BlockingSync_h_ */

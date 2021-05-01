@@ -14,11 +14,19 @@
 //#define TESTING_PLACEMENT_STAGING     1 // load-based staging vs. round-robin placement
 //#define TESTING_IDLE_SPIN         65536 // spin before entering idle loop
 //#define TESTING_HALT_SPIN         65536 // spin before halting worker thread/core
-//#define TESTING_MUTEX_FIFO            1 // use baton-passing fifo mutex
-//#define TESTING_MUTEX_BARGING         1 // use blocking/barging mutex
-//#define TESTING_MUTEX_SPIN            1 // spin before block in non-fifo mutex
 
 #include "runtime-glue/testoptions.h"
+
+/******************************** lock options ********************************/
+
+//#define FAST_MUTEX_TYPE SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 4, 1024, 16>
+//#define FAST_MUTEX_TYPE SimpleMutex0<false>
+//#define FAST_MUTEX_TYPE SimpleMutex0<true>
+
+//#define FRED_MUTEX_TYPE LockedMutex<WorkerLock, true>  // locked, fifo
+//#define FRED_MUTEX_TYPE LockedMutex<WorkerLock, false> // locked, barging
+//#define FRED_MUTEX_TYPE SpinMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16> // spinning
+//#define FRED_MUTEX_TYPE FastMutex
 
 /******************************** sanity checks ********************************/
 

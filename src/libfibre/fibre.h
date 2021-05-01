@@ -25,26 +25,20 @@
 
 #include "libfibre/EventScope.h" // EventScope.h pulls in everything else
 
-typedef Mutex<WorkerLock>           FibreMutex;
-typedef Condition<>                 FibreCondition;
-typedef LockedSemaphore<WorkerLock> FibreSemaphore;
-typedef LockedRWLock<WorkerLock>    FibreRWLock;
-typedef LockedBarrier<WorkerLock>   FibreBarrier;
-
-typedef Fibre*         fibre_t;
-typedef FibreCondition fibre_cond_t;
-typedef FibreSemaphore fibre_sem_t;
-typedef FibreRWLock    fibre_rwlock_t;
-typedef FibreBarrier   fibre_barrier_t;
-typedef SpinBarrier    spin_barrier_t;
-typedef FastBarrier<>  fast_barrier_t;
+typedef Fibre*                    fibre_t;
+typedef FredCondition             fibre_cond_t;
+typedef FredSemaphore             fibre_sem_t;
+typedef FredRWLock                fibre_rwlock_t;
+typedef FredBarrier               fibre_barrier_t;
+typedef SpinBarrier               spin_barrier_t;
+typedef FastBarrier<BinaryLock<>> fast_barrier_t;
 
 #if TESTING_LOCK_RECURSION
-typedef OwnerMutex<FibreMutex> fibre_mutex_t;
-typedef OwnerMutex<FastMutex>  fibre_fastmutex_t;
+typedef OwnerMutex<FredMutex> fibre_mutex_t;
+typedef OwnerMutex<FastMutex> fibre_fastmutex_t;
 #else
-typedef FibreMutex fibre_mutex_t;
-typedef FastMutex  fibre_fastmutex_t;
+typedef FredMutex fibre_mutex_t;
+typedef FastMutex fibre_fastmutex_t;
 #endif
 
 struct fibre_attr_t {

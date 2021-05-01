@@ -6,9 +6,12 @@
 #define TESTING_LAZY_FD_REGISTRATION  1 // lazy vs. eager registration after fd creation
 //#define TESTING_ONESHOT_REGISTRATION  1 // use oneshot event polling
 
-// **** libfibre options - system threading
-//#define TESTING_LOCK_SPIN          1024 // spin before blocking on system lock
+/******************************** lock options ********************************/
+
 //#define TESTING_LOCK_RECURSION        1 // enable mutex recursion in C interface
+
+//#define WORKER_LOCK_TYPE BinaryLock<>
+//#define WORKER_LOCK_TYPE OsLock<4,1024,1>
 
 /******************************** sanity checks ********************************/
 

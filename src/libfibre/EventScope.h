@@ -38,7 +38,7 @@ class EventScope {
   // A vector for FDs works well here in principle, because POSIX guarantees lowest-numbered FDs:
   // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
   // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
-  typedef Mutex<FastMutex>                 SyncMutex;
+  typedef FredMutex                        SyncMutex;
   typedef LockedSemaphore<WorkerLock,true> SyncSem;
   struct SyncFD {
     SyncSem   rdSem;
