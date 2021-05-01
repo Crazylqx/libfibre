@@ -495,7 +495,7 @@ public:
 template<typename Lock = DummyLock>
 class LimitedSemaphore0 {
   Lock lock;
-  FlexFredQueueMPSC queue;
+  FredReadyQueue queue;
 
 public:
   explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
@@ -543,7 +543,7 @@ template<typename Lock = BinaryLock<>>
 class FastBarrier {
   size_t target;
   volatile size_t counter;
-  FlexFredQueueMPSC queue;
+  FredReadyQueue queue;
   Lock lock;
 
 public:

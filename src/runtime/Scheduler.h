@@ -22,10 +22,10 @@
 #if TESTING_LOADBALANCING
 
 class LoadManager {
-  volatile ssize_t fredCounter;
-  WorkerLock       procLock;
-  ProcessorStack   waitingProcs;
-  FlexFredQueue    waitingFreds;
+  volatile ssize_t         fredCounter;
+  WorkerLock               procLock;
+  ProcessorStack           waitingProcs;
+  FredQueue<FredReadyLink> waitingFreds;
 
   LoadManagerStats* stats;
 

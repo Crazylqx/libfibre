@@ -47,7 +47,7 @@ public:
   }
 
   Node* pop() {
-    RASSERT(!empty(), FmtHex(this));
+    if (empty()) return nullptr;
     Node* last = head;
     head = Next(*last);
     Next(*last) = nullptr;               // invalidate link
@@ -55,7 +55,7 @@ public:
   }
 
   Node* pop(size_t& count) {             // returns pointer to last element popped
-    RASSERT(!empty(), FmtHex(this));
+    if (empty()) return nullptr;
     Node* last = head;
     for (size_t i = 1; i < count; i += 1) {
       if (Next(*last) == nullptr) count = i; // breaks loop and sets count
@@ -112,7 +112,7 @@ public:
 
   template<typename...Args>
   Node* pop(Args&... args) {
-    RASSERT(!empty(), FmtHex(this));
+    if (empty()) return nullptr;
     Node* elem = head;
     popHelper(elem, args...);
     head = Next(*elem);

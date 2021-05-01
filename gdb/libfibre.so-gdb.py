@@ -10,7 +10,7 @@ class FibreSupport():
         FibreSupport.saved = False
 
     def stop_handler(event):
-        if (gdb.lookup_symbol("_lfGlobalFredList")[0] == None):
+        if (gdb.lookup_symbol("_lfFredDebugList")[0] == None):
             print("WARNING: no fibre debugging support - did you enable TESTING_ENABLE_DEBUGGING?")
             return
         FibreSupport.list = []
@@ -18,13 +18,13 @@ class FibreSupport():
         FibreSupport.threads = {}
         FibreSupport.saved = True
         # traverse runtime stack list to build internal list of fibres
-        _lfGlobalFredList = gdb.parse_and_eval("_lfGlobalFredList")
-        DebugListLink = gdb.parse_and_eval("DebugListLink")
-        first = _lfGlobalFredList['anchorLink'].address
-        next = _lfGlobalFredList['anchorLink']['link'][DebugListLink]['next']
+        _lfFredDebugList = gdb.parse_and_eval("_lfFredDebugList")
+        FredDebugLink = gdb.parse_and_eval("FredDebugLink")
+        first = _lfFredDebugList['anchorLink'].address
+        next = _lfFredDebugList['anchorLink']['link'][FredDebugLink]['next']
         while (next != first):
             FibreSupport.list.append(next)
-            next = next['link'][DebugListLink]['next']
+            next = next['link'][FredDebugLink]['next']
         orig_thread = gdb.selected_thread()
         for thread in gdb.selected_inferior().threads():
             thread.switch()

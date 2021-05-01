@@ -28,26 +28,16 @@ class Scheduler;
 
 class ReadyQueue {
   WorkerLock readyLock;
-#if TESTING_LOCKED_READYQUEUE
-  FlexFredQueue     queue[NumPriority];
-#else
-  FlexFredQueueMPSC queue[NumPriority];
-#endif
+  FredReadyQueue queue[NumPriority];
 
   ReadyQueue(const ReadyQueue&) = delete;            // no copy
   ReadyQueue& operator=(const ReadyQueue&) = delete; // no assignment
 
   Fred* dequeueInternal() {
-#if TESTING_LOCKED_READYQUEUE
-    for (size_t p = 0; p < NumPriority; p += 1) {
-      if (!queue[p].empty()) return queue[p].pop();
-    }
-#else
     for (size_t p = 0; p < NumPriority; p += 1) {
       Fred* f = queue[p].pop();
       if (f) return f;
     }
-#endif
     return nullptr;
   }
 

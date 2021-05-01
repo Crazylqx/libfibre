@@ -42,8 +42,8 @@ static const size_t defaultStackGuard = 4096;
 #endif
 
 #if TESTING_ENABLE_DEBUGGING
-extern WorkerLock*     _lfGlobalFredLock;
-extern GlobalFredList* _lfGlobalFredList;
+extern WorkerLock*              _lfFredDebugLock;
+extern FredList<FredDebugLink>* _lfFredDebugList;
 #endif
 
 class Cluster;
@@ -150,15 +150,15 @@ class Fibre : public Fred, public FibreSpecific {
 
   void initDebug() {
 #if TESTING_ENABLE_DEBUGGING
-    ScopedLock<WorkerLock> sl(*_lfGlobalFredLock);
-    _lfGlobalFredList->push_back(*this);
+    ScopedLock<WorkerLock> sl(*_lfFredDebugLock);
+    _lfFredDebugList->push_back(*this);
 #endif
   }
 
   void clearDebug() {
 #if TESTING_ENABLE_DEBUGGING
-    ScopedLock<WorkerLock> sl(*_lfGlobalFredLock);
-    _lfGlobalFredList->remove(*this);
+    ScopedLock<WorkerLock> sl(*_lfFredDebugLock);
+    _lfFredDebugList->remove(*this);
 #endif
   }
 

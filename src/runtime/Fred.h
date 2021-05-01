@@ -32,39 +32,29 @@ class KernelProcessor;
 class Scheduler;
 struct Suspender;
 
+static const size_t FredReadyLink = 0;
 #if TESTING_ENABLE_DEBUGGING
-static const size_t DebugListLink = 0;
-static const size_t FlexQueueLink = 1;
+static const size_t FredDebugLink = 1;
+static const size_t FredLinkCount = 2;
 #else
-static const size_t FlexQueueLink = 0;
-#endif
-static const size_t FredLinkCount = FlexQueueLink + 1;
-
-template <size_t NUM> class FredQueue :
-public IntrusiveQueue<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>> {};
-
-template <size_t NUM> class FredList :
-public IntrusiveList<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>> {};
-
-template <size_t NUM> class FredQueueNemesis :
-public IntrusiveQueueNemesis<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>> {};
-
-template <size_t NUM> class FredQueueStub :
-public IntrusiveQueueStub<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>> {};
-
-typedef FredQueue       <FlexQueueLink> FlexFredQueue;
-typedef FredList        <FlexQueueLink> FlexFredList;
-typedef FredQueueNemesis<FlexQueueLink> FlexFredQueueNemesis;
-typedef FredQueueStub   <FlexQueueLink> FlexFredQueueStub;
-
-#if TESTING_NEMESIS_READYQUEUE
-typedef FlexFredQueueNemesis FlexFredQueueMPSC;
-#else
-typedef FlexFredQueueStub    FlexFredQueueMPSC;
+static const size_t FredLinkCount = 1;
 #endif
 
-#if TESTING_ENABLE_DEBUGGING
-typedef FredList<DebugListLink> GlobalFredList;
+template <size_t NUM> class FredList 
+: public IntrusiveList<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>> {};
+template <size_t NUM> class FredQueue 
+: public IntrusiveQueue<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>> {};
+template <size_t NUM, bool Blocking=false> class FredQueueStub 
+: public IntrusiveQueueStub<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>,Blocking> {};
+template <size_t NUM> class FredQueueNemesis 
+: public IntrusiveQueueNemesis<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>> {};
+
+#if TESTING_LOCKED_READYQUEUE
+typedef FredQueue<FredReadyLink> FredReadyQueue;
+#elif TESTING_STUB_QUEUE
+typedef FredQueueStub<FredReadyLink> FredReadyQueue;
+#else
+typedef FredQueueNemesis<FredReadyLink> FredReadyQueue;
 #endif
 
 class Fred : public DoubleLink<Fred,FredLinkCount> {

@@ -28,10 +28,10 @@ WorkerLock*           _lfDebugOutputLock = &_dummy1; // RuntimeDebug.h
 size_t                _lfPagesize = 0;
 
 #if TESTING_ENABLE_DEBUGGING
-static WorkerLock     _dummy2;
-static GlobalFredList _dummy3;
-WorkerLock*           _lfGlobalFredLock = &_dummy2; // Fibre.h
-GlobalFredList*       _lfGlobalFredList = &_dummy3; // Fibre.h
+static WorkerLock              _dummy2;
+static FredList<FredDebugLink> _dummy3;
+WorkerLock*                    _lfFredDebugLock = &_dummy2; // Fibre.h
+FredList<FredDebugLink>*       _lfFredDebugList = &_dummy3; // Fibre.h
 #endif
 
 #if TESTING_ENABLE_STATISTICS

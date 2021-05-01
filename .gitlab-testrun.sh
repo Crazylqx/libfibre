@@ -139,7 +139,7 @@ function run_6() {
 }
 
 function prep_7() {
-	sed -i -e 's/.* TESTING_NEMESIS_READYQUEUE .*/#undef TESTING_NEMESIS_READYQUEUE/' src/runtime/testoptions.h
+	sed -i -e 's/.* TESTING_STUB_QUEUE .*/#define TESTING_STUB_QUEUE 1/' src/runtime/testoptions.h
 	echo memcached
 }
 
