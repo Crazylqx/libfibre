@@ -68,3 +68,12 @@ for t in "${!TYPES[@]}"; do
   git checkout apps
 done
 exit 0
+
+# debug run:
+while gdb -q\
+ -ex "set print thread-events off"\
+ -ex "set pagination off"\
+ -ex "break _SYSCALLabort"\
+ -ex "run -l8 -t32 -f1024 -w1 -u1"\
+ -ex "quit" ./apps/threadtest; do sleep 3;
+done

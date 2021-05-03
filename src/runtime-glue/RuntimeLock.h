@@ -17,6 +17,7 @@
 #ifndef _RuntimeLock_h_
 #define _RuntimeLock_h_ 1
 
+#include "runtime/SpinLocks.h"
 #include "libfibre/OsLocks.h"
 
 #if defined(WORKER_LOCK_TYPE)

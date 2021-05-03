@@ -186,14 +186,6 @@ class LockedSemaphore {
   volatile ssize_t counter;
   BQ bq;
 
-  void unlock() {}
-
-  template<typename Lock1, typename...Args>
-  void unlock(Lock1& l, Args&... args) {
-    l.release();
-    unlock(args...);
-  }
-
   template<typename... Args>
   SemaphoreResult internalP(const Args&... args) {
     // baton passing: counter unchanged, if blocking fails (timeout)
@@ -217,25 +209,15 @@ public:
   SemaphoreResult P(const Args&... args) { lock.acquire(); return internalP(args...); }
   SemaphoreResult tryP()                 { lock.acquire(); return internalP(false); }
 
-  template<typename... Args>
-  SemaphoreResult unlockP(Args&... args) { lock.acquire(); unlock(args...); return internalP(true); }
-
-  template<bool Enqueue = true, bool TryOnly = false>
+  template<bool Enqueue = true>
   Fred* V() {
     ScopedLock<Lock> al(lock);
     Fred* f = bq.template unblock<Enqueue>();
     if (f) return f;
-    if (TryOnly) return nullptr;
     if (Binary) counter = 1;
     else counter += 1;
     return nullptr;
   }
-
-  template<bool Enqueue = true>
-  Fred* tryV() { return V<Enqueue,true>(); }
-
-  template<bool Enqueue = true, bool TryOnly = false>
-  Fred* release() { return V<Enqueue,TryOnly>(); }
 };
 
 template<typename Lock, bool Fifo, typename BQ = BlockingQueue>

@@ -45,8 +45,8 @@ inline void Fred::switchFred(Fred& nextFred) {
     case Suspend:   stackSwitch(this, postSuspend,   &stackPointer, nextFred.stackPointer); break;
     case Terminate: stackSwitch(this, postTerminate, &stackPointer, nextFred.stackPointer); break;
   }
-  stackPointer = 0;                // mark stack in use for gdb
-  RuntimePostFredSwitch(*this, _friend<Fred>()); // RT-specific functionality
+  stackPointer = 0;                              // mark stack in use for gdb
+  RuntimePostFredSwitch(*this, _friend<Fred>()); // runtime-specific functionality
 }
 
 // idle fred -> do nothing
@@ -57,7 +57,7 @@ void Fred::postIdle(Fred*) {
 // yield -> resume right away
 void Fred::postYield(Fred* prevFred) {
   CHECK_PREEMPTION(0);
-  prevFred->processor->enqueueFred(*prevFred, _friend<Fred>());
+  prevFred->processor->enqueueYield(*prevFred, _friend<Fred>());
 }
 
 // yield -> resume right away
@@ -71,7 +71,7 @@ void Fred::postSuspend(Fred* prevFred) {
   CHECK_PREEMPTION(0);
   size_t prev = __atomic_fetch_sub(&prevFred->runState, RunState(1), __ATOMIC_SEQ_CST);
   if (prev == ResumedEarly) prevFred->resumeInternal(); // ResumedEarly -> Running
-  else RASSERT(prev == Running, prev);                   // Running -> Parked
+  else RASSERT(prev == Running, prev);                  // Running -> Parked
 }
 
 // destroy fred

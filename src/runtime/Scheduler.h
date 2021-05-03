@@ -65,7 +65,7 @@ public:
   Fred* getReadyFred(BaseProcessor& proc) {
     ssize_t fredCount = __atomic_fetch_sub(&fredCounter, 1, __ATOMIC_RELAXED);
     if (fredCount > 0) {
-      stats->ready.count(fredCount);     // number of freds ready (log-scale)
+      stats->ready.count(fredCount);     // number of freds ready
       return nullptr;
     } else {
       stats->blocked.count(1-fredCount); // number of procs waiting including this one

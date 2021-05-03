@@ -45,7 +45,9 @@ public:
   ReadyQueue() = default;
 
   Fred* dequeue() {
+#if TESTING_LOADBALANCING
     ScopedLock<WorkerLock> sl(readyLock);
+#endif
     return dequeueInternal();
   }
 
@@ -118,7 +120,7 @@ public:
   }
 #endif
 
-  void enqueueFred(Fred& f, _friend<Fred>) {
+  void enqueueYield(Fred& f, _friend<Fred>) {
     enqueueFred(f);
   }
 

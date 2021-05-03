@@ -163,21 +163,24 @@ public:
     for (;;) {
       int ret = sem_trywait(&sem);
       if (ret == 0) return true;
-      else if (_SysErrno() == EAGAIN) return false;
-      else { RASSERT(_SysErrno() == EINTR, _SysErrno()); }
+      if (_SysErrno() == EAGAIN) return false;
+      RASSERT(_SysErrno() == EINTR, _SysErrno());
     }
   }
   bool P(bool wait = true) {
     if (!wait) return tryP();
-    while (sem_wait(&sem) < 0) { RASSERT(_SysErrno() == EINTR, _SysErrno()); }
-    return true;
+    for (;;) {
+      int ret = sem_wait(&sem);
+      if (ret == 0) return true;
+      RASSERT(_SysErrno() == EINTR, _SysErrno());
+    }
   }
   bool P(const Time& timeout) {
     for (;;) {
       int ret = sem_timedwait(&sem, &timeout);
       if (ret == 0) return true;
-      else if (_SysErrno() == ETIMEDOUT) return false;
-      else { RASSERT(_SysErrno() == EINTR, _SysErrno()); }
+      if (_SysErrno() == ETIMEDOUT) return false;
+      RASSERT(_SysErrno() == EINTR, _SysErrno());
     }
   }
   void V() {
