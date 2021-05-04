@@ -40,14 +40,14 @@ static const size_t FredLinkCount = 2;
 static const size_t FredLinkCount = 1;
 #endif
 
-template <size_t NUM> class FredList 
-: public IntrusiveList<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>> {};
-template <size_t NUM> class FredQueue 
-: public IntrusiveQueue<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>> {};
-template <size_t NUM, bool Blocking=false> class FredQueueStub 
-: public IntrusiveQueueStub<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>,Blocking> {};
-template <size_t NUM> class FredQueueNemesis 
-: public IntrusiveQueueNemesis<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>> {};
+template <size_t NUM> using FredList =
+IntrusiveList<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>>;
+template <size_t NUM> using FredQueue =
+IntrusiveQueue<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>>;
+template <size_t NUM> using FredQueueNemesis =
+IntrusiveQueueNemesis<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>>;
+template <size_t NUM, bool Blocking=false> using FredQueueStub =
+IntrusiveQueueStub<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>,Blocking>;
 
 #if TESTING_LOCKED_READYQUEUE
 typedef FredQueue<FredReadyLink> FredReadyQueue;

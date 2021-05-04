@@ -165,7 +165,7 @@ public:
     return false;
   }
 
-  template<bool Enqueue = true>
+  template<bool Enqueue>
   Fred* unblock() {                     // Note that caller must hold lock
     for (Node* node = queue.front(); node != queue.edge(); node = IntrusiveList<Node>::next(*node)) {
       Fred* f = &node->fred;
@@ -211,12 +211,17 @@ public:
 
   template<bool Enqueue = true>
   Fred* V() {
-    ScopedLock<Lock> al(lock);
-    Fred* f = bq.template unblock<Enqueue>();
-    if (f) return f;
-    if (Binary) counter = 1;
-    else counter += 1;
-    return nullptr;
+    lock.acquire();
+    Fred* next = bq.template unblock<false>();
+    if (next) {
+      lock.release();
+      if (Enqueue) next->resume();
+    } else {
+      if (Binary) counter = 1;
+      else counter += 1;
+      lock.release();
+    }
+    return next;
   }
 };
 
@@ -257,14 +262,12 @@ public:
   bool tryAcquire() { return acquire(false); }
 
   void release() {
-    ScopedLock<Lock> al(lock);
     RASSERT(owner == Context::CurrFred(), FmtHex(owner));
-    if (Fifo) {
-      owner = bq.unblock();
-    } else {
-      owner = nullptr;
-      bq.unblock();
-    }
+    lock.acquire();
+    Fred* next = bq.template unblock<false>();
+    owner = Fifo ? next : nullptr;
+    lock.release();
+    if (next) next->resume();
   }
 };
 
@@ -284,7 +287,7 @@ public:
   bool wait(Lock& lock, const Time& timeout) { return bq.block(lock, timeout); }
 
   template<bool Broadcast = false>
-  void signal() { while (bq.unblock() && Broadcast); }
+  void signal() { while (bq.template unblock<true>() && Broadcast); }
 };
 
 template<typename Lock, typename BQ = BlockingQueue>
@@ -305,7 +308,7 @@ public:
     lock.acquire();
     counter += 1;
     if (counter == target) {
-      for ( ;counter > 0; counter -= 1) bq.unblock();
+      for ( ;counter > 0; counter -= 1) bq.template unblock<true>();
       lock.release();
       return true;
     } else {
@@ -325,14 +328,18 @@ class LockedRWLock {
 
   template<typename... Args>
   bool internalAR(const Args&... args) {
+    Fred* next;
     lock.acquire();
-    if (state < 0 || !bqW.empty()) {
+    if (state >= 0 && bqW.empty()) {
+      next = nullptr;
+    } else {
       if (!bqR.block(lock, args...)) return false;
       lock.acquire();
-      bqR.unblock();                // waiting readers can barge after writer
+      next = bqR.template unblock<false>();  // all waiting readers can barge after writer
     }
     state += 1;
     lock.release();
+    if (next) next->resume();
     return true;
   }
 
@@ -367,17 +374,25 @@ public:
   bool tryAcquireWrite() { return acquireWrite(false); }
 
   void release() {
-    ScopedLock<Lock> al(lock);
+    Fred* next;
+    lock.acquire();
     RASSERT0(state != 0);
     if (state > 0) {             // reader leaves; if open -> writer next
       state -= 1;
-      if (state > 0) return;
-      if (!bqW.unblock()) bqR.unblock();
+      if (state > 0) {
+        next = nullptr;
+      } else {
+        next = bqW.template unblock<false>();
+        if (!next) next = bqR.template unblock<false>();
+      }
     } else {                     // writer leaves -> readers next
       RASSERT0(state == -1);
       state += 1;
-      if (!bqR.unblock()) bqW.unblock();
+      next = bqR.template unblock<false>();
+      if (!next) next = bqW.template unblock<false>();
     }
+    lock.release();
+    if (next) next->resume();
   }
 };
 
@@ -493,7 +508,7 @@ public:
     return SemaphoreSucess;
   }
 
-  template<bool Enqueue = true, bool DirectSwitch = false>
+  template<bool Enqueue = true>
   Fred* V() {
     Fred* next;
     lock.acquire();
@@ -503,7 +518,7 @@ public:
       Pause();
     }
     lock.release();
-    if (Enqueue) next->resume<DirectSwitch>();
+    if (Enqueue) next->resume();
     return next;
   }
 };
@@ -520,9 +535,13 @@ public:
     sem.cleanup();
   }
   bool acquire()    { return ben.P() || sem.P(); }
-  bool tryAcquire() { return ben.tryP(); }
-  void release()    { if (!ben.V()) sem.V<true,DirectSwitch>(); }
   bool acquire(const Time& timeout) { RABORT("timeout not implementated for SimpleMutex0"); }
+  bool tryAcquire() { return ben.tryP(); }
+  void release()    {
+    if (ben.V()) return;
+    Fred* next = sem.V<false>();
+    next->resume<DirectSwitch>();
+  }
 };
 
 template<typename Lock>
