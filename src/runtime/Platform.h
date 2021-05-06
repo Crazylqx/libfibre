@@ -171,6 +171,10 @@ static inline void MemoryFence() { asm volatile("dmb sy" ::: "memory"); }
 #error unsupported architecture: only __x86_64__ or __aarch64__ supported at this time
 #endif
 
+struct PauseSpin {
+  inline void operator()(void) { Pause(); }
+};
+
 template<size_t N>
 static inline mword multiscan_next(const mword* data, size_t idx, bool findset = true) {
   if (idx >= N * bitsize<mword>()) return N * bitsize<mword>();

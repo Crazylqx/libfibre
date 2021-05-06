@@ -223,6 +223,15 @@ public:
     }
     return next;
   }
+
+  template<bool Enqueue = true>
+  Fred* tryV() {
+    lock.acquire();
+    Fred* next = bq.template unblock<false>();
+    lock.release();
+    if (Enqueue && next) next->resume();
+    return next;
+  }
 };
 
 template<typename Lock, bool Fifo, typename BQ = BlockingQueue>
@@ -492,7 +501,7 @@ public:
 template<typename Lock = DummyLock>
 class LimitedSemaphore0 {
   Lock lock;
-  FredReadyQueue queue;
+  FredMPSC<FredReadyLink,false> queue;
 
 public:
   explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
@@ -508,6 +517,10 @@ public:
     return SemaphoreSucess;
   }
 
+  SemaphoreResult P(const Time& timeout) {
+    RABORT("timeout not implementated for LimitedSemaphore0");
+  }
+
   template<bool Enqueue = true>
   Fred* V() {
     Fred* next;
@@ -519,6 +532,15 @@ public:
     }
     lock.release();
     if (Enqueue) next->resume();
+    return next;
+  }
+
+  template<bool Enqueue = true>
+  Fred* tryV() {
+    lock.acquire();
+    Fred* next = queue.pop();
+    lock.release();
+    if (Enqueue && next) next->resume();
     return next;
   }
 };
@@ -548,7 +570,7 @@ template<typename Lock>
 class FastBarrier {
   size_t target;
   volatile size_t counter;
-  FredReadyQueue queue;
+  FredMPSC<FredReadyLink,false> queue;
   Lock lock;
 
 public:
@@ -595,6 +617,10 @@ public:
 
 /****************************** Compound Types ******************************/
 
+struct YieldSpin {
+  inline void operator()(void) { Fred::yield(); }
+};
+
 template<typename Semaphore, bool Binary = false>
 class FredBenaphore {
   Benaphore<Binary> ben;
@@ -616,10 +642,11 @@ public:
   }
 };
 
-template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount>
+template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount, typename SpinOp = PauseSpin>
 class SpinMutex {
   Fred* volatile owner;
   Semaphore sem;
+  SpinOp spinOp;
 
   template<typename... Args>
   bool tryOnly(const Args&... args) { return false; }
@@ -644,7 +671,7 @@ protected:
     for (;;) {
       if (tryLock(cf)) return true;
       if (cnt < SpinCount) {
-        for (int i = 0; i < spin; i += 1) Pause();
+        for (int i = 0; i < spin; i += 1) spinOp();
         if (spin < SpinEnd) spin += spin;
         else cnt += 1;
       } else {

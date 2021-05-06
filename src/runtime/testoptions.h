@@ -19,13 +19,8 @@
 
 /******************************** lock options ********************************/
 
-//#define FAST_MUTEX_TYPE SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 4, 1024, 16>
 //#define FAST_MUTEX_TYPE SimpleMutex0<false>
-//#define FAST_MUTEX_TYPE SimpleMutex0<true>
 
-//#define FRED_MUTEX_TYPE LockedMutex<WorkerLock, true>  // locked, fifo
-//#define FRED_MUTEX_TYPE LockedMutex<WorkerLock, false> // locked, barging
-//#define FRED_MUTEX_TYPE SpinMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16> // spinning
 //#define FRED_MUTEX_TYPE FastMutex
 
 /******************************** sanity checks ********************************/

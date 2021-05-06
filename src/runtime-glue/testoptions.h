@@ -11,7 +11,6 @@
 //#define TESTING_LOCK_RECURSION        1 // enable mutex recursion in C interface
 
 //#define WORKER_LOCK_TYPE BinaryLock<>
-//#define WORKER_LOCK_TYPE OsLock<4,1024,1>
 
 /******************************** sanity checks ********************************/
 

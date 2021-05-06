@@ -49,12 +49,16 @@ IntrusiveQueueNemesis<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>>;
 template <size_t NUM, bool Blocking=false> using FredQueueStub =
 IntrusiveQueueStub<Fred,NUM,FredLinkCount,DoubleLink<Fred,FredLinkCount>,Blocking>;
 
+#if TESTING_STUB_QUEUE
+template <size_t NUM, bool Blocking=false> using FredMPSC = FredQueueStub<NUM,Blocking>;
+#else
+template <size_t NUM, bool Blocking=false> using FredMPSC = FredQueueNemesis<NUM>;
+#endif
+
 #if TESTING_LOCKED_READYQUEUE
 typedef FredQueue<FredReadyLink> FredReadyQueue;
-#elif TESTING_STUB_QUEUE
-typedef FredQueueStub<FredReadyLink> FredReadyQueue;
 #else
-typedef FredQueueNemesis<FredReadyLink> FredReadyQueue;
+typedef FredMPSC<FredReadyLink,false> FredReadyQueue;
 #endif
 
 class Fred : public DoubleLink<Fred,FredLinkCount> {
