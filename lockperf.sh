@@ -7,8 +7,8 @@ TYPES=(
   "f:simple:SimpleMutex0<false>"
   "f:direct:SimpleMutex0<true>"
   "f:fifo:LockedMutex<WorkerLock, true>"
-  "f:psfast:SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 4, 1024, 16, PauseSpin>"
-  "f:ysfast:SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 4, 1024, 16, YieldSpin>"
+  "f:psfast:SpinMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, PauseSpin>"
+  "f:ysfast:SpinMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, YieldSpin>"
   "f:psfibre:SpinMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16, PauseSpin>"
   "f:ysfibre:SpinMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16, YieldSpin>"
 )

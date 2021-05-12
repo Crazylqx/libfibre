@@ -77,12 +77,18 @@ public:
 
   bool push(Node& elem) { return push(elem, elem); }
 
-  Node* pop(Node*& next) {
-    if (!head) return nullptr;
+  template<typename... Args>
+  Node* pop(Args&... args) {
+    AcquireSpinLock(args...);
     Node* elem = head;                         // return head
-    head = Next(*elem);
-    if (head) {
-      next = head;
+    if (!elem) {
+      ReleaseSpinLock(args...);
+      return nullptr;
+    }
+    Node* next = Next(*elem);
+    head = next;                               // potentially invalidate head
+    ReleaseSpinLock(args...);
+    if (next) {
       Next(*elem) = nullptr;                   // invalidate link
     } else {
       next = QueueMCS<Node,Next>::pop(*elem);  // memory sync, potential atomic swing of tail
@@ -91,9 +97,9 @@ public:
     return elem;
   }
 
-  Node* pop() {
-    Node* dummy = nullptr;
-    return pop(dummy);
+  Node* pop(MCSLock& lk) {
+    MCSLock::Node node;
+    return pop(lk, node);
   }
 };
 
@@ -154,19 +160,24 @@ public:
 
   bool push(Node& elem) { return push(elem, elem); }
 
-  Node* peek() {
-    if (!checkStub()) return nullptr;
-    return head;
-  }
-
-  template<bool Peeked = false>
-  Node* pop() {
-    if (!Peeked && !checkStub()) return nullptr;
+  template<typename... Args>
+  Node* pop(Args&... args) {
+    AcquireSpinLock(args...);
+    if (!checkStub()) {
+      ReleaseSpinLock(args...);
+      return nullptr;
+    }
     Node* retval = head;                               // head will be returned
     while (!Next(*head)) Pause();                      // producer in push()
     head = Next(*head);                                // remove head
+    ReleaseSpinLock(args...);
     Next(*retval) = nullptr;                           // invalidate link
     return retval;
+  }
+
+  Node* pop(MCSLock& lk) {
+    MCSLock::Node node;
+    return pop(lk, node);
   }
 };
 

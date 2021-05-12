@@ -124,7 +124,7 @@ class BlockingQueue {
     return tq.blockTimeout(cf, relTimeout, absTimeout);
   }
 
-  template<typename Lock, typename...Args>
+  template<typename Lock, typename... Args>
   bool blockInternal(Lock& lock, const Args&... args) {
     // set up queue node
     Fred* cf = Context::CurrFred();
@@ -524,22 +524,17 @@ public:
   template<bool Enqueue = true>
   Fred* V() {
     Fred* next;
-    lock.acquire();
     for (;;) {
-      next = queue.pop();
+      next = queue.pop(lock);
       if (next) break;
-      Pause();
     }
-    lock.release();
     if (Enqueue) next->resume();
     return next;
   }
 
   template<bool Enqueue = true>
   Fred* tryV() {
-    lock.acquire();
-    Fred* next = queue.pop();
-    lock.release();
+    Fred* next = queue.pop(lock);
     if (Enqueue && next) next->resume();
     return next;
   }
@@ -731,7 +726,7 @@ public:
 #if defined(FAST_MUTEX_TYPE)
 typedef FAST_MUTEX_TYPE FastMutex;
 #else
-typedef SpinMutex<FredBenaphore<LimitedSemaphore0<BinaryLock<>>,true>, 0, 0, 0> FastMutex;
+typedef SpinMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 0, 0, 0> FastMutex;
 #endif
 
 #if defined(FRED_MUTEX_TYPE)

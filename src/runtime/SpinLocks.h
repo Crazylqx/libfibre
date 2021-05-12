@@ -192,4 +192,17 @@ public:
   void cleanup() {}
 } __caligned;
 
+static inline void AcquireSpinLock() {}
+static inline void ReleaseSpinLock() {}
+
+template<typename Lock>
+static inline void AcquireSpinLock(Lock& lk) { lk.acquire(); }
+template<typename Lock>
+static inline void ReleaseSpinLock(Lock& lk) { lk.release(); }
+
+template<typename Lock>
+static inline void AcquireSpinLock(Lock& lk, typename Lock::Node& node) { lk.acquire(node); }
+template<typename Lock>
+static inline void ReleaseSpinLock(Lock& lk, typename Lock::Node& node) { lk.release(node); }
+
 #endif /* _SpinLocks_h_ */
