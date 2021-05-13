@@ -2,15 +2,18 @@
 
 TYPES=(
   "p:pthread:FredMutex"
-  "f:fast:FastMutex"
-  "f:fibre:FredMutex"
-  "f:simple:SimpleMutex0<false>"
-  "f:direct:SimpleMutex0<true>"
-  "f:fifo:LockedMutex<WorkerLock, true>"
-  "f:psfast:SpinMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, PauseSpin>"
-  "f:ysfast:SpinMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, YieldSpin>"
-  "f:psfibre:SpinMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16, PauseSpin>"
-  "f:ysfibre:SpinMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16, YieldSpin>"
+    "f:cond:SpinCondMutex<WorkerLock, 0, 0, 0>"
+  "f:pscond:SpinCondMutex<WorkerLock, 4, 1024, 16, PauseSpin>"
+  "f:yscond:SpinCondMutex<WorkerLock, 4, 1024, 16, YieldSpin>"
+    "f:fibre:SpinSemMutex<LockedSemaphore<WorkerLock, true>, 0, 0, 0>"
+  "f:psfibre:SpinSemMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16, PauseSpin>"
+  "f:ysfibre:SpinSemMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16, YieldSpin>"
+    "f:fast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 0, 0, 0>"
+  "f:psfast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, PauseSpin>"
+  "f:ysfast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, YieldSpin>"
+#  "f:fifo:LockedMutex<WorkerLock, true>"
+#  "f:simple:SimpleMutex0<false>"
+#  "f:direct:SimpleMutex0<true>"
 )
 
 function cleanup() {
@@ -22,20 +25,19 @@ function cleanup() {
 
 trap cleanup SIGHUP SIGINT SIGQUIT SIGTERM
 
+show=true
 host=$(hostname)
-if [ "$1" = "show" -o "$1" = "show1" -o "$1" = "show32" ]; then
-	show=true
-	case "$1" in
-		show) fcnt="1024";;
-		show1) fcnt="   1";;
-	esac
+case "$1" in
+	show)  fcnt="1024";;
+	show1) fcnt="   1";;
+	*) show=false;;
+esac
+if $show; then
 	shift
 	if ! [ $1 -eq $1 ] 2>/dev/null; then
 		host=$1
 		shift
 	fi
-else
-	show=false
 fi
 
 for lcnt in $*; do
@@ -49,22 +51,26 @@ for lcnt in $*; do
 	filename=locks.$lcnt.$host.out
 	if $show; then
 		for w in 1 10 100 1000 10000 100000; do
-			grep "f: $fcnt w:.* $w "  locks.$lcnt.$host.out |sort -gr -k8
+			grep -e "f: $fcnt w:.* $w "  $filename |sort -gr -k8
 			echo
 		done
 		continue
 	fi
-	rm -f $filename
 	for t in "${!TYPES[@]}"; do
 		PREFIX=$(echo ${TYPES[$t]}|cut -f1 -d:)
 		MUTEXNAME=$(echo ${TYPES[$t]}|cut -f2 -d:)
 		MUTEXLOCK=$(echo ${TYPES[$t]}|cut -f3 -d:)
 		sed -i -e "s/typedef FredMutex shim_mutex_t;/typedef ${MUTEXLOCK} shim_mutex_t; \/\/ test/" apps/include/libfibre.h
-		echo "========== ${MUTEXNAME} / $lcnt locks =========="
+		echo -n "========== ${MUTEXNAME} / $lcnt locks ..."
 		make clean > compile.out
-		make -j $(nproc) -C apps ${PREFIX}threadtest >> compile.out
+		make -j $(nproc) -C apps ${PREFIX}threadtest >> compile.out || {
+			echo " failed =========="
+			continue
+		}
+		echo " running =========="
 		for w in 1 10 100 1000 10000; do
 			for f in 1 1024; do
+				grep -q -e "t:.* $MUTEXNAME f:.* $f w:.* $w " $filename && continue
 				# perf stat -e task-clock --log-fd 1 -x,
 				taskset -c 32-63 perf stat -e task-clock -o perf.out \
 			  ./apps/${PREFIX}threadtest -l$lcnt -t32 -w$w -u$w -f$f | tee run.out

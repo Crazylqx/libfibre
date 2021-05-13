@@ -125,9 +125,8 @@ class BlockingQueue {
   }
 
   template<typename Lock, typename... Args>
-  bool blockInternal(Lock& lock, const Args&... args) {
+  bool blockInternal(Lock& lock, Fred* cf, const Args&... args) {
     // set up queue node
-    Fred* cf = Context::CurrFred();
     Node node(*cf);
     DBG::outl(DBG::Level::Blocking, "Fred ", FmtHex(cf), " blocking on ", FmtHex(&queue));
     Suspender::prepareRace(*cf);
@@ -151,18 +150,28 @@ public:
   bool empty() const { return queue.empty(); }
 
   template<typename Lock>
-  bool block(Lock& lock, bool wait = true) {    // Note that caller must hold lock
-    if (wait) return blockInternal(lock);
+  bool block(Lock& lock, Fred* cf, bool wait = true) {    // Note that caller must hold lock
+    if (wait) return blockInternal(lock, cf);
     lock.release();
     return false;
   }
 
   template<typename Lock>
-  bool block(Lock& lock, const Time& timeout) { // Note that caller must hold lock
+  bool block(Lock& lock, Fred* cf, const Time& timeout) { // Note that caller must hold lock
     Time now = Runtime::Timer::now();
-    if (timeout > now) return blockInternal(lock, timeout - now, timeout);
+    if (timeout > now) return blockInternal(lock, cf, timeout - now, timeout);
     lock.release();
     return false;
+  }
+
+  template<typename Lock>
+  bool block(Lock& lock, bool wait = true) {
+    return block(lock, Context::CurrFred(), wait);
+  }
+
+  template<typename Lock>
+  bool block(Lock& lock, const Time& timeout) {
+    return block(lock, Context::CurrFred(), timeout);
   }
 
   template<bool Enqueue>
@@ -232,6 +241,14 @@ public:
     if (Enqueue && next) next->resume();
     return next;
   }
+
+  template<bool Enqueue = true>
+  Fred* waitV() {
+    for (;;) {
+      Fred* next = tryV<Enqueue>();
+      if (next) return next;
+    }
+  }
 };
 
 template<typename Lock, bool Fifo, typename BQ = BlockingQueue>
@@ -249,7 +266,7 @@ protected:
     for (;;) {
       lock.acquire();
       if (!owner) break;
-      if (!bq.block(lock, args...)) return false; // timeout
+      if (!bq.block(lock, cf, args...)) return false; // timeout
       if (Fifo) return true; // owner set via baton passing
     }
     owner = cf;
@@ -518,7 +535,7 @@ public:
   }
 
   SemaphoreResult P(const Time& timeout) {
-    RABORT("timeout not implementated for LimitedSemaphore0");
+    RABORT("timeout not implemented for LimitedSemaphore0");
   }
 
   template<bool Enqueue = true>
@@ -538,6 +555,11 @@ public:
     if (Enqueue && next) next->resume();
     return next;
   }
+
+  template<bool Enqueue = true>
+  Fred* waitV() {
+    return V<Enqueue>();
+  }
 };
 
 template<bool DirectSwitch>
@@ -552,7 +574,7 @@ public:
     sem.cleanup();
   }
   bool acquire()    { return ben.P() || sem.P(); }
-  bool acquire(const Time& timeout) { RABORT("timeout not implementated for SimpleMutex0"); }
+  bool acquire(const Time& timeout) { RABORT("timeout not implemented for SimpleMutex0"); }
   bool tryAcquire() { return ben.tryP(); }
   void release()    {
     if (ben.V()) return;
@@ -628,7 +650,7 @@ public:
   SemaphoreResult P()          { return ben.P() ? SemaphoreWasOpen : sem.P(); }
   SemaphoreResult tryP()       { return ben.tryP() ? SemaphoreWasOpen : SemaphoreTimeout; }
   SemaphoreResult P(bool wait) { return wait ? P() : tryP(); }
-  SemaphoreResult P(const Time& timeout) { RABORT("timeout not implementated for FredBenaphore"); }
+  SemaphoreResult P(const Time& timeout) { RABORT("timeout not implemented for FredBenaphore"); }
 
   template<bool Enqueue = true>
   Fred* V() {
@@ -638,7 +660,7 @@ public:
 };
 
 template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount, typename SpinOp = PauseSpin>
-class SpinMutex {
+class SpinSemMutex {
   Fred* volatile owner;
   Semaphore sem;
   SpinOp spinOp;
@@ -678,8 +700,8 @@ protected:
   }
 
 public:
-  SpinMutex() : owner(nullptr), sem(1) {}
-  ~SpinMutex() { RASSERT(owner == nullptr, FmtHex(owner)); }
+  SpinSemMutex() : owner(nullptr), sem(1) {}
+  ~SpinSemMutex() { RASSERT(owner == nullptr, FmtHex(owner)); }
   void cleanup() {
     RASSERT(owner == nullptr, FmtHex(owner));
     sem.cleanup();
@@ -694,6 +716,94 @@ public:
     __atomic_store_n(&owner, nullptr, __ATOMIC_RELEASE);
     Fred* next = sem.template V<false>();
     if (next) next->resume();
+  }
+};
+
+// poor man's futex
+template<typename Lock>
+class ConditionalQueue : public BlockingQueue {
+  Lock lock;
+public:
+  template<typename Func, typename... Args>
+  bool block(Fred* cf, Func&& func, const Args&... args) {
+    lock.acquire();
+    if (func()) return BlockingQueue::block(lock, cf, args...);
+    lock.release();
+    return false;
+  }
+
+  template<bool Enqueue>
+  Fred* unblock() {
+    lock.acquire();
+    Fred* next = BlockingQueue::unblock<Enqueue>();
+    lock.release();
+    return next;
+  }
+};
+
+// inspired by Linux pthread mutex/futex implementation
+template<typename Lock, int SpinStart, int SpinEnd, int SpinCount, typename SpinOp = PauseSpin>
+class SpinCondMutex {
+  ConditionalQueue<Lock> queue;
+  volatile size_t value;
+  Fred* volatile owner;
+  SpinOp spinOp;
+
+  template<typename... Args>
+  bool tryOnly(const Args&... args) { return false; }
+
+  template<typename... Args>
+  bool tryOnly(bool wait) { return !wait; }
+
+protected:
+  template<bool OwnerLock, typename... Args>
+  bool internalAcquire(const Args&... args) {
+    Fred* cf = Context::CurrFred();
+    if (OwnerLock && cf == owner) return true;
+    RASSERT(cf != owner, FmtHex(cf), FmtHex(owner));
+    size_t exp = 0;
+    if (__atomic_compare_exchange_n(&value, &exp, 1, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
+      owner = cf;
+      return true;
+    }
+    if (tryOnly(args...)) return false;
+    int cnt = 0;
+    int spin = SpinStart;
+    if (exp > 1) goto skipFirstTest;
+    for (;;) {
+      if (__atomic_exchange_n(&value, 2, __ATOMIC_ACQUIRE) == 0) {
+        owner = cf;
+        return true;
+      }
+skipFirstTest:
+      if (cnt < SpinCount) {
+        for (int i = 0; i < spin; i += 1) spinOp();
+        if (spin < SpinEnd) spin += spin;
+        else cnt += 1;
+      } else {
+        cnt = 0;
+        spin = SpinStart;
+        queue.block(cf, [this]() { return this->value == 2; }, args...);
+      }
+    }
+  }
+
+public:
+  SpinCondMutex() : value(0), owner(nullptr) {}
+  ~SpinCondMutex() { RASSERT(value == 0, value); }
+  void cleanup() {}
+
+  template<typename... Args>
+  bool acquire(const Args&... args) { return internalAcquire<false>(args...); }
+  bool tryAcquire() { return acquire(false); }
+
+  template<bool DirectSwitch=false>
+  void release() {
+    RASSERT(value > 0, value);
+    owner = nullptr;
+    if (__atomic_exchange_n(&value, 0, __ATOMIC_RELEASE) == 1) return;
+    Fred* next = queue.template unblock<false>();
+    if (next) next->resume<DirectSwitch>();
   }
 };
 
@@ -726,13 +836,13 @@ public:
 #if defined(FAST_MUTEX_TYPE)
 typedef FAST_MUTEX_TYPE FastMutex;
 #else
-typedef SpinMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 0, 0, 0> FastMutex;
+typedef SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 0, 0, 0> FastMutex;
 #endif
 
 #if defined(FRED_MUTEX_TYPE)
 typedef FRED_MUTEX_TYPE FredMutex;
 #else
-typedef SpinMutex<LockedSemaphore<WorkerLock, true>, 0, 0, 0> FredMutex;
+typedef SpinCondMutex<WorkerLock, 0, 0, 0> FredMutex;
 #endif
 
 typedef Condition<>                 FredCondition;
