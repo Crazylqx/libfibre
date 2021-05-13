@@ -659,11 +659,31 @@ public:
   }
 };
 
-template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount, typename SpinOp = PauseSpin>
+template<int SpinStart, int SpinEnd, int SpinCount, int YieldCount, typename SpinOp, typename T, typename Func>
+static inline bool Spin(Fred* cf, T* This, Func&& tryLock) {
+  SpinOp spinOp;
+  int ycnt = 0;
+  int scnt = 0;
+  int spin = SpinStart;
+  for (;;) {
+    if (tryLock(This, cf)) return false;
+    if (scnt < SpinCount) {
+      for (int i = 0; i < spin; i += 1) spinOp();
+      if (spin < SpinEnd) spin += spin;
+      else scnt += 1;
+    } else if (ycnt < YieldCount) {
+      ycnt += 1;
+      Fred::yield();
+    } else {
+      return true;
+    }
+  }
+}
+
+template<typename Semaphore, int SpinStart, int SpinEnd, int SpinCount, int YieldCount, typename SpinOp = PauseSpin>
 class SpinSemMutex {
   Fred* volatile owner;
   Semaphore sem;
-  SpinOp spinOp;
 
   template<typename... Args>
   bool tryOnly(const Args&... args) { return false; }
@@ -671,9 +691,9 @@ class SpinSemMutex {
   template<typename... Args>
   bool tryOnly(bool wait) { return !wait; }
 
-  bool tryLock(Fred* cf) {
+  static bool tryLock(SpinSemMutex* This, Fred* cf) {
     Fred* exp = nullptr;
-    return __atomic_compare_exchange_n(&owner, &exp, cf, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
+    return __atomic_compare_exchange_n(&This->owner, &exp, cf, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
   }
 
 protected:
@@ -682,21 +702,11 @@ protected:
     Fred* cf = Context::CurrFred();
     if (OwnerLock && cf == owner) return true;
     RASSERT(cf != owner, FmtHex(cf), FmtHex(owner));
-    if (tryOnly(args...)) return tryLock(cf);
-    int cnt = 0;
-    int spin = SpinStart;
-    for (;;) {
-      if (tryLock(cf)) return true;
-      if (cnt < SpinCount) {
-        for (int i = 0; i < spin; i += 1) spinOp();
-        if (spin < SpinEnd) spin += spin;
-        else cnt += 1;
-      } else {
-        cnt = 0;
-        spin = SpinStart;
-        if (!sem.P(args...)) return false;
-      }
+    if (tryOnly(args...)) return tryLock(this, cf);
+    while (Spin<SpinStart,SpinEnd,SpinCount,YieldCount,SpinOp>(cf, this, tryLock)) {
+      if (!sem.P(args...)) return false;
     }
+    return true;
   }
 
 public:
@@ -742,12 +752,11 @@ public:
 };
 
 // inspired by Linux pthread mutex/futex implementation
-template<typename Lock, int SpinStart, int SpinEnd, int SpinCount, typename SpinOp = PauseSpin>
+template<typename Lock, int SpinStart, int SpinEnd, int SpinCount, int YieldCount, typename SpinOp = PauseSpin>
 class SpinCondMutex {
   ConditionalQueue<Lock> queue;
   volatile size_t value;
   Fred* volatile owner;
-  SpinOp spinOp;
 
   template<typename... Args>
   bool tryOnly(const Args&... args) { return false; }
@@ -755,37 +764,44 @@ class SpinCondMutex {
   template<typename... Args>
   bool tryOnly(bool wait) { return !wait; }
 
-protected:
-  template<bool OwnerLock, typename... Args>
-  bool internalAcquire(const Args&... args) {
-    Fred* cf = Context::CurrFred();
-    if (OwnerLock && cf == owner) return true;
-    RASSERT(cf != owner, FmtHex(cf), FmtHex(owner));
-    size_t exp = 0;
+  bool tryLock1(Fred* cf, size_t& exp) {
     if (__atomic_compare_exchange_n(&value, &exp, 1, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
       owner = cf;
       return true;
     }
-    if (tryOnly(args...)) return false;
-    int cnt = 0;
-    int spin = SpinStart;
-    if (exp > 1) goto skipFirstTest;
-    for (;;) {
-      if (__atomic_exchange_n(&value, 2, __ATOMIC_ACQUIRE) == 0) {
-        owner = cf;
-        return true;
-      }
-skipFirstTest:
-      if (cnt < SpinCount) {
-        for (int i = 0; i < spin; i += 1) spinOp();
-        if (spin < SpinEnd) spin += spin;
-        else cnt += 1;
-      } else {
-        cnt = 0;
-        spin = SpinStart;
-        queue.block(cf, [this]() { return this->value == 2; }, args...);
-      }
+    return false;
+  }
+
+  static bool tryLock2(SpinCondMutex* This, Fred* cf) {
+    if (__atomic_exchange_n(&This->value, 2, __ATOMIC_ACQUIRE) == 0) {
+      This->owner = cf;
+      return true;
     }
+    return false;
+  }
+
+protected:
+  template<bool OwnerLock, typename... Args>
+  bool internalAcquire(const Args&... args) {
+    SpinOp spinOp;
+    Fred* cf = Context::CurrFred();
+    if (OwnerLock && cf == owner) return true;
+    RASSERT(cf != owner, FmtHex(cf), FmtHex(owner));
+    size_t exp = 0;
+    if (tryOnly(args...)) return tryLock1(cf, exp);
+    int spin = SpinStart;
+    for (;;) {                            // spin one period on 1 while contion is low
+      exp = 0;
+      if (tryLock1(cf, exp)) return true;
+      if (exp == 2) break;                // high contention detected
+      for (int i = 0; i < spin; i += 1) spinOp();
+      if (spin < SpinEnd) spin += spin;
+      else break;
+    }
+    while (Spin<SpinStart,SpinEnd,SpinCount,YieldCount,SpinOp>(cf, this, tryLock2)) {
+      queue.block(cf, [this]() { return this->value == 2; }, args...);
+    }
+    return true;
   }
 
 public:
@@ -836,13 +852,13 @@ public:
 #if defined(FAST_MUTEX_TYPE)
 typedef FAST_MUTEX_TYPE FastMutex;
 #else
-typedef SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 0, 0, 0> FastMutex;
+typedef SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 1, 64, 1, 1> FastMutex;
 #endif
 
 #if defined(FRED_MUTEX_TYPE)
 typedef FRED_MUTEX_TYPE FredMutex;
 #else
-typedef SpinCondMutex<WorkerLock, 0, 0, 0> FredMutex;
+typedef SpinCondMutex<WorkerLock, 1, 64, 1, 0> FredMutex;
 #endif
 
 typedef Condition<>                 FredCondition;

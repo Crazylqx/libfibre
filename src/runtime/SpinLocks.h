@@ -186,7 +186,7 @@ public:
   bool wait() {
     size_t cnt = __atomic_fetch_add(&counter, 1, __ATOMIC_SEQ_CST);
     size_t tgt = cnt + target - (cnt % target);
-    while (ssize_t(tgt - counter) > 0) Pause(); // works with overflow
+    while slowpath(ssize_t(tgt - counter) > 0) Pause(); // works with overflow
     return (cnt == tgt - 1);
   }
   void cleanup() {}
