@@ -19,7 +19,6 @@
 
 #include "runtime/Benaphore.h"
 #include "runtime/Debug.h"
-#include "runtime/SpinLocks.h"
 #include "runtime/Stats.h"
 #include "runtime/Fred.h"
 #include "runtime-glue/RuntimeContext.h"
@@ -204,6 +203,14 @@ class LockedSemaphore {
     return SemaphoreWasOpen;
   }
 
+  void unlock() {}
+
+  template<typename Lock1, typename...Args>
+  void unlock(Lock1& l, Args&... args) {
+    l.release();
+    unlock(args...);
+  }
+
 public:
   explicit LockedSemaphore(ssize_t c = 0) : counter(c) {}
   ~LockedSemaphore() { cleanup(); }
@@ -216,7 +223,11 @@ public:
 
   template<typename... Args>
   SemaphoreResult P(const Args&... args) { lock.acquire(); return internalP(args...); }
+
   SemaphoreResult tryP()                 { lock.acquire(); return internalP(false); }
+
+  template<typename... Args>
+  SemaphoreResult unlockP(Args&... args) { lock.acquire(); unlock(args...); return internalP(true); }
 
   template<bool Enqueue = true>
   Fred* V() {
@@ -249,6 +260,9 @@ public:
       if (next) return next;
     }
   }
+
+  template<bool Enqueue = true>
+  Fred* release() { return V<Enqueue>(); }
 };
 
 template<typename Lock, bool Fifo, typename BQ = BlockingQueue>
@@ -739,7 +753,7 @@ public:
     lock.acquire();
     if (func()) return BlockingQueue::block(lock, cf, args...);
     lock.release();
-    return false;
+    return true;
   }
 
   template<bool Enqueue>
@@ -799,7 +813,7 @@ protected:
       else break;
     }
     while (Spin<SpinStart,SpinEnd,SpinCount,YieldCount,SpinOp>(cf, this, tryLock2)) {
-      queue.block(cf, [this]() { return this->value == 2; }, args...);
+      if (!queue.block(cf, [this]() { return this->value == 2; }, args...)) return false;
     }
     return true;
   }
@@ -852,7 +866,7 @@ public:
 #if defined(FAST_MUTEX_TYPE)
 typedef FAST_MUTEX_TYPE FastMutex;
 #else
-typedef SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 1, 64, 1, 1> FastMutex;
+typedef SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 1, 64, 1, 0> FastMutex;
 #endif
 
 #if defined(FRED_MUTEX_TYPE)

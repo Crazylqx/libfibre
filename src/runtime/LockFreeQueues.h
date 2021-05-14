@@ -17,6 +17,7 @@
 #ifndef _LockFreeQueues_h_
 #define _LockFreeQueues_h_ 1
 
+#include "runtime/SpinLocks.h"
 #include "runtime/ContainerLink.h"
 
 // https://doi.org/10.1145/103727.103729
@@ -181,8 +182,11 @@ public:
   }
 };
 
-template<typename T, size_t NUM=0, size_t CNT=1, typename LT=SingleLink<T,CNT>> struct IntrusiveQueueNemesis : public QueueNemesis<T,LT::template VNext<NUM>> {};
+template<typename T, size_t NUM=0, size_t CNT=1, typename LT=SingleLink<T,CNT>>
+using IntrusiveQueueNemesis = QueueNemesis<T,LT::template VNext<NUM>>;
+
 // NOTE WELL: The intrusive design leads to downcasting in the QueueStub class. This only works, if LT is the first class that T inherits from.
-template<typename T, size_t NUM=0, size_t CNT=1, typename LT=SingleLink<T,CNT>, bool Blocking=false> struct IntrusiveQueueStub : public QueueStub<T,LT,LT::template VNext<NUM>,Blocking> {};
+template<typename T, size_t NUM=0, size_t CNT=1, typename LT=SingleLink<T,CNT>, bool Blocking=false>
+using IntrusiveQueueStub = QueueStub<T,LT,LT::template VNext<NUM>,Blocking>;
 
 #endif /* _LockFreeQueues_h_ */
