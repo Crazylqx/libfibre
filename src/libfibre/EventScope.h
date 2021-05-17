@@ -179,18 +179,9 @@ public:
   /** Get event-scope-local data. */
   void* getClientData() { return clientData; }
 
-  void setTimer(const Time& timeout) {
-    masterPoller->setTimer(timeout);
-  }
+  TimerQueue& getTimerQueue() { return timerQueue; }
 
-  TimerQueue& getTimerQueue() {
-    return timerQueue;
-  }
-
-  void checkTimers(const Time& currTime) {
-    Time newTime;
-    if (timerQueue.checkExpiry(currTime, newTime)) setTimer(newTime);
-  }
+  void setTimer(const Time& timeout) { masterPoller->setTimer(timeout); }
 
 private:
   template<bool Input, bool Output, bool Cluster>

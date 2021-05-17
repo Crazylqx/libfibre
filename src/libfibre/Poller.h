@@ -22,6 +22,7 @@
 
 class BaseProcessor;
 
+#include <pthread.h>
 #include <unistd.h>      // close
 #if __FreeBSD__
 #include <sys/event.h>
@@ -213,14 +214,14 @@ public:
 
   inline void prePoll(_friend<BaseThreadPoller>);
 
-  void setTimer(const Time& reltimeout) {
+  void setTimer(const Time& timeout) {
 #if __FreeBSD__
     struct kevent ev;
-    EV_SET(&ev, timerFD, EVFILT_TIMER, EV_ADD | EV_ONESHOT, NOTE_USECONDS, reltimeout.toUS(), 0);
+    EV_SET(&ev, timerFD, EVFILT_TIMER, EV_ADD | EV_ONESHOT, NOTE_USECONDS | NOTE_ABSTIME, timeout.toUS(), 0);
     SYSCALL(kevent(pollFD, &ev, 1, nullptr, 0, nullptr));
 #else
-    itimerspec tval = { {0,0}, reltimeout };
-    SYSCALL(timerfd_settime(timerFD, 0, &tval, nullptr));
+    itimerspec tval = { {0,0}, timeout };
+    SYSCALL(timerfd_settime(timerFD, TFD_TIMER_ABSTIME, &tval, nullptr));
 #endif
   }
 

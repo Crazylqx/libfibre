@@ -76,9 +76,7 @@ inline void MasterPoller::prePoll(_friend<BaseThreadPoller>) {
     uint64_t count; // read timerFD
     if (read(timerFD, (void*)&count, sizeof(count)) != sizeof(count)) return;
 #endif
-    Time currTime;
-    SYSCALL(clock_gettime(CLOCK_REALTIME, &currTime));
-    eventScope.checkTimers(currTime);
+    eventScope.getTimerQueue().checkExpiry();
   }
 }
 

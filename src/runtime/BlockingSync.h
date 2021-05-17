@@ -45,7 +45,7 @@ struct Suspender { // funnel suspend calls through this class for access control
   }
 };
 
-enum SemaphoreResult : size_t { SemaphoreTimeout = 0, SemaphoreSucess = 1, SemaphoreWasOpen = 2 };
+enum SemaphoreResult : size_t { SemaphoreTimeout = 0, SemaphoreSuccess = 1, SemaphoreWasOpen = 2 };
 
 /****************************** Timeouts ******************************/
 
@@ -59,15 +59,21 @@ public:
   void reinit(cptr_t parent) { new (stats) TimerStats(this, parent); }
   bool empty() const { return queue.empty(); }
 
-  bool checkExpiry(const Time& now, Time& newTime) {
-    bool retcode = false;
-    int cnt = 0;
+  void checkExpiry() {
+    size_t cnt = 0;
+    Time now = Runtime::Timer::now();
     lock.acquire();
-    for (auto iter = queue.begin(); iter != queue.end(); ) {
+    for (auto iter = queue.begin();; ) {
+      if (iter == queue.end()) {
+        lock.release();
+        stats->events.count(cnt);
+    return;
+      }
       if (iter->first > now) {
-        retcode = true;              // timeouts remaining after this run
-        newTime = iter->first - now; // time to next timeout
-      break;
+        lock.release();
+        stats->events.count(cnt);
+        Runtime::Timer::newTimeout(iter->first); // timeouts remaining after this run
+    return;
       }
       Fred* f = iter->second;
       if (f->raceResume(&queue)) {
@@ -78,17 +84,13 @@ public:
       }
       cnt += 1;
     }
-    lock.release();
-    stats->events.count(cnt);
-    return retcode;
   }
 
-  // Note that Fred::prepareSuspend must have been called already!
-  ptr_t blockTimeout(Fred& cf, const Time& relTimeout, const Time& absTimeout) {
+  ptr_t blockTimeout(Fred& cf, const Time& absTimeout) {
     // set up queue node
     lock.acquire();
     std::multimap<Time,Fred*>::iterator iter = queue.insert( {absTimeout, &cf} );
-    if (iter == queue.begin()) Runtime::Timer::newTimeout(relTimeout);
+    if (iter == queue.begin()) Runtime::Timer::newTimeout(absTimeout);
     lock.release();
     // suspend
     ptr_t winner = Suspender::suspend(cf);
@@ -104,7 +106,7 @@ static inline bool sleepFred(const Time& timeout, TimerQueue& tq = Runtime::Time
   Fred* cf = Context::CurrFred();
   DBG::outl(DBG::Level::Blocking, "Fred ", FmtHex(cf), " sleep ", timeout);
   Suspender::prepareRace(*cf);
-  return tq.blockTimeout(*cf, timeout, timeout + Runtime::Timer::now()) == nullptr;
+  return tq.blockTimeout(*cf, timeout + Runtime::Timer::now()) == nullptr;
 }
 
 /****************************** Common Locked Synchronization ******************************/
@@ -119,8 +121,8 @@ class BlockingQueue {
   ptr_t blockHelper(Fred& cf) {
     return Suspender::suspend(cf);
   }
-  ptr_t blockHelper(Fred& cf, const Time& relTimeout, const Time& absTimeout, TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) {
-    return tq.blockTimeout(cf, relTimeout, absTimeout);
+  ptr_t blockHelper(Fred& cf, const Time& absTimeout, TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) {
+    return tq.blockTimeout(cf, absTimeout);
   }
 
   template<typename Lock, typename... Args>
@@ -157,8 +159,7 @@ public:
 
   template<typename Lock>
   bool block(Lock& lock, Fred* cf, const Time& timeout) { // Note that caller must hold lock
-    Time now = Runtime::Timer::now();
-    if (timeout > now) return blockInternal(lock, cf, timeout - now, timeout);
+    if (timeout > Runtime::Timer::now()) return blockInternal(lock, cf, timeout);
     lock.release();
     return false;
   }
@@ -197,7 +198,7 @@ class LockedSemaphore {
   template<typename... Args>
   SemaphoreResult internalP(const Args&... args) {
     // baton passing: counter unchanged, if blocking fails (timeout)
-    if (counter < 1) return bq.block(lock, args...) ? SemaphoreSucess : SemaphoreTimeout;
+    if (counter < 1) return bq.block(lock, args...) ? SemaphoreSuccess : SemaphoreTimeout;
     counter -= 1;
     lock.release();
     return SemaphoreWasOpen;
@@ -532,7 +533,7 @@ public:
 template<typename Lock = DummyLock>
 class LimitedSemaphore0 {
   Lock lock;
-  FredMPSC<FredReadyLink,false> queue;
+  FredMPSC<FredReadyLink> queue;
 
 public:
   explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
@@ -545,7 +546,7 @@ public:
     RuntimeDisablePreemption();
     queue.push(*cf);
     Suspender::suspend<false>(*cf);
-    return SemaphoreSucess;
+    return SemaphoreSuccess;
   }
 
   SemaphoreResult P(const Time& timeout) {
@@ -588,8 +589,9 @@ public:
     sem.cleanup();
   }
   bool acquire()    { return ben.P() || sem.P(); }
-  bool acquire(const Time& timeout) { RABORT("timeout not implemented for SimpleMutex0"); }
   bool tryAcquire() { return ben.tryP(); }
+  bool acquire(bool wait) { return wait ? acquire() : tryAcquire(); }
+  bool acquire(const Time& timeout) { RABORT("timeout not implemented for SimpleMutex0"); }
   void release()    {
     if (ben.V()) return;
     Fred* next = sem.V<false>();
@@ -601,7 +603,7 @@ template<typename Lock>
 class FastBarrier {
   size_t target;
   volatile size_t counter;
-  FredMPSC<FredReadyLink,false> queue;
+  FredMPSC<FredReadyLink> queue;
   Lock lock;
 
 public:
@@ -648,10 +650,6 @@ public:
 
 /****************************** Compound Types ******************************/
 
-struct YieldSpin {
-  inline void operator()(void) { Fred::yield(); }
-};
-
 template<typename Semaphore, bool Binary = false>
 class FredBenaphore {
   Benaphore<Binary> ben;
@@ -671,6 +669,10 @@ public:
     if (ben.V()) return nullptr;
     return sem.template V<Enqueue>();
   }
+};
+
+struct YieldSpin {
+  inline void operator()(void) { Fred::yield(); }
 };
 
 template<int SpinStart, int SpinEnd, int SpinCount, int YieldCount, typename SpinOp, typename T, typename Func>
