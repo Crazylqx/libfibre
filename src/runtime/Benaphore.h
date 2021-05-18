@@ -22,6 +22,7 @@
 
 template<bool Binary = false>
 class Benaphore {
+protected:
   volatile ssize_t counter;
 
 public:

@@ -106,7 +106,7 @@ static inline bool sleepFred(const Time& timeout, TimerQueue& tq = Runtime::Time
   Fred* cf = Context::CurrFred();
   DBG::outl(DBG::Level::Blocking, "Fred ", FmtHex(cf), " sleep ", timeout);
   Suspender::prepareRace(*cf);
-  return tq.blockTimeout(*cf, timeout + Runtime::Timer::now()) == nullptr;
+  return tq.blockTimeout(*cf, Runtime::Timer::now() +  timeout) == nullptr;
 }
 
 /****************************** Common Locked Synchronization ******************************/
@@ -489,8 +489,6 @@ public:
 // synchronization (with result) with external lock
 template<typename Runner, typename Result, typename Lock>
 class Joinable : public SynchronizedFlag<Lock> {
-  using Baseclass = SynchronizedFlag<Lock>;
-
   union {
     Runner* runner;
     Result  result;
@@ -500,13 +498,13 @@ public:
   Joinable(Runner* t) : runner(t) {}
 
   bool wait(Lock& bl, Result& r) {
-    bool retcode = Baseclass::wait(bl);
+    bool retcode = SynchronizedFlag<Lock>::wait(bl);
     r = retcode ? result : 0; // result is available after returning from wait
     return retcode;
   }
 
   bool post(Result r) {
-    bool retcode = Baseclass::post();
+    bool retcode = SynchronizedFlag<Lock>::post();
     if (retcode) result = r;  // still holding lock while setting result
     return retcode;
   }
@@ -517,15 +515,13 @@ public:
 // synchronization flag with automatic locking
 template<typename Lock>
 class SyncPoint : public SynchronizedFlag<Lock> {
-  using Baseclass = SynchronizedFlag<Lock>;
-  typedef typename Baseclass::State State;
   Lock lock;
 
 public:
-  SyncPoint(State s = Baseclass::Running) : Baseclass(s) {}
-  bool wait()   { ScopedLock<Lock> al(lock); return Baseclass::wait(lock); }
-  bool post()   { ScopedLock<Lock> al(lock); return Baseclass::post(); }
-  void detach() { ScopedLock<Lock> al(lock); Baseclass::detach(); }
+  SyncPoint(typename SynchronizedFlag<Lock>::State s = SynchronizedFlag<Lock>::Running) : SynchronizedFlag<Lock>(s) {}
+  bool wait()   { ScopedLock<Lock> al(lock); return SynchronizedFlag<Lock>::wait(lock); }
+  bool post()   { ScopedLock<Lock> al(lock); return SynchronizedFlag<Lock>::post(); }
+  void detach() { ScopedLock<Lock> al(lock); SynchronizedFlag<Lock>::detach(); }
 };
 
 /****************************** (Almost-)Lock-Free Synchronization ******************************/
@@ -662,7 +658,12 @@ public:
   SemaphoreResult P()          { return ben.P() ? SemaphoreWasOpen : sem.P(); }
   SemaphoreResult tryP()       { return ben.tryP() ? SemaphoreWasOpen : SemaphoreTimeout; }
   SemaphoreResult P(bool wait) { return wait ? P() : tryP(); }
-  SemaphoreResult P(const Time& timeout) { RABORT("timeout not implemented for FredBenaphore"); }
+  SemaphoreResult P(const Time& timeout) {
+    if (ben.P()) return SemaphoreWasOpen;
+    if (sem.P(timeout)) return SemaphoreSuccess;
+    ben.V();
+    return SemaphoreTimeout;
+  }
 
   template<bool Enqueue = true>
   Fred* V() {
@@ -682,7 +683,7 @@ static inline bool Spin(Fred* cf, T* This, Func&& tryLock) {
   int scnt = 0;
   int spin = SpinStart;
   for (;;) {
-    if (tryLock(This, cf)) return false;
+    if (tryLock(This, cf)) return true;
     if (scnt < SpinCount) {
       for (int i = 0; i < spin; i += 1) spinOp();
       if (spin < SpinEnd) spin += spin;
@@ -691,7 +692,7 @@ static inline bool Spin(Fred* cf, T* This, Func&& tryLock) {
       ycnt += 1;
       Fred::yield();
     } else {
-      return true;
+      return false;
     }
   }
 }
@@ -719,10 +720,9 @@ protected:
     if (OwnerLock && cf == owner) return true;
     RASSERT(cf != owner, FmtHex(cf), FmtHex(owner));
     if (tryOnly(args...)) return tryLock(this, cf);
-    while (Spin<SpinStart,SpinEnd,SpinCount,YieldCount,SpinOp>(cf, this, tryLock)) {
-      if (!sem.P(args...)) return false;
-    }
-    return true;
+    if (Spin<SpinStart,SpinEnd,SpinCount,YieldCount,SpinOp>(cf, this, tryLock)) return true;
+    while (sem.P(args...)) if (tryLock(this, cf)) return true;
+    return false;
   }
 
 public:
@@ -749,6 +749,7 @@ public:
 template<typename Lock>
 class ConditionalQueue : public BlockingQueue {
   Lock lock;
+
 public:
   template<typename Func, typename... Args>
   bool block(Fred* cf, Func&& func, const Args&... args) {
@@ -806,7 +807,7 @@ protected:
     size_t exp = 0;
     if (tryOnly(args...)) return tryLock1(cf, exp);
     int spin = SpinStart;
-    for (;;) {                            // spin one period on 1 while contion is low
+    for (;;) {                            // spin one round on value 1 while contention is low
       exp = 0;
       if (tryLock1(cf, exp)) return true;
       if (exp == 2) break;                // high contention detected
@@ -814,10 +815,9 @@ protected:
       if (spin < SpinEnd) spin += spin;
       else break;
     }
-    while (Spin<SpinStart,SpinEnd,SpinCount,YieldCount,SpinOp>(cf, this, tryLock2)) {
-      if (!queue.block(cf, [this]() { return this->value == 2; }, args...)) return false;
-    }
-    return true;
+    if (Spin<SpinStart,SpinEnd,SpinCount,YieldCount,SpinOp>(cf, this, tryLock2)) return true;
+    while (queue.block(cf, [this]() { return this->value == 2; }, args...)) if (tryLock2(this, cf)) return true;
+    return false;
   }
 
 public:
@@ -868,13 +868,13 @@ public:
 #if defined(FAST_MUTEX_TYPE)
 typedef FAST_MUTEX_TYPE FastMutex;
 #else
-typedef SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 1, 64, 1, 0> FastMutex;
+typedef SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, 1> FastMutex;
 #endif
 
 #if defined(FRED_MUTEX_TYPE)
 typedef FRED_MUTEX_TYPE FredMutex;
 #else
-typedef SpinCondMutex<WorkerLock, 1, 64, 1, 0> FredMutex;
+typedef SpinCondMutex<WorkerLock, 4, 1024, 16, 1> FredMutex;
 #endif
 
 typedef Condition<>                 FredCondition;

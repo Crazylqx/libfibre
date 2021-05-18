@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
 
 TYPES=(
-  "p:pthread:FredMutex"
+ "p:pthread:FredMutex"
     "f:cond:SpinCondMutex<WorkerLock, 0, 0, 0, 0>"
-   "f:xcond:SpinCondMutex<WorkerLock, 1, 64, 1, 0>"
-   "f:ycond:SpinCondMutex<WorkerLock, 1, 64, 1, 1>"
-  "f:pscond:SpinCondMutex<WorkerLock, 4, 1024, 16, 0, PauseSpin>"
-  "f:yscond:SpinCondMutex<WorkerLock, 4, 1024, 16, 0, YieldSpin>"
-    "f:fibre:SpinSemMutex<LockedSemaphore<WorkerLock, true>, 0, 0, 0, 0>"
-   "f:xfibre:SpinSemMutex<LockedSemaphore<WorkerLock, true>, 1, 64, 1, 0>"
-   "f:yfibre:SpinSemMutex<LockedSemaphore<WorkerLock, true>, 1, 64, 1, 1>"
-  "f:psfibre:SpinSemMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16, 0, PauseSpin>"
-  "f:ysfibre:SpinSemMutex<LockedSemaphore<WorkerLock, true>, 4, 1024, 16, 0, YieldSpin>"
-    "f:fast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 0, 0, 0, 0>"
-   "f:xfast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 1, 64, 1, 0>"
-   "f:yfast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 1, 64, 1, 1>"
-  "f:psfast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, 0, PauseSpin>"
-  "f:ysfast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, 0, YieldSpin>"
+   "f:scond:SpinCondMutex<WorkerLock, 4, 1024, 16, 1, PauseSpin>"
+   "f:fibre:SpinSemMutex<FredBenaphore<LockedSemaphore<WorkerLock>,true>, 0, 0, 0, 0>"
+  "f:sfibre:SpinSemMutex<FredBenaphore<LockedSemaphore<WorkerLock>,true>, 4, 1024, 16, 1, PauseSpin>"
+    "f:fast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<WorkerLock>,true>, 0, 0, 0, 0>"
+   "f:sfast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<WorkerLock>,true>, 4, 1024, 16, 1, PauseSpin>"
 #  "f:fifo:LockedMutex<WorkerLock, true>"
 #  "f:simple:SimpleMutex0<false>"
 #  "f:direct:SimpleMutex0<true>"
@@ -31,24 +22,17 @@ function cleanup() {
 
 trap cleanup SIGHUP SIGINT SIGQUIT SIGTERM
 
-show=true
+show=false
 host=$(hostname)
-case "$1" in
-	show)  fcnt="1024";;
-	show1) fcnt="   1";;
-	*) show=false;;
-esac
-if $show; then
+if ! [ $1 -eq $1 ] 2>/dev/null; then
+	show=true
+	[ "$1" = "show" ] || host=$1
 	shift
-	if ! [ $1 -eq $1 ] 2>/dev/null; then
-		host=$1
-		shift
-	fi
 fi
 
 for lcnt in $*; do
 	if ! [ $lcnt -eq $lcnt ] 2>/dev/null; then
-		echo "usage: $0 [show [<hostname>]] <lock count> ..."
+		echo "usage: $0 [show|<hostname>] <lock count> ..."
 	  exit 0
 	fi
 done
@@ -56,9 +40,12 @@ done
 for lcnt in $*; do
 	filename=locks.$lcnt.$host.out
 	if $show; then
-		for w in 1 10 100 1000 10000 100000; do
-			grep -e "f: $fcnt w:.* $w "  $filename |sort -gr -k8
-			echo
+		[ -f $filename ] || continue
+		for fcnt in 1024; do
+			for w in 1 10 100 1000 10000 100000; do
+				grep -e "f: $fcnt w:.* $w "  $filename |sort -gr -k8
+				echo
+			done
 		done
 		continue
 	fi
@@ -75,8 +62,8 @@ for lcnt in $*; do
 		}
 		echo " running =========="
 		for w in 1 10 100 1000 10000; do
-			for f in 1 1024; do
-				grep -q -e "t:.* $MUTEXNAME f:.* $f w:.* $w " $filename && continue
+			for f in 1024; do
+				[ -f $filename ] && grep -q -e "t:.* $MUTEXNAME f:.* $f w:.* $w " $filename && continue
 				# perf stat -e task-clock --log-fd 1 -x,
 				taskset -c 32-63 perf stat -e task-clock -o perf.out \
 			  ./apps/${PREFIX}threadtest -l$lcnt -t32 -w$w -u$w -f$f | tee run.out
