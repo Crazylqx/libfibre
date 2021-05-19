@@ -35,10 +35,19 @@ struct Suspender { // funnel suspend calls through this class for access control
     fred.prepareResumeRace(_friend<Suspender>());
   }
 
-  template<bool DisablePreemption=true>
+  // returns the resumeMsg
+  static ptr_t cancelRunningResumeRace(Fred& fred) {
+    return fred.cancelRunningResumeRace(_friend<Suspender>());
+  }
+
+  static void cancelEarlyResume(Fred& fred) {
+    fred.cancelEarlyResume(_friend<Suspender>());
+  }
+
+  template<bool DisablePreemption=true, size_t SpinStart=1, size_t SpinEnd=0>
   static ptr_t suspend(Fred& fred) {
     if (DisablePreemption) RuntimeDisablePreemption();
-    ptr_t result = fred.suspend(_friend<Suspender>());
+    ptr_t result = fred.suspend<SpinStart, SpinEnd>(_friend<Suspender>());
     DBG::outl(DBG::Level::Blocking, "Fred ", FmtHex(&fred), " continuing");
     RuntimeEnablePreemption();
     return result;
@@ -50,8 +59,16 @@ enum SemaphoreResult : size_t { SemaphoreTimeout = 0, SemaphoreSuccess = 1, Sema
 /****************************** Timeouts ******************************/
 
 class TimerQueue {
+public:
+  struct Node {
+    Fred& fred;
+    bool expired;
+  };
+  typedef std::multimap<Time, Node*>::iterator Handle;
+
+private:
   WorkerLock lock;
-  std::multimap<Time,Fred*> queue;
+  std::multimap<Time, Node*> queue;
   TimerStats* stats;
 
 public:
@@ -63,42 +80,56 @@ public:
     size_t cnt = 0;
     Time now = Runtime::Timer::now();
     lock.acquire();
-    for (auto iter = queue.begin();; ) {
-      if (iter == queue.end()) {
-        lock.release();
-        stats->events.count(cnt);
-    return;
-      }
+    for (auto iter = queue.begin(); iter != queue.end(); iter = queue.erase(iter)) {
       if (iter->first > now) {
         lock.release();
         stats->events.count(cnt);
         Runtime::Timer::newTimeout(iter->first); // timeouts remaining after this run
     return;
       }
-      Fred* f = iter->second;
-      if (f->raceResume(&queue)) {
-        iter = queue.erase(iter);
-        f->resume();
+      Node* node = iter->second;
+      if (node->fred.raceResume(&queue)) {
+        node->fred.resume();  // node no longer accessible after this
       } else {
-        iter = std::next(iter);
+        node->expired = true;  // node no longer accessible after this
       }
       cnt += 1;
     }
+    lock.release();
+    stats->events.count(cnt);
   }
 
   ptr_t blockTimeout(Fred& cf, const Time& absTimeout) {
     // set up queue node
-    lock.acquire();
-    std::multimap<Time,Fred*>::iterator iter = queue.insert( {absTimeout, &cf} );
-    if (iter == queue.begin()) Runtime::Timer::newTimeout(absTimeout);
-    lock.release();
+    Node node = {cf, false};
+    auto iter = enqueue(node, absTimeout);
     // suspend
     ptr_t winner = Suspender::suspend(cf);
     if (winner == &queue) return nullptr; // timer expired
-    // clean up
-    ScopedLock<WorkerLock> sl(lock);
-    queue.erase(iter);
+    erase(iter, node);
     return winner;                        // timer cancelled
+  }
+
+  // Warning: must NOT call if timer won race
+  void erase(Handle& handle, const Node& node) {
+    // optimization, try without lock + memory sync
+    if (node.expired) return;
+    ScopedLock<WorkerLock> sl(lock);
+    if (!node.expired) queue.erase(handle);
+  }
+
+  Handle enqueue(Node& node, const Time& absTimeout) {
+    ScopedLock<WorkerLock> sl(lock);
+    auto iter = queue.insert({absTimeout, &node});
+    if (iter == queue.begin()) Runtime::Timer::newTimeout(absTimeout);
+    return iter;
+  }
+
+  bool didExpireAfterLosingRace(const Node& node) {
+    // optimization, try without lock + memory sync
+    if (node.expired) return true;
+    ScopedLock<WorkerLock> sl(lock);
+    return node.expired;
   }
 };
 
@@ -865,16 +896,18 @@ public:
   }
 };
 
+#include "runtime/FastTimeoutLocks.h"
+
 #if defined(FAST_MUTEX_TYPE)
 typedef FAST_MUTEX_TYPE FastMutex;
 #else
-typedef SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, 1> FastMutex;
+typedef SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16, 0> FastMutex;
 #endif
 
 #if defined(FRED_MUTEX_TYPE)
 typedef FRED_MUTEX_TYPE FredMutex;
 #else
-typedef SpinCondMutex<WorkerLock, 4, 1024, 16, 1> FredMutex;
+typedef SpinCondMutex<WorkerLock, 4, 1024, 16, 0> FredMutex;
 #endif
 
 typedef Condition<>                 FredCondition;
