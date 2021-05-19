@@ -29,7 +29,7 @@ In addition, the following students (in alphabetical order) have helped with var
 - Bilal Akhtar (gdb extension)
 - Peng Chen (split stack)
 - Peiran Hong (API/Apache)
-- Matthew May (suspend/timeout)
+- Matthew May (MCS queue with timeout)
 - Wen Shi (gdb extension)
 - Kai Sun (ARM64, mutex locks)
 - Shuangyi Tong (event scopes)

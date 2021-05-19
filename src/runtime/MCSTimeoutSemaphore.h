@@ -18,8 +18,8 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
-#ifndef _FastTimeoutLocks_h_
-#define _FastTimeoutLocks_h_ 1
+#ifndef _MCSTimeoutSemaphore_h_
+#define _MCSTimeoutSemaphore_h_ 1
 
 #include "runtime/BlockingSync.h"
 #include "runtime/ContainerLink.h"
@@ -37,10 +37,8 @@ static inline bool _MyCAS(T volatile* ptr, T expected, T desired,
 
 // for first SpinCnt iterations, spin with exponential backoff
 // then for later iterations, yield
-template <int SpinStart, int SpinEnd, int SpinCnt, typename CallableCond,
-          typename CallableUpdate>
-static inline void yieldingSpinOnCondition(Fred& cf, CallableCond cond,
-                                           CallableUpdate update) {
+template <int SpinStart, int SpinEnd, int SpinCnt, typename CallableCond, typename CallableUpdate>
+static inline void yieldingSpinOnCondition(Fred& cf, CallableCond cond, CallableUpdate update) {
   int spin = SpinStart;
   int spins = 0;
   for (;;) {
@@ -56,8 +54,7 @@ static inline void yieldingSpinOnCondition(Fred& cf, CallableCond cond,
   }
 }
 
-template <int SpinStart, int SpinEnd, typename CallableCond,
-          typename CallableUpdate>
+template <int SpinStart, int SpinEnd, typename CallableCond, typename CallableUpdate>
 static inline void spinOnCondition(CallableCond cond, CallableUpdate update) {
   int spin = SpinStart;
   for (;;) {
@@ -105,8 +102,7 @@ class MCSTimeoutQueue {
 
   // ensure Node* (address of a Node) ends with bits 00 by making Node at
   // least 4 byte aligned
-  static_assert(alignof(Node) >= 4,
-                "Node type must be at least 4 byte aligned");
+  static_assert(alignof(Node) >= 4, "Node type must be at least 4 byte aligned");
 
   Node* volatile head = nullptr;
   Lock headLock;
@@ -161,17 +157,14 @@ class MCSTimeoutQueue {
   }
 
   // returns true if popped, false if timeout
-  bool pushAndWaitUntilPopped(
-      Fred& cf, const Time& relativeTimeout, const Time& absTimeout,
-      TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) {
+  bool pushAndWaitUntilPopped(Fred& cf, const Time& absTimeout, TimerQueue& tq = Runtime::Timer::CurrTimerQueue()) {
     Node n(cf, true);
     TimerQueue::Node timeoutNode = {cf, false};
     Node* pred;
     if (swapWithTail(n, pred)) {
       Suspender::prepareRace(cf);
       head = &n;
-      TimerQueue::Handle handle =
-          tq.enqueue(timeoutNode, relativeTimeout, absTimeout);
+      TimerQueue::Handle handle = tq.enqueue(timeoutNode, absTimeout);
       ptr_t winner = Suspender::suspend(cf);
       if (winner == &head) {
         // we were popped and resumed
@@ -188,8 +181,7 @@ class MCSTimeoutQueue {
     linkTailToPred(n, pred);
 
     // start timer
-    TimerQueue::Handle handle =
-        tq.enqueue(timeoutNode, relativeTimeout, absTimeout);
+    TimerQueue::Handle handle = tq.enqueue(timeoutNode, absTimeout);
     Node* temp;
     for (;;) {
       ptr_t winner = Suspender::suspend(cf);
@@ -739,7 +731,7 @@ class LimitedTimeoutSemaphore {
       return SemaphoreWasOpen;
     }
     queue.pushAndWaitUntilPopped(cf);
-    return SemaphoreSucess;
+    return SemaphoreSuccess;
   }
 
   SemaphoreResult P(const Time& timeout,
@@ -771,9 +763,9 @@ class LimitedTimeoutSemaphore {
     }
 
     const bool wasPopped =
-        queue.pushAndWaitUntilPopped(cf, timeout - now, timeout, tq);
+        queue.pushAndWaitUntilPopped(cf, timeout, tq);
     if (wasPopped) {
-      return SemaphoreSucess;
+      return SemaphoreSuccess;
     }
     handleTimeout();
     return SemaphoreTimeout;
@@ -835,4 +827,4 @@ using MCSTimeoutSemaphore = LimitedTimeoutSemaphore<1, 1, 64, Lock>;
 using MCSTimeoutSemaphore = LimitedTimeoutSemaphore<0, 0, 0, Lock>;
 #endif
 
-#endif /* _FastTimeoutLocks_h_ */
+#endif /* _MCSTimeoutSemaphore_h_ */

@@ -154,12 +154,12 @@ public:
     }
   }
 
+  void cancelEarlyResume(_friend<Suspender>) { runState = Running; }
+
   void prepareResumeRace(_friend<Suspender>) {
     RASSERT(runState == Running, runState);
     resumeInfo = nullptr;
   }
-
-  void cancelEarlyResume(_friend<Suspender>) { runState = Running; }
 
   ptr_t cancelRunningResumeRace(_friend<Suspender>) {
     return __atomic_exchange_n(&resumeInfo, (ptr_t)0x1, __ATOMIC_SEQ_CST);

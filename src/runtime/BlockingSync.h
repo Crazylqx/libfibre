@@ -896,7 +896,7 @@ public:
   }
 };
 
-#include "runtime/FastTimeoutLocks.h"
+#include "runtime/MCSTimeoutSemaphore.h"
 
 #if defined(FAST_MUTEX_TYPE)
 typedef FAST_MUTEX_TYPE FastMutex;
