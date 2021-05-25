@@ -17,6 +17,8 @@
 #ifndef _ScopedLocks_h_
 #define _ScopedLocks_h_ 1
 
+#include "runtime/SpinLocks.h"
+
 struct DummyLock {
   void acquire() {}
   void release() {}
@@ -28,6 +30,15 @@ class ScopedLock {
 public:
   ScopedLock(Lock& lk) : lk(lk) { lk.acquire(); }
   ~ScopedLock() { lk.release(); }
+};
+
+template<>
+class ScopedLock<MCSLock> {
+  MCSLock& lk;
+  MCSLock::Node node;
+public:
+  ScopedLock(MCSLock& lk) : lk(lk) { lk.acquire(node); }
+  ~ScopedLock() { lk.release(node); }
 };
 
 template <typename Lock>

@@ -2,8 +2,8 @@
 
 TYPES=(
  "p:pthread:FredMutex"
-    "f:cond:SpinCondMutex<WorkerLock, 0, 0, 0, 0>"
-   "f:scond:SpinCondMutex<WorkerLock, 4, 1024, 16, 0, PauseSpin>"
+    "f:cond:SpinCondMutex<ConditionalQueue<WorkerLock>, 0, 0, 0, 0>"
+   "f:scond:SpinCondMutex<ConditionalQueue<WorkerLock>, 4, 1024, 16, 0, PauseSpin>"
    "f:fibre:SpinSemMutex<FredBenaphore<LockedSemaphore<WorkerLock>,true>, 0, 0, 0, 0>"
   "f:sfibre:SpinSemMutex<FredBenaphore<LockedSemaphore<WorkerLock>,true>, 4, 1024, 16, 0, PauseSpin>"
     "f:fast:SpinSemMutex<FredBenaphore<LimitedSemaphore0<WorkerLock>,true>, 0, 0, 0, 0>"

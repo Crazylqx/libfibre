@@ -89,9 +89,9 @@ public:
       }
       Node* node = iter->second;
       if (node->fred.raceResume(&queue)) {
-        node->fred.resume();  // node no longer accessible after this
+        node->fred.resume();                     // node no longer accessible after this
       } else {
-        node->expired = true;  // node no longer accessible after this
+        node->expired = true;                    // node no longer accessible after this
       }
       cnt += 1;
     }
@@ -800,9 +800,9 @@ public:
 };
 
 // inspired by Linux pthread mutex/futex implementation
-template<typename Lock, int SpinStart, int SpinEnd, int SpinCount, int YieldCount, typename SpinOp = PauseSpin>
+template<typename CQ, int SpinStart, int SpinEnd, int SpinCount, int YieldCount, typename SpinOp = PauseSpin>
 class SpinCondMutex {
-  ConditionalQueue<Lock> queue;
+  CQ queue;
   volatile size_t value;
   Fred* volatile owner;
 
@@ -907,7 +907,7 @@ typedef SpinSemMutex<FredBenaphore<LimitedSemaphore0<MCSLock>,true>, 4, 1024, 16
 #if defined(FRED_MUTEX_TYPE)
 typedef FRED_MUTEX_TYPE FredMutex;
 #else
-typedef SpinCondMutex<WorkerLock, 4, 1024, 16, 0> FredMutex;
+typedef SpinCondMutex<ConditionalQueue<WorkerLock>, 4, 1024, 16, 0> FredMutex;
 #endif
 
 typedef Condition<>                 FredCondition;
