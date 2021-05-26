@@ -897,6 +897,7 @@ public:
 };
 
 #include "runtime/MCSTimeoutSemaphore.h"
+#include "runtime/ConditionalNemesisQueue.h"
 
 #if defined(FAST_MUTEX_TYPE)
 typedef FAST_MUTEX_TYPE FastMutex;
