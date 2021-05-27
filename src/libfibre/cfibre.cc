@@ -84,7 +84,7 @@ extern "C" int cfibre_resume(cfibre_cluster_t cluster) {
 }
 
 extern "C" cfibre_eventscope_t cfibre_clone(void (*mainFunc)(void *), void* mainArg) {
-  return reinterpret_cast<_cfibre_eventscope_t*>(EventScope::clone(mainFunc, mainArg));
+  return reinterpret_cast<_cfibre_eventscope_t*>(Context::CurrEventScope().clone(mainFunc, mainArg));
 }
 
 extern "C" cfibre_eventscope_t cfibre_es_self(void) {

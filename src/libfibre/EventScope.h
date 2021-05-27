@@ -50,13 +50,13 @@ class EventScope {
     SyncMutex rdMutex;
     SyncMutex wrMutex;
 #endif
-    bool nonblocking;
+    bool blocking;
 #if TESTING_LAZY_FD_REGISTRATION
     FastMutex   pollStatusLock;
     size_t      pollStatus;
     BasePoller* poller;
 #endif
-    SyncFD() : nonblocking(false) {
+    SyncFD() : blocking(false) {
 #if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
       pollMod = false;
 #endif
@@ -69,6 +69,7 @@ class EventScope {
 
   int fdCount;
 
+  EventScope*   parentScope;
   MasterPoller* masterPoller; // runs without cluster
   TimerQueue    timerQueue;   // scope-global timer queue
 
@@ -93,25 +94,31 @@ class EventScope {
   }
 
   static void cloneInternal(EventScope* This) {
+    This->initSync();
 #if __linux__
+    RASSERT0(This->parentScope);
+    for (int f = 0; f < This->fdCount; f += 1) This->fdSyncVector[f].blocking = This->parentScope->fdSyncVector[f].blocking;
     SYSCALL(unshare(CLONE_FILES));
 #endif
-    This->initIO();
+    This->start();
   }
 
-  EventScope(size_t pollerCount) : timerQueue(this), diskCluster(nullptr) {
+  EventScope(size_t pollerCount, EventScope* ps = nullptr) : parentScope(ps), timerQueue(this), diskCluster(nullptr) {
     RASSERT0(pollerCount > 0);
     stats = new EventScopeStats(this, nullptr);
     mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>());   // create main cluster
   }
 
-  void initIO() {
+  void initSync() {
     struct rlimit rl;
     SYSCALL(getrlimit(RLIMIT_NOFILE, &rl));                                 // get hard limit for file descriptor count
     rl.rlim_max = rl.rlim_cur;                                              // firm up current FD limit
     SYSCALL(setrlimit(RLIMIT_NOFILE, &rl));                                 // and install maximum
     fdCount = rl.rlim_max + MasterPoller::extraTimerFD;                     // add fake timer fd, if necessary
     fdSyncVector = new SyncFD[fdCount];                                     // create vector of R/W sync points
+  }
+
+  void start() {
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
     mainCluster->startPolling(_friend<EventScope>());                       // start polling now (potentially new event scope)
   }
@@ -124,7 +131,8 @@ public:
     EventScope* es = new EventScope(pollerCount);
     es->mainFibre = es->mainCluster->registerWorker(_friend<EventScope>());
     if (workerCount > 1) es->mainCluster->addWorkers(workerCount - 1);
-    es->initIO();
+    es->initSync();
+    es->start();
     return es;
   }
 
@@ -132,9 +140,9 @@ public:
       The new event scope automatically starts with a single worker (pthread)
       and a separate kernel file descriptor table where supported (Linux).
       `mainFunc(mainArg)` is invoked as main fibre of the new scope. */
-  static EventScope* clone(funcvoid1_t mainFunc, ptr_t mainArg, size_t pollerCount = 1) {
-    EventScope* es = new EventScope(pollerCount);
-    es->mainCluster->addWorker((funcvoid1_t)cloneInternal, (ptr_t)es); // calls initIO()
+  EventScope* clone(funcvoid1_t mainFunc, ptr_t mainArg, size_t pollerCount = 1) {
+    EventScope* es = new EventScope(pollerCount, this);
+    es->mainCluster->addWorker((funcvoid1_t)cloneInternal, (ptr_t)es); // calls initSync()/start()
     es->mainFibre = new Fibre(*es->mainCluster);
     es->mainFibre->run(mainFunc, mainArg);
     return es;
@@ -189,6 +197,7 @@ private:
     static_assert(Input || Output, "must set Input or Output in internalRegisterFD()");
     const size_t target = (Input ? BasePoller::Input : 0) | (Output ? BasePoller::Output : 0);
 
+    if (!fdSyncVector[fd].blocking) return false;
 #if TESTING_LAZY_FD_REGISTRATION
     if (!now) return false;
     RASSERT0(fd >= 0 && fd < fdCount);
@@ -232,13 +241,20 @@ public:
     return internalRegisterFD<true,true,false>(fd, now);
   }
 
+  void setBlocking(int fd, bool nonblocking) {
+    fdSyncVector[fd].blocking = !nonblocking;
+  }
+
+  void dupBlocking(int fd, int orig) {
+    fdSyncVector[fd].blocking = fdSyncVector[orig].blocking;
+  }
+
   template<bool RemoveFromPollSet = false>
   void deregisterFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
     fdsync.rdSem.cleanup();
     fdsync.wrSem.cleanup();
-    fdsync.nonblocking = false;
 #if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
     fdsync.pollMod = false;
 #endif
@@ -318,11 +334,10 @@ public:
   template<bool Input, bool Yield, bool Cluster, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    if (fdSyncVector[fd].nonblocking) return iofunc(fd, a...);
     if (Yield) Fibre::yield();
     stats->calls.count();
     T ret = iofunc(fd, a...);
-    if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
+    if (ret >= 0 || !TestEAGAIN<Input>() || !fdSyncVector[fd].blocking) return ret;
     stats->fails.count();
 #if TESTING_LAZY_FD_REGISTRATION
     if (internalRegisterFD<Input,!Input,Cluster>(fd, true)) {
@@ -350,18 +365,6 @@ public:
       stats->fails.count();
     }
   }
-
-  int fcntl(int fildes, int cmd, int flags) {
-    int ret = ::fcntl(fildes, cmd, flags | O_NONBLOCK); // internally, all sockets nonblocking
-    if (ret != -1) {
-      if (flags & O_NONBLOCK) {
-        fdSyncVector[fildes].nonblocking = true;
-      } else {
-        fdSyncVector[fildes].nonblocking = false;
-      }
-    }
-    return ret;
-  }
 };
 
 /** @brief Generic input wrapper. User-level-block if file descriptor not ready for reading. */
@@ -387,6 +390,7 @@ inline int lfSocket(int domain, int type, int protocol) {
   int ret = socket(domain, type | SOCK_NONBLOCK, protocol);
   if (ret < 0) return ret;
   // do not register SOCK_STREAM yet (cf. listen, connect) -> mandatory for FreeBSD!
+  Context::CurrEventScope().setBlocking(ret, type & SOCK_NONBLOCK);
   if (type != SOCK_STREAM) Context::CurrEventScope().registerFD(ret);
   return ret;
 }
@@ -431,6 +435,7 @@ inline int lfListen(int fd, int backlog) {
 inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
   int ret = Context::CurrEventScope().syncIO<true,false,true>(accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK);
   if (ret < 0) return ret;
+  Context::CurrEventScope().setBlocking(ret, flags & SOCK_NONBLOCK);
   Context::CurrEventScope().stats->srvconn.count();
   Context::CurrEventScope().registerFD(ret);
   return ret;
@@ -440,6 +445,7 @@ inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
 inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
   int ret = accept4(fd, addr, addrlen, flags | SOCK_NONBLOCK);
   if (ret < 0) return ret;
+  Context::CurrEventScope().setBlocking(ret, flags & SOCK_NONBLOCK);
   Context::CurrEventScope().stats->srvconn.count();
   Context::CurrEventScope().registerFD(ret);
   return ret;
@@ -450,6 +456,7 @@ inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0
 inline int lfDup(int fd) {
   int ret = dup(fd);
   if (ret < 0) return ret;
+  Context::CurrEventScope().dupBlocking(ret, fd);
   Context::CurrEventScope().registerFD(ret);
   return ret;
 }
@@ -458,13 +465,17 @@ inline int lfDup(int fd) {
 inline int lfPipe(int pipefd[2], int flags = 0) {
   int ret = pipe2(pipefd, flags | O_NONBLOCK);
   if (ret < 0) return ret;
+  Context::CurrEventScope().setBlocking(pipefd[0], flags & O_NONBLOCK);
+  Context::CurrEventScope().setBlocking(pipefd[1], flags & O_NONBLOCK);
   Context::CurrEventScope().registerFD(pipefd[0]);
   Context::CurrEventScope().registerFD(pipefd[1]);
   return ret;
 }
 
 inline int lfFcntl(int fildes, int cmd, int flags) {
-  return Context::CurrEventScope().fcntl(fildes, cmd, flags);
+  int ret = ::fcntl(fildes, cmd, flags | O_NONBLOCK); // internally, all sockets nonblocking
+  if (ret != -1) Context::CurrEventScope().setBlocking(fildes, flags & O_NONBLOCK);
+  return ret;
 }
 
 /** @brief Close file descriptor. */

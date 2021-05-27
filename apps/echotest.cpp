@@ -191,7 +191,7 @@ void servmain(sockaddr_in& addr) {
     Fibre a1(Context::CurrCluster(), true);
     a1.run(servaccept);
     if (numaccept == 2) {
-      EventScope* es2 = EventScope::clone(servaccept2, nullptr);
+      EventScope* es2 = Context::CurrEventScope().clone(servaccept2, nullptr);
       std::cout << "waiting for 2nd accept loop" << std::endl;
       es2->join();
     } else {
