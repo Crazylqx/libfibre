@@ -44,7 +44,7 @@ public:
     RASSERT(!Next(last), FmtHex(&last));       // assume link invalidated at pop
     Node* prev = __atomic_exchange_n(&tail, &last, __ATOMIC_SEQ_CST); // swing tail to last of new element(s)
     if (!prev) return true;
-    Next(*prev) = &first;
+    __atomic_store_n(&Next(*prev), &first, __ATOMIC_RELEASE);
     return false;
   }
 
@@ -53,7 +53,7 @@ public:
   Node* pop(Node& elem) {
     Node* expected = &elem;
     if (__atomic_compare_exchange_n(&tail, &expected, nullptr, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return nullptr;
-    while (!Next(elem)) Pause();               // producer in push()
+    while (!__atomic_load_n(&Next(elem), __ATOMIC_ACQUIRE)) Pause(); // producer in push()
     Node* next = Next(elem);
     Next(elem) = nullptr;                      // invalidate link
     return next;
@@ -72,7 +72,7 @@ public:
 
   bool push(Node& first, Node& last) {
     if (!QueueMCS<Node,Next>::push(first, last)) return false;
-    head = &first;
+    __atomic_store_n(&head, &first, __ATOMIC_RELEASE);
     return true;
   }
 
@@ -81,7 +81,7 @@ public:
   template<typename... Args>
   Node* pop(Args&... args) {
     AcquireSpinLock(args...);
-    Node* elem = head;                         // return head
+    Node* elem = __atomic_load_n(&head, __ATOMIC_ACQUIRE); // return head
     if (!elem) {
       ReleaseSpinLock(args...);
       return nullptr;

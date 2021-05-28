@@ -557,7 +557,7 @@ public:
 
 /****************************** (Almost-)Lock-Free Synchronization ******************************/
 
-template<typename Lock = DummyLock>
+template<typename Lock = DummyLock, int SpinStart = 1, int SpinEnd = 128>
 class LimitedSemaphore0 {
   Lock lock;
   FredMPSC<FredReadyLink> queue;
@@ -582,13 +582,16 @@ public:
 
   template<bool Enqueue = true>
   Fred* V() {
-    Fred* next;
     for (;;) {
-      next = queue.pop(lock);
-      if (next) break;
+      for (int s = SpinStart; s <= SpinEnd; s += 1) {
+        Fred* next = queue.pop(lock);
+        if (next) {
+          if (Enqueue) next->resume();
+          return next;
+        }
+      }
+      Fred::yield(); // yield() needed to avoid circular deadlock between all workers in V()
     }
-    if (Enqueue) next->resume();
-    return next;
   }
 
   template<bool Enqueue = true>
