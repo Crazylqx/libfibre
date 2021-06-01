@@ -36,25 +36,22 @@ class EventScope;
 class Fibre;
 class Fred;
 
-class BasePoller {
-public:
-#if __FreeBSD__
-  static const size_t Input  = 0x1;
-  static const size_t Output = 0x2;
-#else // __linux__ below
-  static const size_t Input  = EPOLLIN | EPOLLPRI | EPOLLRDHUP;
-  static const size_t Output = EPOLLOUT;
-#endif
-
-protected:
+struct Poller {
 #if __FreeBSD__
   typedef struct kevent EventType;
-  enum PollFlag : size_t { Level = 0, Edge = EV_CLEAR, Oneshot = EV_ONESHOT };
+  enum Operation : ssize_t { Create = EV_ADD, Modify = EV_ADD, Remove = EV_DELETE };
+  enum Direction : ssize_t { Input = EVFILT_READ, Output = EVFILT_WRITE };
+  enum Variant   : ssize_t { Level = 0, Edge = EV_CLEAR, Oneshot = EV_ONESHOT };
 #else // __linux__ below
-  typedef epoll_event   EventType;
-  enum PollFlag : size_t { Level = 0, Edge = EPOLLET, Oneshot = EPOLLONESHOT };
+  typedef epoll_event   EventType; // man 2 epoll_ctl: EPOLLERR, EPOLLHUP not needed
+  enum Operation : ssize_t { Create = EPOLL_CTL_ADD, Modify = EPOLL_CTL_MOD, Remove = EPOLL_CTL_DEL };
+  enum Direction : ssize_t { Input = EPOLLIN | EPOLLPRI | EPOLLRDHUP, Output = EPOLLOUT };
+  enum Variant   : ssize_t { Level = 0, Edge = EPOLLET, Oneshot = EPOLLONESHOT };
 #endif
+};
 
+class BasePoller : public Poller {
+protected:
   static const int maxPoll = 1024;
   EventType     events[maxPoll];
   int           pollFD;
@@ -87,47 +84,18 @@ public:
     SYSCALL(close(pollFD));
   }
 
-#if TESTING_ONESHOT_REGISTRATION
-  template<PollFlag pflag = Oneshot>
-#else
-  template<PollFlag pflag = Edge>
-#endif
-  void setupFD(int fd, size_t status, bool change = false) {
-    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " register ", fd, " on ", pollFD, " for ", status);
-    stats->regs.count();
+  void setupFD(int fd, Operation op, Direction dir, Variant var) {
+    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " setup ", fd, " at ", pollFD, " with ", op, '/', dir, '/', var);
+    stats->regs.count(op != Remove);
 #if __FreeBSD__
-    struct kevent ev[2];
-    int idx = 0;
-    if (status & Input) {
-      EV_SET(&ev[idx], fd, EVFILT_READ, EV_ADD | pflag, 0, 0, 0);
-      idx += 1;
-    }
-    if (status & Output) {
-      EV_SET(&ev[idx], fd, EVFILT_WRITE, EV_ADD | pflag, 0, 0, 0);
-      idx += 1;
-    }
-    SYSCALL(kevent(pollFD, ev, idx, nullptr, 0, nullptr));
+    struct kevent ev;
+    EV_SET(&ev, fd, dir, op | (op == Remove ? 0 : var), 0, 0, 0);
+    SYSCALL(kevent(pollFD, &ev, 1, nullptr, 0, nullptr));
 #else // __linux__ below
     epoll_event ev;
-    ev.events = pflag | status; // man 2 epoll_ctl: EPOLLERR, EPOLLHUP not needed
+    ev.events = dir | var;
     ev.data.fd = fd;
-    if (change) {
-      SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_MOD, fd, &ev));
-    } else {
-      SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_ADD, fd, &ev));
-    }
-#endif
-  }
-
-  void resetFD(int fd) {
-    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " deregister ", fd, " on ", pollFD);
-#if __FreeBSD__
-    struct kevent ev[2];
-    EV_SET(&ev[0], fd, EVFILT_READ, EV_DELETE, 0, 0, 0);
-    EV_SET(&ev[1], fd, EVFILT_WRITE, EV_DELETE, 0, 0, 0);
-    SYSCALL(kevent(pollFD, ev, 2, nullptr, 0, nullptr));
-#else // __linux__ below
-    SYSCALL(epoll_ctl(pollFD, EPOLL_CTL_DEL, fd, nullptr));
+    SYSCALL(epoll_ctl(pollFD, op, fd, op == Remove ? nullptr : &ev));
 #endif
   }
 };
@@ -159,7 +127,7 @@ public:
     SYSCALL(pthread_join(pollThread, nullptr));
 #else // __linux__ below
     int waker = SYSCALLIO(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)); // binary semaphore semantics w/o EFD_SEMAPHORE
-    setupFD(waker, Input);
+    setupFD(waker, Create, Input, Oneshot);
     uint64_t val = 1;
     val = SYSCALL_EQ(write(waker, &val, sizeof(val)), sizeof(val));
     DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD, " via ", waker);
@@ -204,7 +172,7 @@ public:
     timerFD = fdCount - 1;
 #else
     timerFD = SYSCALLIO(timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC));
-    setupFD<Edge>(timerFD, Input);
+    setupFD(timerFD, Create, Input, Edge);
 #endif
   }
 
@@ -223,10 +191,6 @@ public:
     itimerspec tval = { {0,0}, timeout };
     SYSCALL(timerfd_settime(timerFD, TFD_TIMER_ABSTIME, &tval, nullptr));
 #endif
-  }
-
-  void setupPollFD(int fd, bool change) { // use hierarchical pollling via ONESHOT
-    setupFD<Oneshot>(fd, Input, change);
   }
 };
 

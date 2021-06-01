@@ -38,33 +38,14 @@ class EventScope {
   // A vector for FDs works well here in principle, because POSIX guarantees lowest-numbered FDs:
   // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
   // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
-  typedef FredMutex                        SyncMutex;
   typedef LockedSemaphore<WorkerLock,true> SyncSem;
   struct SyncFD {
-    SyncSem   rdSem;
-    SyncSem   wrSem;
-#if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
-    SyncMutex rwMutex;
-    bool      pollMod;
-#else
-    SyncMutex rdMutex;
-    SyncMutex wrMutex;
-#endif
-    bool blocking;
-#if TESTING_LAZY_FD_REGISTRATION
-    FastMutex   pollStatusLock;
-    size_t      pollStatus;
-    BasePoller* poller;
-#endif
-    SyncFD() : blocking(false) {
-#if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
-      pollMod = false;
-#endif
-#if TESTING_LAZY_FD_REGISTRATION
-      pollStatus = 0;
-      poller = nullptr;
-#endif
-    }
+    SyncSem     iSem;
+    SyncSem     oSem;
+    BasePoller* volatile iPoller;
+    BasePoller* volatile oPoller;
+    bool        volatile blocking;
+    SyncFD() : iPoller(nullptr), oPoller(nullptr), blocking(false) {}
   } *fdSyncVector;
 
   int fdCount;
@@ -95,10 +76,12 @@ class EventScope {
 
   static void cloneInternal(EventScope* This) {
     This->initSync();
-#if __linux__
     RASSERT0(This->parentScope);
+#if __linux__
     for (int f = 0; f < This->fdCount; f += 1) This->fdSyncVector[f].blocking = This->parentScope->fdSyncVector[f].blocking;
     SYSCALL(unshare(CLONE_FILES));
+#else
+    (void)This->parentScope;
 #endif
     This->start();
   }
@@ -164,8 +147,8 @@ public:
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
     mainCluster->postFork1(this, _friend<EventScope>());
     for (int f = 0; f < fdCount; f += 1) {
-      RASSERT(fdSyncVector[f].rdSem.getValue() >= 0, f);
-      RASSERT(fdSyncVector[f].wrSem.getValue() >= 0, f);
+      RASSERT(fdSyncVector[f].iSem.getValue() >= 0, f);
+      RASSERT(fdSyncVector[f].oSem.getValue() >= 0, f);
     }
     mainCluster->postFork2(_friend<EventScope>());
   }
@@ -191,123 +174,52 @@ public:
 
   void setTimer(const Time& timeout) { masterPoller->setTimer(timeout); }
 
-private:
-  template<bool Input, bool Output, bool Cluster>
-  bool internalRegisterFD(int fd, bool now) {
-    static_assert(Input || Output, "must set Input or Output in internalRegisterFD()");
-    const size_t target = (Input ? BasePoller::Input : 0) | (Output ? BasePoller::Output : 0);
-
-    if (!fdSyncVector[fd].blocking) return false;
-#if TESTING_LAZY_FD_REGISTRATION
-    if (!now) return false;
-    RASSERT0(fd >= 0 && fd < fdCount);
-    SyncFD& fdsync = fdSyncVector[fd];
-    if ((fdsync.pollStatus & target) == target) return false; // outside of lock: faster, but double regs possible...
-    ScopedLock<FastMutex> sl(fdsync.pollStatusLock);
-    RASSERT0((bool)fdsync.pollStatus == (bool)fdsync.poller)
-    fdsync.pollStatus |= target;
-#endif
-
-#if TESTING_PROCESSOR_POLLER
-    BasePoller& cp = Cluster
-      ? static_cast<BasePoller&>(Context::CurrCluster().getPoller(fd))
-      : static_cast<BasePoller&>(Context::CurrPoller());
-#else
-    BasePoller& cp = Context::CurrCluster().getPoller(fd);
-#endif
-
-#if TESTING_LAZY_FD_REGISTRATION
-    if (fdsync.poller) {
-      fdsync.poller->setupFD(fd, fdsync.pollStatus, true); // modify poll settings
-    } else {
-      fdsync.poller = &cp;
-      fdsync.poller->setupFD(fd, fdsync.pollStatus);       // add poll settings
-    }
-#elif TESTING_ONESHOT_REGISTRATION && defined(__linux__)
-    cp.setupFD(fd, target, fdSyncVector[fd].pollMod);      // add poll settings
-    fdSyncVector[fd].pollMod = true;
-#else
-    cp.setupFD(fd, target);                                // add poll settings
-#endif
-    return true;
-  }
-
-public:
-  bool registerServerFD(int fd, bool now = false) {
-    return internalRegisterFD<true,false,true>(fd, now);
-  }
-
-  bool registerFD(int fd, bool now = false) {
-    return internalRegisterFD<true,true,false>(fd, now);
-  }
-
   void setBlocking(int fd, bool nonblocking) {
+    RASSERT0(fd >= 0 && fd < fdCount);
     fdSyncVector[fd].blocking = !nonblocking;
   }
 
   void dupBlocking(int fd, int orig) {
+    RASSERT0(fd >= 0 && fd < fdCount);
     fdSyncVector[fd].blocking = fdSyncVector[orig].blocking;
   }
 
-  template<bool RemoveFromPollSet = false>
-  void deregisterFD(int fd) {
+  void cleanupFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
-    fdsync.rdSem.cleanup();
-    fdsync.wrSem.cleanup();
-#if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
-    fdsync.pollMod = false;
-#endif
-#if TESTING_LAZY_FD_REGISTRATION
-    ScopedLock<FastMutex> sl(fdsync.pollStatusLock);
-    fdsync.pollStatus = 0;
-    if (RemoveFromPollSet) {              // only called from lfConnect w/ TESTING_LAZY_FD_REGISTRATION
-      RASSERT0(fdsync.poller)
-      fdsync.poller->resetFD(fd);
-    }
-    fdsync.poller = nullptr;
-#endif
-  }
-
-  void checkAsyncCompletion(int fd) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    registerFD(fd, true);                 // register immediately
-    fdSyncVector[fd].wrSem.P();           // wait for completion
-    int ret;
-    socklen_t sz = sizeof(ret);
-    SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &sz));
-    RASSERT(ret == 0, ret);
-#if TESTING_LAZY_FD_REGISTRATION
-    deregisterFD<true>(fd);               // revert to lazy registration
-#endif
-  }
-
-  void registerPollFD(int fd) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    masterPoller->setupPollFD(fd, false); // set using ONESHOT to reduce polling
-  }
-
-  void blockPollFD(int fd) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    masterPoller->setupPollFD(fd, true);  // reset using ONESHOT to reduce polling
-    fdSyncVector[fd].rdSem.P();
-  }
-
-  void unblockPollFD(int fd, _friend<PollerFibre>) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].rdSem.V();
+    fdsync.iSem.reset(0);
+    fdsync.oSem.reset(0);
+    fdsync.iPoller = nullptr;
+    fdsync.oPoller = nullptr;
+    fdsync.blocking = false;
   }
 
   bool tryblock(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    return fdSyncVector[fd].rdSem.tryP();
+    return fdSyncVector[fd].iSem.tryP();
   }
 
   template<bool Input, bool Enqueue = true>
   Fred* unblock(int fd, _friend<BasePoller>) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    SyncSem& sem = Input ? fdSyncVector[fd].rdSem : fdSyncVector[fd].wrSem;
+    SyncSem& sem = Input ? fdSyncVector[fd].iSem : fdSyncVector[fd].oSem;
     return sem.V<Enqueue>();
+  }
+
+  void registerPollFD(int fd) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    masterPoller->setupFD(fd, Poller::Create, Poller::Input, Poller::Oneshot);
+  }
+
+  void blockPollFD(int fd) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    masterPoller->setupFD(fd, Poller::Modify, Poller::Input, Poller::Oneshot);
+    fdSyncVector[fd].iSem.P();
+  }
+
+  void unblockPollFD(int fd, _friend<PollerFibre>) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    fdSyncVector[fd].iSem.V();
   }
 
   template<typename T, class... Args>
@@ -331,39 +243,63 @@ public:
 #endif
   }
 
+  template<bool Input, bool Cluster>
+  BasePoller& getPoller(int fd) {
+    if (Input) {
+#if TESTING_WORKER_POLLER
+      if (!Cluster) return Cluster::getWorkerPoller();
+#endif
+      return Context::CurrCluster().getInputPoller(fd);
+    }
+    return Context::CurrCluster().getOutputPoller(fd);
+  }
+
   template<bool Input, bool Yield, bool Cluster, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
     RASSERT0(fd >= 0 && fd < fdCount);
+    SyncFD& fdsync = fdSyncVector[fd];
+    if (!fdsync.blocking) return iofunc(fd, a...);
     if (Yield) Fibre::yield();
     stats->calls.count();
     T ret = iofunc(fd, a...);
-    if (ret >= 0 || !TestEAGAIN<Input>() || !fdSyncVector[fd].blocking) return ret;
+    if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
     stats->fails.count();
-#if TESTING_LAZY_FD_REGISTRATION
-    if (internalRegisterFD<Input,!Input,Cluster>(fd, true)) {
-      Fibre::yield();
-      stats->calls.count();
-      T ret = iofunc(fd, a...);
-      if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
-      stats->fails.count();
-    }
-#endif
-    SyncSem& sem = Input ? fdSyncVector[fd].rdSem : fdSyncVector[fd].wrSem;
-#if TESTING_ONESHOT_REGISTRATION && defined(__linux__)
-    ScopedLock<SyncMutex> sl(fdSyncVector[fd].rwMutex);
-#else
-    ScopedLock<SyncMutex> sl(Input ? fdSyncVector[fd].rdMutex : fdSyncVector[fd].wrMutex);
-#endif
-    for (;;) {
+    BasePoller* volatile& poller = Input ? fdsync.iPoller : fdsync.oPoller;
+    if (!poller) {
+      poller = &getPoller<Input,Cluster>(fd);
 #if TESTING_ONESHOT_REGISTRATION
-      internalRegisterFD<Input,!Input,Cluster>(fd, true);
+      poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
+#else
+      poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Edge);
 #endif
+    } else {
+#if TESTING_ONESHOT_REGISTRATION
+      poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
+#endif
+    }
+    SyncSem& sem = Input ? fdsync.iSem : fdsync.oSem;
+    for (;;) {
       sem.P();
       stats->calls.count();
       ret = iofunc(fd, a...);
       if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
       stats->fails.count();
+#if TESTING_ONESHOT_REGISTRATION
+      poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
+#endif
     }
+  }
+
+  int checkAsyncCompletion(int fd) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    SyncFD& fdsync = fdSyncVector[fd];
+    fdsync.oPoller = &getPoller<false,false>(fd);
+    fdsync.oPoller->setupFD(fd, Poller::Create, Poller::Output, Poller::Oneshot); // register immediately
+    fdsync.oSem.P();                                                              // wait for completion
+    int err;
+    socklen_t sz = sizeof(err);
+    SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &sz));
+    return err;
   }
 };
 
@@ -389,20 +325,20 @@ inline T lfDirectIO( T (*diskfunc)(int, Args...), int fd, Args... a) {
 inline int lfSocket(int domain, int type, int protocol) {
   int ret = socket(domain, type | SOCK_NONBLOCK, protocol);
   if (ret < 0) return ret;
-  // do not register SOCK_STREAM yet (cf. listen, connect) -> mandatory for FreeBSD!
   Context::CurrEventScope().setBlocking(ret, type & SOCK_NONBLOCK);
-  if (type != SOCK_STREAM) Context::CurrEventScope().registerFD(ret);
   return ret;
 }
 
 /** @brief Bind socket to local name. */
 inline int lfBind(int fd, const sockaddr *addr, socklen_t addrlen) {
   int ret = bind(fd, addr, addrlen);
-  if (ret >= 0) {
-    return ret;
-  } else if (_SysErrno() == EINPROGRESS) {
-    Context::CurrEventScope().checkAsyncCompletion(fd);
-    return 0;
+  if (ret < 0) {
+    if (_SysErrno() != EINPROGRESS) return ret;
+    ret = Context::CurrEventScope().checkAsyncCompletion(fd);
+    if (ret != 0) {
+      _SysErrnoSet() = ret;
+      return -1;
+    }
   }
   return ret;
 }
@@ -410,25 +346,21 @@ inline int lfBind(int fd, const sockaddr *addr, socklen_t addrlen) {
 /** @brief Create new connection. */
 inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
   int ret = connect(fd, addr, addrlen);
-  if (ret >= 0) {
-    Context::CurrEventScope().registerFD(fd);
-    Context::CurrEventScope().stats->cliconn.count();
-    return ret;
-  } else if (_SysErrno() == EINPROGRESS) {
-    Context::CurrEventScope().checkAsyncCompletion(fd);
-    Context::CurrEventScope().stats->cliconn.count();
-    return 0;
+  if (ret < 0) {
+    if (_SysErrno() != EINPROGRESS) return ret;
+    ret = Context::CurrEventScope().checkAsyncCompletion(fd);
+    if (ret != 0) {
+      _SysErrnoSet() = ret;
+      return -1;
+    }
   }
+  Context::CurrEventScope().stats->cliconn.count();
   return ret;
 }
 
 /** @brief Set up socket listen queue. */
 inline int lfListen(int fd, int backlog) {
-  int ret = listen(fd, backlog);
-  if (ret < 0) return ret;
-  // register SOCK_STREAM server fd only after 'listen' system call (cf. socket/connect)
-  Context::CurrEventScope().registerServerFD(fd);
-  return ret;
+  return listen(fd, backlog);
 }
 
 /** @brief Accept new connection. New file descriptor registered for I/O events. */
@@ -437,7 +369,6 @@ inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
   if (ret < 0) return ret;
   Context::CurrEventScope().setBlocking(ret, flags & SOCK_NONBLOCK);
   Context::CurrEventScope().stats->srvconn.count();
-  Context::CurrEventScope().registerFD(ret);
   return ret;
 }
 
@@ -447,7 +378,6 @@ inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0
   if (ret < 0) return ret;
   Context::CurrEventScope().setBlocking(ret, flags & SOCK_NONBLOCK);
   Context::CurrEventScope().stats->srvconn.count();
-  Context::CurrEventScope().registerFD(ret);
   return ret;
 }
 
@@ -457,7 +387,6 @@ inline int lfDup(int fd) {
   int ret = dup(fd);
   if (ret < 0) return ret;
   Context::CurrEventScope().dupBlocking(ret, fd);
-  Context::CurrEventScope().registerFD(ret);
   return ret;
 }
 
@@ -467,20 +396,20 @@ inline int lfPipe(int pipefd[2], int flags = 0) {
   if (ret < 0) return ret;
   Context::CurrEventScope().setBlocking(pipefd[0], flags & O_NONBLOCK);
   Context::CurrEventScope().setBlocking(pipefd[1], flags & O_NONBLOCK);
-  Context::CurrEventScope().registerFD(pipefd[0]);
-  Context::CurrEventScope().registerFD(pipefd[1]);
   return ret;
 }
 
-inline int lfFcntl(int fildes, int cmd, int flags) {
-  int ret = ::fcntl(fildes, cmd, flags | O_NONBLOCK); // internally, all sockets nonblocking
-  if (ret != -1) Context::CurrEventScope().setBlocking(fildes, flags & O_NONBLOCK);
+/** @brief Set file descriptor flags. */
+inline int lfFcntl(int fd, int cmd, int flags) {
+  int ret = ::fcntl(fd, cmd, flags | O_NONBLOCK); // internally, all sockets nonblocking
+  if (ret < 0) return ret;
+  Context::CurrEventScope().setBlocking(fd, flags & O_NONBLOCK);
   return ret;
 }
 
 /** @brief Close file descriptor. */
 inline int lfClose(int fd) {
-  Context::CurrEventScope().deregisterFD(fd);
+ Context::CurrEventScope().cleanupFD(fd);
   return close(fd);
 }
 

@@ -21,46 +21,36 @@
 
 namespace Context {
 
-struct Data {
-  Fred*          currFred;
-  BaseProcessor* currProc;
-  Cluster*       currCluster;
-  EventScope*    currScope;
-#if TESTING_PROCESSOR_POLLER
-  PollerFibre*   currPoller;
-#endif
-};
+static thread_local Fred*          currFred     = nullptr;
+static thread_local BaseProcessor* currProc     = nullptr;
+static thread_local Cluster*       currCluster  = nullptr;
+static thread_local EventScope*    currScope    = nullptr;
 
-#if TESTING_PROCESSOR_POLLER
-static thread_local Data data = { nullptr, nullptr, nullptr, nullptr, nullptr };
-#else
-static thread_local Data data = { nullptr, nullptr, nullptr, nullptr };
+#if TESTING_WORKER_POLLER
+static thread_local PollerFibre*   workerPoller = nullptr;
 #endif
 
-Fred*          CurrFred()       { RASSERT0(data.currFred);    return  data.currFred; }
-BaseProcessor& CurrProcessor()  { RASSERT0(data.currProc);    return *data.currProc; }
-Cluster&       CurrCluster()    { RASSERT0(data.currCluster); return *data.currCluster; }
-EventScope&    CurrEventScope() { RASSERT0(data.currScope);   return *data.currScope; }
-#if TESTING_PROCESSOR_POLLER
-PollerFibre&   CurrPoller()     { RASSERT0(data.currPoller);  return *data.currPoller; }
-#endif
+Fred*          CurrFred()       { RASSERT0(currFred);    return  currFred; }
+BaseProcessor& CurrProcessor()  { RASSERT0(currProc);    return *currProc; }
+Cluster&       CurrCluster()    { RASSERT0(currCluster); return *currCluster; }
+EventScope&    CurrEventScope() { RASSERT0(currScope);   return *currScope; }
 
-void setCurrFred(Fred& f, _friend<Fred>) { data.currFred = &f; }
+void setCurrFred(Fred& f, _friend<Fred>) { currFred = &f; }
 
 void install(Fibre* fib, BaseProcessor* bp, Cluster* cl, EventScope* es, _friend<Cluster>) {
-  data.currFred    = fib;
-  data.currProc    = bp;
-  data.currCluster = cl;
-  data.currScope   = es;
-#if TESTING_PROCESSOR_POLLER
-  data.currPoller = new PollerFibre(*es, *bp, bp, false);
-  data.currPoller->start();
+  currFred    = fib;
+  currProc    = bp;
+  currCluster = cl;
+  currScope   = es;
+#if TESTING_WORKER_POLLER
+  workerPoller = new PollerFibre(*es, *bp, bp, false);
+  workerPoller->start();
 #endif
 }
 
 void installFake(EventScope* es, _friend<BaseThreadPoller>) {
-  data.currFred  = (Fred*)0xdeadbeef;
-  data.currScope = es;
+  currFred  = (Fred*)0xdeadbeef;
+  currScope = es;
 }
 
 } // namespace Context
@@ -87,8 +77,7 @@ inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
   worker->maintenanceFibre->run(maintenance, this);
 }
 
-void Cluster::initDummy(ptr_t) {
-}
+void Cluster::initDummy(ptr_t) {}
 
 void Cluster::fibreHelper(Worker* worker) {
   worker->runIdleLoop();
@@ -107,6 +96,40 @@ inline void Cluster::registerIdleWorker(Worker* worker, Fibre* initFibre) {
   worker->runIdleLoop();
   idleFibre->endDirect(_friend<Cluster>());
 }
+
+void Cluster::preFork(_friend<EventScope>) {
+  ScopedLock<WorkerLock> sl(ringLock);
+  RASSERT(ringCount == 1, ringCount);
+}
+
+void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
+  new (stats) ClusterStats(this, parent);
+  for (size_t p = 0; p < iPollCount; p += 1) {
+    iPollVec[p].~PollerType();
+    new (&iPollVec[p]) PollerType(scope, stagingProc, this);
+  }
+  for (size_t p = 0; p < oPollCount; p += 1) {
+    oPollVec[p].~PollerType();
+    new (&oPollVec[p]) PollerType(scope, stagingProc, this);
+  }
+#if TESTING_WORKER_POLLER
+  Context::workerPoller->~PollerFibre();
+  new (Context::workerPoller) PollerFibre(Context::CurrEventScope(), Context::CurrProcessor(), this, false);
+#endif
+}
+
+void Cluster::postFork2(_friend<EventScope>) {
+  start();
+#if TESTING_WORKER_POLLER
+  Context::workerPoller->start();
+#endif
+}
+
+#if TESTING_WORKER_POLLER
+BasePoller& Cluster::getWorkerPoller() {
+  return *Context::workerPoller;
+}
+#endif
 
 Fibre* Cluster::registerWorker(_friend<EventScope>) {
   Worker* worker = new Worker(*this);

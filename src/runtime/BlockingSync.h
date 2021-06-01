@@ -245,8 +245,8 @@ class LockedSemaphore {
 
 public:
   explicit LockedSemaphore(ssize_t c = 0) : counter(c) {}
-  ~LockedSemaphore() { cleanup(); }
-  void cleanup(ssize_t c = 0) { // baton passing requires serialization at destruction
+  ~LockedSemaphore() { reset(); }
+  void reset(ssize_t c = 0) { // baton passing requires serialization at destruction
     ScopedLock<Lock> al(lock);
     RASSERT0(bq.empty());
     counter = c;
@@ -322,8 +322,8 @@ protected:
 
 public:
   LockedMutex() : owner(nullptr) {}
-  ~LockedMutex() { cleanup(); }
-  void cleanup() { // baton passing requires serialization at destruction
+  ~LockedMutex() { reset(); }
+  void reset() { // baton passing requires serialization at destruction
     ScopedLock<Lock> al(lock);
     RASSERT(owner == nullptr, FmtHex(owner));
     RASSERT0(bq.empty());
@@ -349,8 +349,8 @@ class Condition {
   BQ bq;
 
 public:
-  ~Condition() { cleanup(); }
-  void cleanup() { RASSERT0(bq.empty()); }
+  ~Condition() { reset(); }
+  void reset() { RASSERT0(bq.empty()); }
 
   template<typename Lock>
   bool wait(Lock& lock) { return bq.block(lock); }
@@ -370,8 +370,8 @@ class LockedBarrier {
   BQ bq;
 public:
   explicit LockedBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
-  ~LockedBarrier() { cleanup(); }
-  void cleanup() {
+  ~LockedBarrier() { reset(); }
+  void reset() {
     ScopedLock<Lock> al(lock);
     RASSERT0(bq.empty())
   }
@@ -429,8 +429,8 @@ class LockedRWLock {
 
 public:
   LockedRWLock() : state(0) {}
-  ~LockedRWLock() { cleanup(); }
-  void cleanup() {
+  ~LockedRWLock() { reset(); }
+  void reset() {
     ScopedLock<Lock> al(lock);
     RASSERT(state == 0, state);
     RASSERT0(bqR.empty());
@@ -564,8 +564,11 @@ class LimitedSemaphore0 {
 
 public:
   explicit LimitedSemaphore0(ssize_t c = 0) { RASSERT(c == 0, c); }
-  ~LimitedSemaphore0() { cleanup(); }
-  void cleanup() { RASSERT0(queue.empty()); }
+  ~LimitedSemaphore0() { reset(); }
+  void reset(ssize_t c = 0) {
+    RASSERT(c == 0, c);
+    RASSERT0(queue.empty());
+  }
 
   SemaphoreResult P(bool wait = true) {
     RASSERT0(wait);
@@ -614,9 +617,9 @@ class SimpleMutex0 {
 
 public:
   SimpleMutex0() : ben(1), sem(0) {}
-  void cleanup() {
+  void reset() {
     RASSERT(ben.getValue() == 1, FmtHex(this));
-    sem.cleanup();
+    sem.reset(0);
   }
   bool acquire()    { return ben.P() || sem.P(); }
   bool tryAcquire() { return ben.tryP(); }
@@ -638,8 +641,8 @@ class FastBarrier {
 
 public:
   explicit FastBarrier(size_t t = 1) : target(t), counter(0) { RASSERT0(t > 0); }
-  ~FastBarrier() { cleanup(); }
-  void cleanup() { RASSERT0(queue.empty()); }
+  ~FastBarrier() { reset(); }
+  void reset() { RASSERT0(queue.empty()); }
   bool wait() {
     // There's a race between counter and queue.  A thread can be in a
     // different position in the queue relative to the counter.  The
@@ -687,7 +690,10 @@ class FredBenaphore {
 
 public:
   explicit FredBenaphore(ssize_t c) : ben(c), sem(0) {}
-  void cleanup() { sem.cleanup();  }
+  void reset(ssize_t c) {
+    sem.reset(0);
+    ben.reset(c);
+   }
 
   SemaphoreResult P()          { return ben.P() ? SemaphoreWasOpen : sem.P(); }
   SemaphoreResult tryP()       { return ben.tryP() ? SemaphoreWasOpen : SemaphoreTimeout; }
@@ -762,9 +768,9 @@ protected:
 public:
   SpinSemMutex() : owner(nullptr), sem(1) {}
   ~SpinSemMutex() { RASSERT(owner == nullptr, FmtHex(owner)); }
-  void cleanup() {
+  void reset() {
     RASSERT(owner == nullptr, FmtHex(owner));
-    sem.cleanup();
+    sem.reset(1);
   }
 
   template<typename... Args>
@@ -857,7 +863,7 @@ protected:
 public:
   SpinCondMutex() : value(0), owner(nullptr) {}
   ~SpinCondMutex() { RASSERT(value == 0, value); }
-  void cleanup() {}
+  void reset() {}
 
   template<typename... Args>
   bool acquire(const Args&... args) { return internalAcquire<false>(args...); }
@@ -880,7 +886,7 @@ class OwnerMutex : private BaseMutex {
 
 public:
   OwnerMutex() : counter(0), recursion(false) {}
-  void cleanup() { BaseMutex::cleanup(); }
+  void reset() { BaseMutex::reset(); }
   void enableRecursion() { recursion = true; }
 
   template<typename... Args>

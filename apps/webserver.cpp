@@ -472,8 +472,11 @@ static void* scopemain(void* arg) {
         cout << endl;
         if (affinityFlag) {
 #if !TESTING_CLUSTER_POLLER_FIBRE
-          for (size_t pp = 0; pp < cluster[cidx]->getPollerCount(); pp += 1) {
-            SYSCALL(pthread_setaffinity_np(cluster[cidx]->getPoller(pp).getSysThreadId(), sizeof(clustercpus), &clustercpus));
+          for (size_t pp = 0; pp < cluster[cidx]->getInputPollerCount(); pp += 1) {
+            SYSCALL(pthread_setaffinity_np(cluster[cidx]->getInputPoller(pp).getSysThreadId(), sizeof(clustercpus), &clustercpus));
+          }
+          for (size_t pp = 0; pp < cluster[cidx]->getOutputPollerCount(); pp += 1) {
+            SYSCALL(pthread_setaffinity_np(cluster[cidx]->getOutputPoller(pp).getSysThreadId(), sizeof(clustercpus), &clustercpus));
           }
 #endif
         } else if (groupAffinityFlag) {

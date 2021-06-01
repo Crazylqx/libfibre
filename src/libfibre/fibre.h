@@ -269,7 +269,7 @@ inline int fibre_sem_init(fibre_sem_t *sem, int pshared, unsigned int value) {
 
 /** @brief Destroy semaphore object. (`sem_destroy`) */
 inline int fibre_sem_destroy(fibre_sem_t *sem) {
-  sem->cleanup();
+  sem->reset(0);
   return 0;
 }
 
@@ -330,7 +330,7 @@ inline int fibre_mutex_init(fibre_mutex_t *restrict mutex, const fibre_mutexattr
 
 /** @brief Destroy mutex lock. (`pthread_mutex_destroy`) */
 inline int fibre_mutex_destroy(fibre_mutex_t *mutex) {
-  mutex->cleanup();
+  mutex->reset();
   return 0;
 }
 
@@ -365,7 +365,7 @@ inline int fibre_cond_init(fibre_cond_t *restrict cond, const fibre_condattr_t *
 
 /** @brief Destroy condition variable. (`pthread_cond_init`) */
 inline int fibre_cond_destroy(fibre_cond_t *cond) {
-  cond->cleanup();
+  cond->reset();
   return 0;
 }
 
@@ -404,7 +404,7 @@ inline int fibre_rwlock_init(fibre_rwlock_t *restrict rwlock, const fibre_rwlock
 
 /** @brief Destroy rw-lock. (`pthread_rwlock_init`) */
 inline int fibre_rwlock_destroy(fibre_rwlock_t *rwlock) {
-  rwlock->cleanup();
+  rwlock->reset();
   return 0;
 }
 
@@ -455,7 +455,7 @@ inline int fibre_barrier_init(fibre_barrier_t *restrict barrier, const fibre_bar
 
 /** @brief Destroy barrier. (`pthread_barrier_destroy`) */
 inline int fibre_barrier_destroy(fibre_barrier_t *barrier) {
-  barrier->cleanup();
+  barrier->reset();
   return 0;
 }
 
@@ -473,7 +473,7 @@ inline int spin_barrier_init(spin_barrier_t *restrict barrier, const spin_barrie
 
 /** @brief Destroy barrier. (`pthread_barrier_destroy`) */
 inline int spin_barrier_destroy(spin_barrier_t *barrier) {
-  barrier->cleanup();
+  barrier->reset();
   return 0;
 }
 
@@ -491,7 +491,7 @@ inline int fast_barrier_init(fast_barrier_t *restrict barrier, const fast_barrie
 
 /** @brief Destroy barrier. (`pthread_barrier_destroy`) */
 inline int fast_barrier_destroy(fast_barrier_t *barrier) {
-  barrier->cleanup();
+  barrier->reset();
   return 0;
 }
 

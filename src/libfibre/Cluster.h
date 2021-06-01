@@ -34,15 +34,17 @@ class Cluster : public Scheduler {
 #else
   typedef PollerThread PollerType;
 #endif
-  PollerType* pollVec;
-  size_t      pollCount;
+  PollerType* iPollVec;
+  PollerType* oPollVec;
+  size_t      iPollCount;
+  size_t      oPollCount;
 
   BaseProcessor*              pauseProc;
   LockedSemaphore<WorkerLock> pauseSem;
   WorkerSemaphore             confirmSem;
   WorkerSemaphore             sleepSem;
 
-  ClusterStats*  stats;
+  ClusterStats* stats;
 
   struct Worker : public BaseProcessor {
     pthread_t sysThreadId;
@@ -52,20 +54,25 @@ class Cluster : public Scheduler {
       c.Scheduler::addProcessor(*this);
     }
     ~Worker();
-    void setIdleLoop(Fibre* f) { BaseProcessor::idleFred = f; }
-    void runIdleLoop()         { BaseProcessor::idleLoop(); }
+    void setIdleLoop(Fibre* f)       { BaseProcessor::idleFred = f; }
+    void runIdleLoop()               { BaseProcessor::idleLoop(); }
     static void yieldDirect(Fred& f) { BaseProcessor::yieldDirect(f); }
   };
 
   static void maintenance(Cluster* cl);
 
-  Cluster(EventScope& es, size_t pcnt) : scope(es), pollCount(pcnt), pauseProc(nullptr) {
+  Cluster(EventScope& es, size_t ipcnt, size_t opcnt = 1) : scope(es), iPollCount(ipcnt), oPollCount(opcnt), pauseProc(nullptr) {
     stats = new ClusterStats(this, &es);
-    pollVec = (PollerType*)new char[sizeof(PollerType[pollCount])];
-    for (size_t p = 0; p < pollCount; p += 1) new (&pollVec[p]) PollerType(scope, stagingProc, this);
+    iPollVec = (PollerType*)new char[sizeof(PollerType[iPollCount])];
+    oPollVec = (PollerType*)new char[sizeof(PollerType[oPollCount])];
+    for (size_t p = 0; p < iPollCount; p += 1) new (&iPollVec[p]) PollerType(scope, stagingProc, this);
+    for (size_t p = 0; p < oPollCount; p += 1) new (&oPollVec[p]) PollerType(scope, stagingProc, this);
   }
 
-  void start() { for (size_t p = 0; p < pollCount; p += 1) pollVec[p].start(); }
+  void start() {
+    for (size_t p = 0; p < iPollCount; p += 1) iPollVec[p].start();
+    for (size_t p = 0; p < oPollCount; p += 1) oPollVec[p].start();
+  }
 
   struct Argpack {
     Cluster* cluster;
@@ -90,33 +97,17 @@ public:
   ~Cluster() {
     // TODO: wait until all work is done, i.e., all regular fibres have left
     // TODO: delete all processors: join pthread via maintenance fibre?
-    delete [] pollVec;
+    delete [] iPollVec;
+    delete [] oPollVec;
   }
 
-  void preFork(_friend<EventScope>) {
-    ScopedLock<WorkerLock> sl(ringLock);
-    RASSERT(ringCount == 1, ringCount);
-  }
+  void preFork(_friend<EventScope>);
+  void postFork1(cptr_t parent, _friend<EventScope>);
+  void postFork2(_friend<EventScope>);
 
-  void postFork1(cptr_t parent, _friend<EventScope>) {
-    new (stats) ClusterStats(this, parent);
-    for (size_t p = 0; p < pollCount; p += 1) {
-      pollVec[p].~PollerType();
-      new (&pollVec[p]) PollerType(scope, stagingProc, this);
-    }
-#if TESTING_PROCESSOR_POLLER
-    PollerFibre* procPoller = &Context::CurrPoller();
-    procPoller->~PollerFibre();
-    new (procPoller) PollerFibre(Context::CurrEventScope(), Context::CurrProcessor(), this, false);
+#if TESTING_WORKER_POLLER
+  static BasePoller& getWorkerPoller();
 #endif
-  }
-
-  void postFork2(_friend<EventScope>) {
-    start();
-#if TESTING_PROCESSOR_POLLER
-    Context::CurrPoller().start();
-#endif
-  }
 
   // Register curent system thread (pthread) as worker.
   Fibre* registerWorker(_friend<EventScope>);
@@ -139,9 +130,12 @@ public:
   }
 
   /** Get individual access to pollers. */
-  PollerType& getPoller(size_t hint) { return pollVec[hint % pollCount]; }
+  PollerType&  getInputPoller(size_t hint) { return iPollVec[hint % iPollCount]; }
+  PollerType& getOutputPoller(size_t hint) { return oPollVec[hint % oPollCount]; }
+
   /** Obtain number of pollers */
-  size_t getPollerCount() { return pollCount; }
+  size_t  getInputPollerCount() { return iPollCount; }
+  size_t getOutputPollerCount() { return oPollCount; }
 
   /** Pause all OsProcessors (except caller).. */
   void pause();

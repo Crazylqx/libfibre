@@ -27,6 +27,7 @@ protected:
 
 public:
   explicit Benaphore(ssize_t c = 0) : counter(c) {}
+  void reset(ssize_t c = 0) { counter = c; }
   ssize_t getValue() const { return counter; }
 
   bool P() { // true: success (no blocking needed)

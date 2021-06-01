@@ -189,7 +189,7 @@ public:
     while slowpath(ssize_t(tgt - counter) > 0) Pause(); // works with overflow
     return (cnt == tgt - 1);
   }
-  void cleanup() {}
+  void reset() {}
 } __caligned;
 
 static inline void AcquireSpinLock() {}

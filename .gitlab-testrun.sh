@@ -91,7 +91,7 @@ function run_1() {
 }
 
 function prep_2() {
-	sed -i -e 's/.* TESTING_PROCESSOR_POLLER .*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_WORKER_POLLER .*/#define TESTING_WORKER_POLLER 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -109,7 +109,7 @@ function run_3() {
 }
 
 function prep_4() {
-	sed -i -e 's/.* TESTING_LAZY_FD_REGISTRATION .*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_ONESHOT_REGISTRATION .*/#define TESTING_ONESHOT_REGISTRATION 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -118,9 +118,9 @@ function run_4() {
 }
 
 function prep_5() {
-	sed -i -e 's/.* TESTING_PROCESSOR_POLLER .*/#define TESTING_PROCESSOR_POLLER 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_WORKER_POLLER .*/#define TESTING_WORKER_POLLER 1/' src/runtime-glue/testoptions.h
 	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
-	sed -i -e 's/.* TESTING_LAZY_FD_REGISTRATION .*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_ONESHOT_REGISTRATION .*/#define TESTING_ONESHOT_REGISTRATION 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -129,8 +129,8 @@ function run_5() {
 }
 
 function prep_6() {
-	sed -i -e 's/.* TESTING_ONESHOT_REGISTRATION .*/#define TESTING_ONESHOT_REGISTRATION 1/' src/runtime-glue/testoptions.h
-	sed -i -e 's/.* TESTING_LAZY_FD_REGISTRATION .*/#undef TESTING_LAZY_FD_REGISTRATION/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_LOADBALANCING .*/#undef TESTING_LOADBALANCING/' src/runtime/testoptions.h
+	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
@@ -139,7 +139,7 @@ function run_6() {
 }
 
 function prep_7() {
-	sed -i -e 's/.* TESTING_STUB_QUEUE .*/#define TESTING_STUB_QUEUE 1/' src/runtime/testoptions.h
+	sed -i -e 's/.* TESTING_STICKY_STEALING .*/#define TESTING_STICKY_STEALING 1/' src/runtime/testoptions.h
 	echo memcached
 }
 
@@ -147,7 +147,16 @@ function run_7() {
 	run_memcached 7
 }
 
-emax=7
+function prep_8() {
+	sed -i -e 's/.* TESTING_STUB_QUEUE .*/#define TESTING_STUB_QUEUE 1/' src/runtime/testoptions.h
+	echo memcached
+}
+
+function run_8() {
+	run_memcached 8
+}
+
+emax=8
 
 if [ $# -gt 0 ] && [ "$1" != "-f" ]; then
 	if [ $1 -lt 0 -o $1 -gt $emax ]; then

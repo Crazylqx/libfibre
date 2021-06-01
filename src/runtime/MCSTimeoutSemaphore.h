@@ -699,9 +699,13 @@ class LimitedTimeoutSemaphore {
     RASSERT(cnt == 1 || cnt == 0, cnt);
   }
 
-  ~LimitedTimeoutSemaphore() { cleanup(); }
+  ~LimitedTimeoutSemaphore() { reset(); }
 
-  void cleanup() const { RASSERT0(queue.empty()); }
+  void reset(ssize_t cnt = 0) {
+    RASSERT0(queue.empty());
+    RASSERT(cnt == 1 || cnt == 0, cnt);
+    counter = cnt;
+  }
 
   SemaphoreResult tryP() {
     ssize_t c = counter;

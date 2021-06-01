@@ -148,8 +148,8 @@ class ConditionalNemesisQueue {
   static inline bool raceResume(Fred* f, ptr_t p) { return f->raceResume(p); }
 
 public:
-  ~ConditionalNemesisQueue() { cleanup(); }
-  void cleanup() { RASSERT0(queue.empty()); }
+  ~ConditionalNemesisQueue() { reset(); }
+  void reset() { RASSERT0(queue.empty()); }
 
   template<typename Func>
   bool block(Fred* cf, Func&& func, bool wait = true) {

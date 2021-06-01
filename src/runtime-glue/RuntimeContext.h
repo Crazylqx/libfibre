@@ -23,9 +23,6 @@ class BaseProcessor;
 class Cluster;
 class EventScope;
 class Fred;
-#if TESTING_PROCESSOR_POLLER
-class PollerFibre;
-#endif
 class BaseThreadPoller;
 
 // routine definitions are in Cluster.cc
@@ -38,12 +35,9 @@ namespace Context {
   // CurrFred() and CurrProcessor() needed for generic runtime code
   Fred*          CurrFred()       __no_inline;
   BaseProcessor& CurrProcessor()  __no_inline;
-  // CurrCluster(), CurrEventScope(), CurrPoller() only used in libfibre code
+  // CurrCluster(), CurrEventScope() only used in libfibre code
   Cluster&       CurrCluster()    __no_inline;
   EventScope&    CurrEventScope() __no_inline;
-#if TESTING_PROCESSOR_POLLER
-  PollerFibre&   CurrPoller()     __no_inline;
-#endif
 
   // setCurrFred() to update current fred
   void setCurrFred(Fred& f, _friend<Fred>);
