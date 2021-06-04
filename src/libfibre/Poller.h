@@ -100,6 +100,17 @@ public:
   }
 };
 
+class PollerFibre : public BasePoller {
+  Fibre* pollFibre;
+  inline void pollLoop();
+  static void pollLoopSetup(PollerFibre*);
+
+public:
+  PollerFibre(EventScope&, BaseProcessor&, cptr_t parent, bool bg = true);
+  ~PollerFibre();
+  void start();
+};
+
 class BaseThreadPoller : public BasePoller {
   pthread_t pollThread;
 
@@ -114,41 +125,12 @@ protected:
 
 public:
   pthread_t getSysThreadId() { return pollThread; }
-
-  void terminate(_friend<EventScope>) {
-    pollTerminate = true;
-#if __FreeBSD__
-    struct kevent waker;
-    EV_SET(&waker, 0, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, 0);
-    SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
-    EV_SET(&waker, 0, EVFILT_USER, EV_ENABLE, NOTE_TRIGGER, 0, 0);
-    SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
-    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD);
-    SYSCALL(pthread_join(pollThread, nullptr));
-#else // __linux__ below
-    int waker = SYSCALLIO(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)); // binary semaphore semantics w/o EFD_SEMAPHORE
-    setupFD(waker, Create, Input, Oneshot);
-    uint64_t val = 1;
-    val = SYSCALL_EQ(write(waker, &val, sizeof(val)), sizeof(val));
-    DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD, " via ", waker);
-    SYSCALL(pthread_join(pollThread, nullptr));
-    SYSCALL(close(waker));
-#endif
-  }
-};
-
-class PollerFibre : public BasePoller {
-  Fibre* pollFibre;
-  inline void pollLoop();
-  static void pollLoopSetup(PollerFibre*);
-public:
-  PollerFibre(EventScope&, BaseProcessor&, cptr_t parent, bool bg = true);
-  ~PollerFibre();
-  void start();
+  void terminate(_friend<EventScope>);
 };
 
 class PollerThread : public BaseThreadPoller {
   static void* pollLoopSetup(void*);
+
 public:
   PollerThread(EventScope& es, BaseProcessor&, cptr_t parent) : BaseThreadPoller(es, parent, "PollerThread") {}
   void prePoll(_friend<BaseThreadPoller>) {}

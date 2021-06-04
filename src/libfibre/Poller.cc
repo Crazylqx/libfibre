@@ -54,32 +54,6 @@ inline void BasePoller::notifyAll(int evcnt) {
   for (int e = 0; e < evcnt; e += 1) notifyOne(events[e]);
 }
 
-template<typename T>
-inline void BaseThreadPoller::pollLoop(T& This) {
-  Context::installFake(&This.eventScope, _friend<BaseThreadPoller>());
-  while (!This.pollTerminate) {
-    This.prePoll(_friend<BaseThreadPoller>());
-    This.stats->blocks.count();
-    int evcnt = This.template doPoll<true>();
-    if (evcnt > 0) This.notifyAll(evcnt);
-  }
-}
-
-void* MasterPoller::pollLoopSetup(void* This) {
-  pollLoop(*reinterpret_cast<MasterPoller*>(This));
-  return nullptr;
-}
-
-inline void MasterPoller::prePoll(_friend<BaseThreadPoller>) {
-  if (eventScope.tryblock(timerFD)) {
-#if __linux__
-    uint64_t count; // read timerFD
-    if (read(timerFD, (void*)&count, sizeof(count)) != sizeof(count)) return;
-#endif
-    eventScope.getTimerQueue().checkExpiry();
-  }
-}
-
 inline void PollerFibre::pollLoop() {
 #if TESTING_POLLER_FIBRE_SPIN
   static const size_t SpinMax = TESTING_POLLER_FIBRE_SPIN;
@@ -126,7 +100,54 @@ void PollerFibre::start() {
   pollFibre->run(pollLoopSetup, this);
 }
 
+template<typename T>
+inline void BaseThreadPoller::pollLoop(T& This) {
+  Context::installFake(&This.eventScope, _friend<BaseThreadPoller>());
+  while (!This.pollTerminate) {
+    This.prePoll(_friend<BaseThreadPoller>());
+    This.stats->blocks.count();
+    int evcnt = This.template doPoll<true>();
+    if (evcnt > 0) This.notifyAll(evcnt);
+  }
+}
+
+void BaseThreadPoller::terminate(_friend<EventScope>) {
+  pollTerminate = true;
+#if __FreeBSD__
+  struct kevent waker;
+  EV_SET(&waker, 0, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, 0);
+  SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
+  EV_SET(&waker, 0, EVFILT_USER, EV_ENABLE, NOTE_TRIGGER, 0, 0);
+  SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
+  DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD);
+  SYSCALL(pthread_join(pollThread, nullptr));
+#else // __linux__ below
+  int waker = SYSCALLIO(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)); // binary semaphore semantics w/o EFD_SEMAPHORE
+  setupFD(waker, Create, Input, Oneshot);
+  uint64_t val = 1;
+  val = SYSCALL_EQ(write(waker, &val, sizeof(val)), sizeof(val));
+  DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD, " via ", waker);
+  SYSCALL(pthread_join(pollThread, nullptr));
+  SYSCALL(close(waker));
+#endif
+}
+
 void* PollerThread::pollLoopSetup(void* This) {
   pollLoop(*reinterpret_cast<PollerThread*>(This));
   return nullptr;
+}
+
+void* MasterPoller::pollLoopSetup(void* This) {
+  pollLoop(*reinterpret_cast<MasterPoller*>(This));
+  return nullptr;
+}
+
+inline void MasterPoller::prePoll(_friend<BaseThreadPoller>) {
+  if (eventScope.tryblock(timerFD)) {
+#if __linux__
+    uint64_t count; // read timerFD
+    if (read(timerFD, (void*)&count, sizeof(count)) != sizeof(count)) return;
+#endif
+    eventScope.getTimerQueue().checkExpiry();
+  }
 }
