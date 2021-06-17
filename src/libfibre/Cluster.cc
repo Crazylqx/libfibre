@@ -73,7 +73,7 @@ inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
   worker->sysThreadId = pthread_self();
   Context::install(fibre, worker, this, &scope, _friend<Cluster>());
   worker->maintenanceFibre = new Fibre(*worker);
-  worker->maintenanceFibre->setPriority(TopPriority);
+  worker->maintenanceFibre->setPriority(Fred::TopPriority);
   worker->maintenanceFibre->run(maintenance, this);
 }
 

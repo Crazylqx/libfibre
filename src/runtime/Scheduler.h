@@ -82,7 +82,8 @@ public:
 
 #else
 
-struct LoadManager {
+class LoadManager {
+public:
   LoadManager(cptr_t parent) {}
 };
 

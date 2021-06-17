@@ -28,13 +28,13 @@ class Scheduler;
 
 class ReadyQueue {
   WorkerLock readyLock;
-  FredReadyQueue queue[NumPriority];
+  FredReadyQueue queue[Fred::NumPriority];
 
   ReadyQueue(const ReadyQueue&) = delete;            // no copy
   ReadyQueue& operator=(const ReadyQueue&) = delete; // no assignment
 
   Fred* dequeueInternal() {
-    for (size_t p = 0; p < NumPriority; p += 1) {
+    for (size_t p = 0; p < Fred::NumPriority; p += 1) {
       Fred* f = queue[p].pop();
       if (f) return f;
     }
@@ -61,7 +61,7 @@ public:
 #endif
 
   void enqueue(Fred& f) {
-    RASSERT(f.getPriority() < NumPriority, f.getPriority());
+    RASSERT(f.getPriority() < Fred::NumPriority, f.getPriority());
 #if TESTING_LOCKED_READYQUEUE
     ScopedLock<WorkerLock> sl(readyLock);
 #endif

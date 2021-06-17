@@ -21,11 +21,6 @@
 #include "runtime/LockFreeQueues.h"
 #include "runtime/Stack.h"
 
-static const size_t TopPriority = 0;
-static const size_t DefPriority = 1;
-static const size_t LowPriority = 2;
-static const size_t NumPriority = 3;
-
 class EventScope;
 class BaseProcessor;
 class KernelProcessor;
@@ -62,9 +57,13 @@ typedef FredMPSC<FredReadyLink,false> FredReadyQueue;
 #endif
 
 class Fred : public DoubleLink<Fred,FredLinkCount> {
+public:
+  enum Priority : size_t { TopPriority = 0, DefPriority = 1, LowPriority = 2, NumPriority = 3 };
+
+private:
   vaddr          stackPointer; // holds stack pointer while stack inactive
   BaseProcessor* processor;    // next resumption on this processor
-  size_t         priority;     // scheduling priority
+  Priority       priority;     // scheduling priority
   bool           affinity;     // affinity prohibits re-staging
 
   enum RunState : size_t { Parked = 0, Running = 1, ResumedEarly = 2 };
@@ -180,8 +179,8 @@ public:
   Fred* setAffinity(bool a)   { affinity = a; return this; }
 
   // priority
-  size_t getPriority() const  { return priority; }
-  Fred* setPriority(size_t p) { priority = p; return this; }
+  Priority getPriority() const  { return priority; }
+  Fred* setPriority(Priority p) { priority = p; return this; }
 
   // migration
   void rebalance();

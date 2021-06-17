@@ -1,6 +1,6 @@
 # to automatically load this when libfibre.so is loaded:
 # echo add-auto-load-safe-path DIRECTORY >> $HOME/.gdbinit
-# or load via 'source DIRECTORY/libfibre.so-gdb.py'
+# or load via 'source DIRECTORY/libfibre.so-gdb.gdb'
 
 # 'server' keyword disables confirmation dialog when re-loading/re-defining
 

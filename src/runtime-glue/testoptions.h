@@ -13,9 +13,6 @@
 
 /******************************** sanity checks ********************************/
 
-#if !TESTING_LOADBALANCING
-  #if TESTING_CLUSTER_POLLER_FIBRE
-    #warning disabling TESTING_CLUSTER_POLLER_FIBRE
-    #undef TESTING_CLUSTER_POLLER_FIBRE
-  #endif
+#if !TESTING_LOADBALANCING && TESTING_CLUSTER_POLLER_FIBRE
+  #error TESTING_CLUSTER_POLLER_FIBRE requires TESTING_LOADBALANCING
 #endif

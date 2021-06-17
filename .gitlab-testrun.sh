@@ -52,6 +52,18 @@ function post() {
 	git checkout src/runtime-glue/testoptions.h
 }
 
+function run_threadtest() {
+	c=$(expr $count \* 2)
+	FibrePrintStats=1 ./apps/threadtest -t $c -f $(expr $c \* $c) || exit 1
+	FibrePrintStats=1 ./apps/threadtest -t $c -f $(expr $c \* $c) -o 10000 -r -L T || exit 1
+}
+
+function run_stacktest() {
+	[ "$(uname -s)" = "FreeBSD" ] && return
+	echo -n "STACKTEST: "
+	FibrePrintStats=1 apps/stacktest > stacktest.$1.out && echo SUCCESS || echo FAILURE
+}
+
 function run_memcached() {
 	for ((i=0;i<3;i+=1)); do
 		FibrePrintStats=1 $TASKSET_SERVER memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24 &
@@ -68,104 +80,68 @@ function run_memcached() {
 }
 
 function prep_0() {
-	echo memcached
-}
-
-function run_0() {
-	c=$(expr $count \* 2)
-	FibrePrintStats=1 ./apps/threadtest -t $c -f $(expr $c \* $c) || exit 1
-	FibrePrintStats=1 ./apps/threadtest -t $c -f $(expr $c \* $c) -o 10000 -r -L T || exit 1
-	run_memcached 0
+	echo threadtest
 }
 
 function prep_1() {
 	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
 	[ "$(uname -m)" = "aarch64" ] && echo skip && return
 	sed -i -e 's/DYNSTACK?=.*/DYNSTACK?=1/' Makefile.config
-}
-
-function run_1() {
-	[ "$(uname -s)" = "FreeBSD" ] && return
-	echo -n "STACKTEST: "
-	FibrePrintStats=1 apps/stacktest > stacktest.out && echo SUCCESS || echo FAILURE
+	echo stacktest
 }
 
 function prep_2() {
-	sed -i -e 's/.* TESTING_WORKER_POLLER .*/#define TESTING_WORKER_POLLER 1/' src/runtime-glue/testoptions.h
 	echo memcached
-}
-
-function run_2() {
-	run_memcached 2
 }
 
 function prep_3() {
+	sed -i -e 's/.* TESTING_WORKER_POLLER .*/#define TESTING_WORKER_POLLER 1/' src/runtime-glue/testoptions.h
+	echo memcached
+}
+
+function prep_4() {
 	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
-function run_3() {
-	run_memcached 3
-}
-
-function prep_4() {
+function prep_5() {
 	sed -i -e 's/.* TESTING_ONESHOT_REGISTRATION .*/#define TESTING_ONESHOT_REGISTRATION 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
-function run_4() {
-	run_memcached 4
-}
-
-function prep_5() {
+function prep_6() {
 	sed -i -e 's/.* TESTING_WORKER_POLLER .*/#define TESTING_WORKER_POLLER 1/' src/runtime-glue/testoptions.h
 	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
 	sed -i -e 's/.* TESTING_ONESHOT_REGISTRATION .*/#define TESTING_ONESHOT_REGISTRATION 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
-function run_5() {
-	run_memcached 5
-}
-
-function prep_6() {
+function prep_7() {
 	sed -i -e 's/.* TESTING_LOADBALANCING .*/#undef TESTING_LOADBALANCING/' src/runtime/testoptions.h
 	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
-function run_6() {
-	run_memcached 6
-}
-
-function prep_7() {
+function prep_8() {
 	sed -i -e 's/.* TESTING_STICKY_STEALING .*/#define TESTING_STICKY_STEALING 1/' src/runtime/testoptions.h
 	echo memcached
 }
 
-function run_7() {
-	run_memcached 7
-}
-
-function prep_8() {
+function prep_9() {
 	sed -i -e 's/.* TESTING_STUB_QUEUE .*/#define TESTING_STUB_QUEUE 1/' src/runtime/testoptions.h
 	echo memcached
 }
 
-function run_8() {
-	run_memcached 8
-}
-
-emax=8
+emax=9
 
 if [ $# -gt 0 ] && [ "$1" != "-f" ]; then
 	if [ $1 -lt 0 -o $1 -gt $emax ]; then
 		echo argument out of range
 		exit 1
 	fi
-	addon=$(prep_$1)
-	pre $addon
-	run_$1
+	app=$(prep_$1)
+	pre $app
+	run_$app $1
 	$MAKE -C memcached distclean
 	$MAKE clean
 	exit 0
@@ -183,9 +159,9 @@ fi
 
 for ((e=0;e<=$emax;e+=1)); do
 	echo "========== RUNNING EXPERIMENT $e =========="
-	addon=$(prep_$e)
-	pre $addon
-	run_$e
-	post $addon
+	app=$(prep_$e)
+	pre $app
+	run_$app $e
+	post $app
 done
 exit 0
