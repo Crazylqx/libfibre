@@ -7,7 +7,7 @@
 // **** general options - alternative design
 
 #define TESTING_LOADBALANCING         1 // enable load balancing using ISRS
-//#define TESTING_STICKY_STEALING       1 // enable sticky work-stealing
+#define TESTING_DEFAULT_AFFINITY      1 // enable default affinity (no sticky stealing)
 //#define TESTING_SHARED_READYQUEUE     1 // use shared ready queue, instead of stealing
 //#define TESTING_LOCKED_READYQUEUE     1 // locked vs. lock-free ready queue
 //#define TESTING_STUB_QUEUE            1 // nemesis vs. stub-based MPSC lock-free queue

@@ -84,10 +84,14 @@ void PollerFibre::pollLoopSetup(PollerFibre* This) {
   This->pollLoop();
 }
 
-PollerFibre::PollerFibre(EventScope& es, BaseProcessor& proc, cptr_t parent, bool bg)
+PollerFibre::PollerFibre(EventScope& es, BaseProcessor& proc, cptr_t parent, bool cluster)
 : BasePoller(es, parent, "PollerFibre") {
   pollFibre = new Fibre(proc);
-  if (bg) pollFibre->setPriority(Fred::LowPriority);
+#if TESTING_CLUSTER_POLLER_FLOAT
+  if (cluster) pollFibre->setAffinity(Fred::NoAffinity);
+#else
+  if (cluster) pollFibre->setPriority(Fred::LowPriority);
+#endif
 }
 
 PollerFibre::~PollerFibre() {

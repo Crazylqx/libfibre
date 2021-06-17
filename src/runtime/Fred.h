@@ -59,12 +59,19 @@ typedef FredMPSC<FredReadyLink,false> FredReadyQueue;
 class Fred : public DoubleLink<Fred,FredLinkCount> {
 public:
   enum Priority : size_t { TopPriority = 0, DefPriority = 1, LowPriority = 2, NumPriority = 3 };
+  enum Affinity : size_t { NoAffinity = 0, TempAffinity = 1, FixedAffinity = 2 };
+
+#if TESTING_DEFAULT_AFFINITY
+static const Affinity DefAffinity = TempAffinity;
+#else
+static const Affinity DefAffinity = NoAffinity;
+#endif
 
 private:
   vaddr          stackPointer; // holds stack pointer while stack inactive
   BaseProcessor* processor;    // next resumption on this processor
   Priority       priority;     // scheduling priority
-  bool           affinity;     // affinity prohibits re-staging
+  Affinity       affinity;     // affinity to worker
 
   enum RunState : size_t { Parked = 0, Running = 1, ResumedEarly = 2 };
   RunState volatile runState;    // 0 = parked, 1 = running, 2 = early resume
@@ -95,8 +102,8 @@ private:
 
 protected:
   // constructor/destructors can only be called by derived classes
-  Fred(BaseProcessor& proc, bool affinity = false); // main constructor
-  Fred(Scheduler&, bool background = false);        // uses delegation
+  Fred(BaseProcessor& proc, Affinity affinity = DefAffinity); // main constructor
+  Fred(Scheduler&, bool background = false);                  // uses delegation
   ~Fred() { RASSERT(runState == Running, FmtHex(this), runState); }
 
   void initStackPointer(vaddr sp) {
@@ -175,8 +182,13 @@ public:
   }
 
   // hard affinity - no staging
-  bool getAffinity()          { return affinity; }
-  Fred* setAffinity(bool a)   { affinity = a; return this; }
+  Affinity getAffinity()          { return affinity; }
+  Fred* setAffinity(Affinity a)   { affinity = a; return this; }
+  bool checkAffinity() {
+    if (affinity == FixedAffinity) return true;
+    if (affinity == TempAffinity) affinity = FixedAffinity;
+    return false;
+  }
 
   // priority
   Priority getPriority() const  { return priority; }

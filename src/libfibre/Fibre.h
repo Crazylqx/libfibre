@@ -176,7 +176,7 @@ public:
 
   /** Constructor setting affinity to processor. */
   Fibre(BaseProcessor &sp, size_t size = 0, size_t guard = 0)
-  : Fred(sp, true), stackSize(stackAlloc(size, guard)) { initDebug(); }
+  : Fred(sp, Fred::FixedAffinity), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
   /** Constructor to immediately start fibre with `func(arg)`. */
   Fibre(funcvoid1_t func, ptr_t arg, bool background = false)

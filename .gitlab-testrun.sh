@@ -105,7 +105,8 @@ function prep_4() {
 }
 
 function prep_5() {
-	sed -i -e 's/.* TESTING_ONESHOT_REGISTRATION .*/#define TESTING_ONESHOT_REGISTRATION 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FLOAT .*/#undef TESTING_CLUSTER_POLLER_FLOAT/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_ONESHOT_REGISTRATION .*/#undef TESTING_ONESHOT_REGISTRATION/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 

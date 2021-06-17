@@ -106,7 +106,7 @@ class PollerFibre : public BasePoller {
   static void pollLoopSetup(PollerFibre*);
 
 public:
-  PollerFibre(EventScope&, BaseProcessor&, cptr_t parent, bool bg = true);
+  PollerFibre(EventScope&, BaseProcessor&, cptr_t parent, bool cluster = true);
   ~PollerFibre();
   void start();
 };
