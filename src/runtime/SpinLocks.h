@@ -128,22 +128,22 @@ public:
   MCSLock() : tail(nullptr) {}
   bool tryAcquire(Node& n) {
     n.next = nullptr;
-    return (tail == nullptr) && _CAS(&tail, (Node*)nullptr, &n, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return (tail == nullptr) && _CAS(&tail, (Node*)nullptr, &n, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
   }
   void acquire(Node& n) {
     n.next = nullptr;
-    Node* prev = __atomic_exchange_n(&tail, &n, __ATOMIC_SEQ_CST);
+    Node* prev = __atomic_exchange_n(&tail, &n, __ATOMIC_ACQUIRE);
     if (!prev) return;
     n.wait = true;
-    __atomic_store_n(&prev->next, &n, __ATOMIC_RELEASE);
-    while slowpath(n.wait) Pause();
+    prev->next = &n;
+    while slowpath(__atomic_load_n(&n.wait, __ATOMIC_ACQUIRE)) Pause();
   }
   void release(Node& n) {
     RASSERT0(tail != nullptr);
     // could check 'n.next' first, but no memory consistency then
-    if (_CAS(&tail, &n, (Node*)nullptr, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return;
-    while slowpath(!__atomic_load_n(&n.next, __ATOMIC_ACQUIRE)) Pause();
-    n.next->wait = false;
+    if (_CAS(&tail, &n, (Node*)nullptr, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) return;
+    while slowpath(!n.next) Pause();
+    __atomic_store_n(&n.next->wait, false, __ATOMIC_RELEASE);
   }
 } __caligned;
 

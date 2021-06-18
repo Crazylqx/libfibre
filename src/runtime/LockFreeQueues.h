@@ -44,7 +44,7 @@ public:
     RASSERT(!Next(last), FmtHex(&last));       // assume link invalidated at pop
     Node* prev = __atomic_exchange_n(&tail, &last, __ATOMIC_SEQ_CST); // swing tail to last of new element(s)
     if (!prev) return true;
-    __atomic_store_n(&Next(*prev), &first, __ATOMIC_RELEASE);
+    Next(*prev) = &first;
     return false;
   }
 
@@ -53,7 +53,7 @@ public:
   Node* pop(Node& elem) {
     Node* expected = &elem;
     if (__atomic_compare_exchange_n(&tail, &expected, nullptr, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return nullptr;
-    while (!__atomic_load_n(&Next(elem), __ATOMIC_ACQUIRE)) Pause(); // producer in push()
+    while (!Next(elem)) Pause(); // producer in push()
     Node* next = Next(elem);
     Next(elem) = nullptr;                      // invalidate link
     return next;
