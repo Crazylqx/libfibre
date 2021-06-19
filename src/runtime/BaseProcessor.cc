@@ -68,14 +68,22 @@ inline Fred* BaseProcessor::scheduleInternal() {
 }
 
 bool BaseProcessor::addReadyFred(Fred& f) {
-  return scheduler.loadManager.addReadyFred(f);
+#if TESTING_IDLE_MANAGER
+  return scheduler.idleManager.addReadyFred(f);
+#else
+  return false;
+#endif
 }
 #endif
 
 void BaseProcessor::idleLoop() {
   for (;;) {
 #if TESTING_LOADBALANCING
-    Fred* nextFred = scheduler.loadManager.getReadyFred(*this);
+#if TESTING_IDLE_MANAGER
+    Fred* nextFred = scheduler.idleManager.getReadyFred(*this);
+#else
+    Fred* nextFred = nullptr;
+#endif
     if (nextFred) {
       stats->handover.count();
       if (!nextFred->checkAffinity()) nextFred->changeProcessor(*this, _friend<BaseProcessor>());
@@ -100,12 +108,17 @@ Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
 #endif
   for (size_t i = 0; i < SpinMax; i += 1) {
 #if TESTING_LOADBALANCING
-    if (scheduler.loadManager.tryGetReadyFred()) {
+#if TESTING_IDLE_MANAGER
+    if (scheduler.idleManager.tryGetReadyFred()) {
       for (;;) {
         Fred* nextFred = scheduleInternal();
         if (nextFred) return *nextFred;
       }
     }
+#else /* TESTING_IDLE_CONTROL */
+    Fred* nextFred = scheduleInternal();
+    if (nextFred) return *nextFred;
+#endif
 #else /* TESTING_LOADBALANCING */
     if (readyCount.tryP()) {
       Fred* nextFred = tryLocal();

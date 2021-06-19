@@ -124,7 +124,8 @@ function prep_7() {
 }
 
 function prep_8() {
-	sed -i -e 's/.* TESTING_STICKY_STEALING .*/#define TESTING_STICKY_STEALING 1/' src/runtime/testoptions.h
+	sed -i -e 's/.* TESTING_IDLE_MANAGER .*/#undef TESTING_IDLE_MANAGER/' src/runtime/testoptions.h
+	sed -i -e 's/.* TESTING_DEFAULT_AFFINITY .*/#undef TESTING_DEFAULT_AFFINITY/' src/runtime/testoptions.h
 	echo memcached
 }
 

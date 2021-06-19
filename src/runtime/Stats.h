@@ -262,12 +262,12 @@ struct ClusterStats : public StatsObject {
   }
 };
 
-struct LoadManagerStats : public StatsObject {
+struct IdleManagerStats : public StatsObject {
   Distribution ready;
   Distribution blocked;
-  LoadManagerStats(cptr_t o, cptr_t p, const char* n = "LoadManager") : StatsObject(o, p, n, 1) {}
+  IdleManagerStats(cptr_t o, cptr_t p, const char* n = "IdleManager") : StatsObject(o, p, n, 1) {}
   void print(ostream& os) const;
-  void aggregate(const LoadManagerStats& x) {
+  void aggregate(const IdleManagerStats& x) {
     ready.aggregate(x.ready);
     blocked.aggregate(x.blocked);
   }
@@ -317,7 +317,7 @@ struct ProcessorStats : public StatsObject {
   1 Timer
   2 Cluster
   0  Poller
-  1  LoadManager
+  1  IdleManager
   2  Processor
   0   Poller
 */

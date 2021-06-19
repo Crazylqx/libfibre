@@ -26,7 +26,7 @@ static EventScopeStats*  totalEventScopeStats  = nullptr;
 static TimerStats*       totalTimerStats       = nullptr;
 static PollerStats*      totalPollerStats      = nullptr;
 static ClusterStats*     totalClusterStats     = nullptr;
-static LoadManagerStats* totalLoadManagerStats = nullptr;
+static IdleManagerStats* totalIdleManagerStats = nullptr;
 static ProcessorStats*   totalProcessorStats   = nullptr;
 
 struct PrintStatsNode {
@@ -81,7 +81,7 @@ void StatsObject::printAll(ostream& os, bool totals) {
   totalPollerStats      = new PollerStats     (nullptr, nullptr, "Poller     ");
   totalTimerStats       = new TimerStats      (nullptr, nullptr, "Timer      ");
   totalClusterStats     = new ClusterStats    (nullptr, nullptr, "Cluster    ");
-  totalLoadManagerStats = new LoadManagerStats(nullptr, nullptr, "LoadManager");
+  totalIdleManagerStats = new IdleManagerStats(nullptr, nullptr, "IdleManager");
   totalProcessorStats   = new ProcessorStats  (nullptr, nullptr, "Processor  ");
 
   printRecursive(nullptr, os, 0);
@@ -122,8 +122,8 @@ void ClusterStats::print(ostream& os) const {
   os << " procs:" << procs << " sleeps:" << sleeps;
 }
 
-void LoadManagerStats::print(ostream& os) const {
-  if (totalLoadManagerStats && this != totalLoadManagerStats) totalLoadManagerStats->aggregate(*this);
+void IdleManagerStats::print(ostream& os) const {
+  if (totalIdleManagerStats && this != totalIdleManagerStats) totalIdleManagerStats->aggregate(*this);
   StatsObject::print(os);
   os << " ready:" << ready << " blocked:" << blocked;
 }

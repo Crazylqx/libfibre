@@ -23,7 +23,7 @@
 #include "runtime/Stats.h"
 #include "runtime-glue/RuntimeLock.h"
 
-class LoadManager;
+class IdleManager;
 class Scheduler;
 
 class ReadyQueue {
@@ -138,7 +138,7 @@ public:
   Fred* scheduleYieldGlobal(_friend<Fred>);
   Fred* schedulePreempt(Fred* currFred, _friend<Fred>);
 
-  Fred* suspend(_friend<LoadManager>) {
+  Fred* suspend(_friend<IdleManager>) {
 #if TESTING_HALT_SPIN
     static const size_t SpinMax = TESTING_HALT_SPIN;
     for (size_t i = 0; i < SpinMax; i += 1) {
@@ -151,7 +151,7 @@ public:
     return handoverFred;
   }
 
-  void resume(Fred* f, _friend<LoadManager>) {
+  void resume(Fred* f, _friend<IdleManager>) {
     stats->wake.count();
     handoverFred = f;
     haltNotify.V();

@@ -19,22 +19,22 @@
 
 #include "runtime/BaseProcessor.h"
 
-#if TESTING_LOADBALANCING
+#if TESTING_LOADBALANCING && TESTING_IDLE_MANAGER
 
-class LoadManager {
+class IdleManager {
   volatile ssize_t         fredCounter;
   WorkerLock               procLock;
   ProcessorStack           waitingProcs;
   FredQueue<FredReadyLink> waitingFreds;
 
-  LoadManagerStats* stats;
+  IdleManagerStats* stats;
 
   Fred* block(BaseProcessor& proc) {
     procLock.acquire();
     if (waitingFreds.empty()) {
       waitingProcs.push(proc);
       procLock.release();
-      return proc.suspend(_friend<LoadManager>());
+      return proc.suspend(_friend<IdleManager>());
     } else {
       Fred* nextFred = waitingFreds.pop();
       procLock.release();
@@ -50,12 +50,12 @@ class LoadManager {
     } else {
       BaseProcessor* nextProc = waitingProcs.pop();
       procLock.release();
-      nextProc->resume(&fred, _friend<LoadManager>());
+      nextProc->resume(&fred, _friend<IdleManager>());
     }
   }
 
 public:
-  LoadManager(cptr_t parent) : fredCounter(0) { stats = new LoadManagerStats(this, parent); }
+  IdleManager(cptr_t parent) : fredCounter(0) { stats = new IdleManagerStats(this, parent); }
 
   bool tryGetReadyFred() {
     ssize_t c = fredCounter;
@@ -82,9 +82,9 @@ public:
 
 #else
 
-class LoadManager {
+class IdleManager {
 public:
-  LoadManager(cptr_t parent) {}
+  IdleManager(cptr_t parent) {}
 };
 
 #endif
@@ -97,8 +97,8 @@ protected:
   BaseProcessor  stagingProc;
 
 public:
-  LoadManager loadManager;
-  Scheduler() : ringCount(0), placeProc(nullptr), stagingProc(*this, "Staging    "), loadManager(this) {}
+  IdleManager idleManager;
+  Scheduler() : ringCount(0), placeProc(nullptr), stagingProc(*this, "Staging    "), idleManager(this) {}
   ~Scheduler() {
     ScopedLock<WorkerLock> sl(ringLock);
     RASSERT(!ringCount, ringCount);
