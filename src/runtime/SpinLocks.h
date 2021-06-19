@@ -135,14 +135,14 @@ public:
     Node* prev = __atomic_exchange_n(&tail, &n, __ATOMIC_ACQUIRE);
     if (!prev) return;
     n.wait = true;
-    prev->next = &n;
+    __atomic_store_n(&prev->next, &n, __ATOMIC_RELEASE);
     while slowpath(__atomic_load_n(&n.wait, __ATOMIC_ACQUIRE)) Pause();
   }
   void release(Node& n) {
     RASSERT0(tail != nullptr);
     // could check 'n.next' first, but no memory consistency then
     if (_CAS(&tail, &n, (Node*)nullptr, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) return;
-    while slowpath(!n.next) Pause();
+    while slowpath(!__atomic_load_n(&n.next, __ATOMIC_ACQUIRE)) Pause();
     __atomic_store_n(&n.next->wait, false, __ATOMIC_RELEASE);
   }
 } __caligned;
