@@ -43,7 +43,7 @@ void install(Fibre* fib, BaseProcessor* bp, Cluster* cl, EventScope* es, _friend
   currCluster = cl;
   currScope   = es;
 #if TESTING_WORKER_POLLER
-  workerPoller = new PollerFibre(*es, *bp, bp, false);
+  workerPoller = new PollerFibre(*es, *bp, bp, "W-Poller   ", false);
   workerPoller->start();
 #endif
 }
@@ -106,15 +106,15 @@ void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
   new (stats) ClusterStats(this, parent);
   for (size_t p = 0; p < iPollCount; p += 1) {
     iPollVec[p].~PollerType();
-    new (&iPollVec[p]) PollerType(scope, stagingProc, this);
+    new (&iPollVec[p]) PollerType(scope, stagingProc, this, "I-Poller   ");
   }
   for (size_t p = 0; p < oPollCount; p += 1) {
     oPollVec[p].~PollerType();
-    new (&oPollVec[p]) PollerType(scope, stagingProc, this);
+    new (&oPollVec[p]) PollerType(scope, stagingProc, this, "O-Poller   ");
   }
 #if TESTING_WORKER_POLLER
   Context::workerPoller->~PollerFibre();
-  new (Context::workerPoller) PollerFibre(Context::CurrEventScope(), Context::CurrProcessor(), this, false);
+  new (Context::workerPoller) PollerFibre(Context::CurrEventScope(), Context::CurrProcessor(), this, "W-Poller   ", false);
 #endif
 }
 

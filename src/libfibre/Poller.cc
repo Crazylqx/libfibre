@@ -84,8 +84,8 @@ void PollerFibre::pollLoopSetup(PollerFibre* This) {
   This->pollLoop();
 }
 
-PollerFibre::PollerFibre(EventScope& es, BaseProcessor& proc, cptr_t parent, bool cluster)
-: BasePoller(es, parent, "PollerFibre") {
+PollerFibre::PollerFibre(EventScope& es, BaseProcessor& proc, cptr_t parent, const char* n, bool cluster)
+: BasePoller(es, parent, n) {
   pollFibre = new Fibre(proc);
 #if TESTING_CLUSTER_POLLER_FLOAT
   if (cluster) pollFibre->setAffinity(Fred::NoAffinity);
