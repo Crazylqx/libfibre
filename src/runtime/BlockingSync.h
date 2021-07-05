@@ -579,7 +579,7 @@ public:
     return SemaphoreSuccess;
   }
 
-  SemaphoreResult P(const Time& timeout) {
+  SemaphoreResult P(const Time&) {
     RABORT("timeout not implemented for LimitedSemaphore0");
   }
 
@@ -624,7 +624,7 @@ public:
   bool acquire()    { return ben.P() || sem.P(); }
   bool tryAcquire() { return ben.tryP(); }
   bool acquire(bool wait) { return wait ? acquire() : tryAcquire(); }
-  bool acquire(const Time& timeout) { RABORT("timeout not implemented for SimpleMutex0"); }
+  bool acquire(const Time&) { RABORT("timeout not implemented for SimpleMutex0"); }
   void release()    {
     if (ben.V()) return;
     Fred* next = sem.V<false>();
@@ -743,7 +743,7 @@ class SpinSemMutex {
   Semaphore sem;
 
   template<typename... Args>
-  bool tryOnly(const Args&... args) { return false; }
+  bool tryOnly(const Args&...) { return false; }
 
   template<typename... Args>
   bool tryOnly(bool wait) { return !wait; }
@@ -816,7 +816,7 @@ class SpinCondMutex {
   Fred* volatile owner;
 
   template<typename... Args>
-  bool tryOnly(const Args&... args) { return false; }
+  bool tryOnly(const Args&...) { return false; }
 
   template<typename... Args>
   bool tryOnly(bool wait) { return !wait; }

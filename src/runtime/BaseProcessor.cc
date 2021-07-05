@@ -73,6 +73,7 @@ bool BaseProcessor::addReadyFred(Fred& f) {
 #else
   return false;
 #endif
+  (void)f;
 }
 #endif
 

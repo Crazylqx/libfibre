@@ -98,7 +98,7 @@ fibre_sem_t endSema;
 int X, Y;
 int r1, r2;
 
-void *thread1Func(void *param)
+void *thread1Func(void*)
 {
     MersenneTwister random(1);
     for (;;)
@@ -126,7 +126,7 @@ void *thread1Func(void *param)
     return NULL;  // Never returns
 };
 
-void *thread2Func(void *param)
+void *thread2Func(void*)
 {
     MersenneTwister random(2);
     for (;;)

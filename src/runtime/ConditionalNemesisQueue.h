@@ -66,7 +66,7 @@ public:
 
   // append at end -> lock-free
   template<typename... Args>
-  bool push(Node& first, Node& last, Args&... args) {
+  bool push(Node& first, Node& last, Args&...) {
     RASSERT(!Next(last), FmtHex(&last));      // assume link invalidated at pop
     Node* prev = __atomic_exchange_n(&tail, &last, __ATOMIC_SEQ_CST); // swing tail to last of new element(s)
     if (!prev) {

@@ -170,6 +170,10 @@ static const char* RESPONSE = "HTTP/1.1 200 OK\r\n" \
 static const size_t RLEN = strlen(RESPONSE);
 
 static inline void sendResponse(void* connFD, int minor_version, const char* hdr, size_t clen, const char* content) {
+  (void)minor_version;
+  (void)hdr;
+  (void)clen;
+  (void)content;
 #if defined __U_CPLUSPLUS__
   try {
     ((uSocketAccept*)connFD)->send((char*)RESPONSE, RLEN, (int)MSG_NOSIGNAL);
@@ -180,6 +184,7 @@ static inline void sendResponse(void* connFD, int minor_version, const char* hdr
 }
 
 static void HelloWorld(void* connFD, const char* path, int minor_version) {
+  (void)path;
   sendResponse(connFD, minor_version, " 200 OK", 15, "Hello, World!\r\n");
 }
 

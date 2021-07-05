@@ -107,7 +107,7 @@ inline int fibre_attr_init(fibre_attr_t *attr) {
 }
 
 /** @brief Destroy attributes for fibre creation. (`pthread_attr_destroy`). */
-inline int fibre_attr_destroy(fibre_attr_t *attr) {
+inline int fibre_attr_destroy(fibre_attr_t *) {
   return 0;
 }
 
@@ -302,12 +302,12 @@ inline int fibre_sem_getvalue(fibre_sem_t *sem, int *sval) {
 }
 
 /** @brief Initialize the mutex attributes object. (`pthread_mutexattr_init`) */
-inline int fibre_mutexattr_init(fibre_mutexattr_t *attr) {
+inline int fibre_mutexattr_init(fibre_mutexattr_t *) {
   return 0;
 }
 
 /** @brief Destroy the mutex attributes object. (`pthread_mutexattr_destroy`) */
-inline int fibre_mutexattr_destroy(fibre_mutexattr_t *attr) {
+inline int fibre_mutexattr_destroy(fibre_mutexattr_t *) {
   return 0;
 }
 
@@ -501,12 +501,12 @@ inline int fast_barrier_wait(fast_barrier_t *barrier) {
 }
 
 /** @brief Initialize the fastmutex attributes object. (`pthread_mutexattr_init`) */
-inline int fibre_fastmutexattr_init(fibre_fastmutexattr_t *attr) {
+inline int fibre_fastmutexattr_init(fibre_fastmutexattr_t *) {
   return 0;
 }
 
 /** @brief Destroy the fastmutex attributes object. (`pthread_mutexattr_destroy`) */
-inline int fibre_fastmutexattr_destroy(fibre_fastmutexattr_t *attr) {
+inline int fibre_fastmutexattr_destroy(fibre_fastmutexattr_t *) {
   return 0;
 }
 
@@ -528,7 +528,7 @@ inline int fibre_fastmutex_init(fibre_fastmutex_t *restrict mutex, const fibre_f
 }
 
 /** @brief Destroy mutex lock. (`pthread_mutex_destroy`) */
-inline int fibre_fastmutex_destroy(fibre_fastmutex_t *mutex) {
+inline int fibre_fastmutex_destroy(fibre_fastmutex_t *) {
   return 0;
 }
 

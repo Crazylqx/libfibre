@@ -84,7 +84,7 @@ public:
 
 class IdleManager {
 public:
-  IdleManager(cptr_t parent) {}
+  IdleManager(cptr_t) {}
 };
 
 #endif
@@ -139,6 +139,7 @@ public:
     placeProc = ProcessorRing::next(*placeProc);
     return *placeProc;
 #endif
+    (void)staging;
   }
 
 #if TESTING_LOADBALANCING

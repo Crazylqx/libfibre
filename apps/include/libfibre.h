@@ -55,10 +55,10 @@ static inline bool shim_mutex_timedlock(shim_mutex_t* mtx, unsigned int timeout)
 #endif
 #endif
 
-static inline void shim_mutex_destroy(shim_mutex_t* mtx) {}
+static inline void shim_mutex_destroy(shim_mutex_t*) {}
 
 static inline void shim_cond_init(shim_cond_t* cond)                    { new (cond) shim_cond_t; }
-static inline void shim_cond_destroy(shim_cond_t* cond)                 {}
+static inline void shim_cond_destroy(shim_cond_t*)                      {}
 static inline void shim_cond_wait(shim_cond_t* cond, shim_mutex_t* mtx) { cond->wait(*mtx); }
 static inline void shim_cond_signal(shim_cond_t* cond)                  { cond->signal(); }
 

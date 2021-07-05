@@ -153,6 +153,7 @@ public:
 #if __FreeBSD__
     timerFD = fdCount - 1;
 #else
+    (void)fdCount;
     timerFD = SYSCALLIO(timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC));
     setupFD(timerFD, Create, Input, Edge);
 #endif

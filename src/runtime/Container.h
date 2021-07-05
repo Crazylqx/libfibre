@@ -72,7 +72,7 @@ class Queue {
   Node* head;
   Node* tail;
 
-  void popHelper(Node*& elem) {}
+  void popHelper(Node*&) {}
 
   void popHelper(Node*& elem, size_t& count) {
     for (size_t i = 1; i < count; i += 1) {

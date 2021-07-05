@@ -31,14 +31,12 @@ public:
   QueueMCS() : tail(nullptr) {}
   bool empty() const { return !tail; }
 
-  bool tryPushEmpty(Node& first, Node& last) {
+  bool tryPushEmpty(Node& last) {
     RASSERT(!Next(last), FmtHex(Next(last)));  // assume link invalidated at pop
     if (!empty()) return false;
     Node* expected = nullptr;
     return __atomic_compare_exchange_n(&tail, &expected, &last, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
   }
-
-  bool tryPushEmpty(Node& elem) { return tryPushEmpty(elem, elem); }
 
   bool push(Node& first, Node& last) {
     RASSERT(!Next(last), FmtHex(&last));       // assume link invalidated at pop

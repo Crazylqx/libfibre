@@ -119,6 +119,7 @@ class Fibre : public Fred, public FibreSpecific {
   size_t stackAlloc(size_t size, size_t guard) {
     if (!size) size = defaultStackSize;
 #ifdef SPLIT_STACK
+    (void)guard;
     vaddr stackBottom = (vaddr)__splitstack_makecontext(size, splitStackContext, &size);
     int off = 0; // do not block signals (blocking signals is slow!)
     __splitstack_block_signals_context(splitStackContext, &off, nullptr);
@@ -249,6 +250,8 @@ public:
 #if defined(SPLIT_STACK)
     __splitstack_getcontext(splitStackContext);
     __splitstack_setcontext(next.splitStackContext);
+#else
+    (void)next;
 #endif
   }
   void activate(_friend<Fred>) {
