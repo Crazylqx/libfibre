@@ -19,14 +19,14 @@
 #include "runtime-glue/RuntimeFred.h"
 
 Fred::Fred(BaseProcessor& proc, Affinity affinity)
-: stackPointer(0), processor(&proc), priority(DefPriority), affinity(affinity), runState(Running) {
+: stackPointer(0), processor(&proc), priority(DefaultPriority), affinity(affinity), runState(Running) {
 #if TESTING_SHARED_READYQUEUE
   this->affinity = FixedAffinity;
 #endif
 }
 
-Fred::Fred(Scheduler& scheduler, bool background)
-: Fred(scheduler.placement(_friend<Fred>(), background), background ? FixedAffinity : DefAffinity) {}
+Fred::Fred(Scheduler& scheduler, bool backgroundQueue)
+: Fred(scheduler.placement(_friend<Fred>(), backgroundQueue), backgroundQueue ? FixedAffinity : DefaultAffinity) {}
 
 template<Fred::SwitchCode Code>
 inline void Fred::switchFred(Fred& nextFred) {
@@ -167,7 +167,7 @@ void Fred::migrateNow(Scheduler& scheduler) {
 // migrate to proessor; clear affinity
 void Fred::migrateNow(BaseProcessor& proc) {
   Fred* f = Context::CurrFred();
-  f->affinity = DefAffinity;
+  f->affinity = DefaultAffinity;
   f->processor = &proc;
   f->yieldForce();
 }

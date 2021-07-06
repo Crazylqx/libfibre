@@ -30,11 +30,10 @@ inline Fred* BaseProcessor::tryStage() {
   Fred* f = scheduler.stage();
   if (f) {
     DBG::outl(DBG::Level::Scheduling, "tryStage: ", FmtHex(this), ' ', FmtHex(f));
-    if (f->checkAffinity()) {
+    if (f->checkAffinity(*this, _friend<BaseProcessor>())) {
       stats->borrow.count();
     } else {
       stats->stage.count();
-      f->changeProcessor(*this, _friend<BaseProcessor>());
     }
   }
   return f;
@@ -48,11 +47,10 @@ inline Fred* BaseProcessor::trySteal() {
     Fred* f = victim->readyQueue.tryDequeue();
     if (f) {
       DBG::outl(DBG::Level::Scheduling, "trySteal: ", FmtHex(this), ' ', FmtHex(f));
-      if (f->checkAffinity()) {
+      if (f->checkAffinity(*this, _friend<BaseProcessor>())) {
         stats->borrow.count();
       } else {
         stats->steal.count();
-        f->changeProcessor(*this, _friend<BaseProcessor>());
       }
       return f;
     }
@@ -86,8 +84,8 @@ void BaseProcessor::idleLoop() {
     Fred* nextFred = nullptr;
 #endif
     if (nextFred) {
+      nextFred->checkAffinity(*this, _friend<BaseProcessor>());
       stats->handover.count();
-      if (!nextFred->checkAffinity()) nextFred->changeProcessor(*this, _friend<BaseProcessor>());
     } else {
       do nextFred = scheduleInternal(); while (!nextFred);
     }

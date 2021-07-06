@@ -9,10 +9,10 @@
 #define TESTING_LOADBALANCING         1 // enable load balancing using ISRS
 #define TESTING_IDLE_MANAGER          1 // enable idle manager; suspend workers
 #define TESTING_DEFAULT_AFFINITY      1 // enable default affinity (no sticky stealing)
+//#define TESTING_PLACEMENT_STAGING     1 // load-based staging vs. round-robin placement
 //#define TESTING_SHARED_READYQUEUE     1 // use shared ready queue, instead of stealing
 //#define TESTING_LOCKED_READYQUEUE     1 // locked vs. lock-free ready queue
 //#define TESTING_STUB_QUEUE            1 // nemesis vs. stub-based MPSC lock-free queue
-//#define TESTING_PLACEMENT_STAGING     1 // load-based staging vs. round-robin placement
 //#define TESTING_IDLE_SPIN         65536 // spin before entering idle loop
 //#define TESTING_HALT_SPIN         65536 // spin before halting worker thread/core
 
