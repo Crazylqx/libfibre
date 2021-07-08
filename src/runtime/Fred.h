@@ -62,7 +62,11 @@ public:
   enum Affinity : size_t { NoAffinity = 0, TempAffinity = 1, FixedAffinity = 2 };
 
 #if TESTING_DEFAULT_AFFINITY
+#if TESTING_PLACEMENT_STAGING
 static const Affinity DefaultAffinity = TempAffinity;
+#else
+static const Affinity DefaultAffinity = FixedAffinity;
+#endif
 #else
 static const Affinity DefaultAffinity = NoAffinity;
 #endif
