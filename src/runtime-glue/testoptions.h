@@ -3,8 +3,8 @@
 //#define TESTING_WORKER_POLLER         1 // poll events directly from each worker
 #define TESTING_CLUSTER_POLLER_FIBRE  1 // per-cluster poller(s): fibre vs. pthread
 #define TESTING_CLUSTER_POLLER_FLOAT  1 // per-cluster poller fibres(s): float vs. background
-//#define TESTING_POLLER_FIBRE_SPIN 65536 // poller fibre: spin loop of NB polls
 #define TESTING_ONESHOT_REGISTRATION  1 // use oneshot event polling
+//#define TESTING_POLLER_FIBRE_SPIN 65536 // poller fibre: spin loop of NB polls
 
 /******************************** lock options ********************************/
 

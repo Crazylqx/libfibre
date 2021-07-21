@@ -14,7 +14,7 @@ typedef pthread_mutex_t   shim_mutex_t;
 typedef pthread_cond_t    shim_cond_t;
 typedef pthread_barrier_t shim_barrier_t;
 
-static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg, bool bg = false, size_t stacksize = PTHREAD_STACK_MIN) {
+static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg, bool = false, size_t stacksize = PTHREAD_STACK_MIN) {
   typedef void* (*TSR)(void*);
   pthread_t* tid = (pthread_t*)malloc(sizeof(pthread_t));
   pthread_attr_t attr;

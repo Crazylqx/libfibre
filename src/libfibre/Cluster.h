@@ -21,6 +21,10 @@
 #include "libfibre/Fibre.h"
 #include "libfibre/Poller.h"
 
+#ifdef SPLIT_STACK
+#include <csignal>  // sigaltstack
+#endif
+
 /**
 A Cluster object provides a scheduling scope and uses processors (pthreads)
 to execute fibres.  It also manages I/O pollers and provides a
@@ -49,8 +53,10 @@ class Cluster : public Scheduler {
   struct Worker : public BaseProcessor {
     pthread_t sysThreadId;
     Fibre*    maintenanceFibre;
-    char*     sigStack; // only used with split stacks
-    Worker(Cluster& c) : BaseProcessor(c), maintenanceFibre(nullptr), sigStack(nullptr) {
+#ifdef SPLIT_STACK
+    char      sigStack[SIGSTKSZ];
+#endif
+    Worker(Cluster& c) : BaseProcessor(c), maintenanceFibre(nullptr) {
       c.Scheduler::addProcessor(*this);
     }
     ~Worker();

@@ -21,6 +21,8 @@
 #include "runtime/FloatingPoint.h"
 #include "runtime/Platform.h"
 
+#include <ctime> // struct timespec
+
 typedef void (*funcvoid0_t)();
 typedef void (*funcvoid1_t)(ptr_t);
 typedef void (*funcvoid2_t)(ptr_t, ptr_t);

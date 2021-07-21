@@ -247,7 +247,7 @@ public:
   // context switching interface
   void deactivate(Fibre& next, _friend<Fred>) {
     fp.save();
-#if defined(SPLIT_STACK)
+#ifdef SPLIT_STACK
     __splitstack_getcontext(splitStackContext);
     __splitstack_setcontext(next.splitStackContext);
 #else

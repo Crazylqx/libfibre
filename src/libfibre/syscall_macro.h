@@ -17,6 +17,9 @@
 #ifndef _syscall_macro_h_
 #define _syscall_macro_h_
 
+#include <stdio.h>
+#include <sys/errno.h>
+
 #ifndef fastpath
 #define fastpath(x)   (__builtin_expect((bool(x)),true))
 #endif

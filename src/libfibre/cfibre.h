@@ -17,6 +17,12 @@
 #ifndef _cfibre_h_
 #define _cfibre_h_ 1
 
+#ifdef __GNUC__
+#define restrict __restrict__
+#else
+#define restrict
+#endif
+
 /**
  @file
  Additionally, all routines in fibre.h are available as corresponding 'cfibre' version.

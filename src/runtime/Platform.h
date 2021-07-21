@@ -33,7 +33,7 @@
 #define __packed     __attribute__((__packed__))
 #define __section(x) __attribute__((__section__(x)))
 #define __aligned(x) __attribute__((__aligned__(x)))
-#if defined(KERNEL)
+#ifdef KERNEL
 #define __caligned   __attribute__((__aligned__(128)))
 #else
 #define __caligned
