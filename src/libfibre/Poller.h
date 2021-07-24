@@ -52,8 +52,8 @@ struct Poller {
 
 class BasePoller : public Poller {
 protected:
-  static const int maxPoll = 1024;
-  EventType     events[maxPoll];
+  static const int MaxPoll = 1024;
+  EventType     events[MaxPoll];
   int           pollFD;
 
   EventScope&   eventScope;

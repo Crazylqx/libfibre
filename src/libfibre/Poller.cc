@@ -21,9 +21,9 @@ template<bool Blocking>
 inline int BasePoller::doPoll() {
 #if __FreeBSD__
   static const timespec ts = Time::zero();
-  int evcnt = kevent(pollFD, nullptr, 0, events, maxPoll, Blocking ? nullptr : &ts);
+  int evcnt = kevent(pollFD, nullptr, 0, events, MaxPoll, Blocking ? nullptr : &ts);
 #else // __linux__ below
-  int evcnt = epoll_wait(pollFD, events, maxPoll, Blocking ? -1 : 0);
+  int evcnt = epoll_wait(pollFD, events, MaxPoll, Blocking ? -1 : 0);
 #endif
   if (evcnt < 0) { RASSERT(_SysErrno() == EINTR, _SysErrno()); evcnt = 0; } // gracefully handle EINTR
   DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " got ", evcnt, " events from ", pollFD);

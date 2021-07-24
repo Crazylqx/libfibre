@@ -192,6 +192,11 @@ public:
     return false;
   }
 
+  BaseProcessor& getProcessor(_friend<EventScope>) {
+    RASSERT0(processor);
+    return *processor;
+  }
+
   // priority
   Priority getPriority() const  { return priority; }
   Fred* setPriority(Priority p) { priority = p; return this; }

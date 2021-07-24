@@ -164,27 +164,27 @@ struct StatsObject {
 };
 
 struct Counter {
-  void count(Number n = 1) {}
-  void aggregate(const Counter& x) {}
+  void count(Number = 1) {}
+  void aggregate(const Counter&) {}
   void reset() {}
 };
 
 struct Average {
-  void count(Number val) {}
-  void aggregate(const Average& x) {}
+  void count(Number) {}
+  void aggregate(const Average&) {}
   void reset() {}
 };
 
 template<size_t N>
 struct HashTable {
-  void count(Number val) {}
-  void aggregate(const HashTable<N>& x) {}
+  void count(Number) {}
+  void aggregate(const HashTable<N>&) {}
   void reset() {}
 };
 
 struct Distribution {
-  void count(Number val) {}
-  void aggregate(const Distribution& x) {}
+  void count(Number) {}
+  void aggregate(const Distribution&) {}
   void reset() {}
 };
 

@@ -247,7 +247,7 @@ public:
   BasePoller& getPoller(int fd) {
     if (Input) {
 #if TESTING_WORKER_POLLER
-      if (!Cluster) return Cluster::getWorkerPoller();
+      if (!Cluster) return Cluster::getWorkerPoller(CurrFibre()->getProcessor(_friend<EventScope>()));
 #endif
       return Context::CurrCluster().getInputPoller(fd);
     }

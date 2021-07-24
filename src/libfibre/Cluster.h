@@ -51,12 +51,18 @@ class Cluster : public Scheduler {
   ClusterStats* stats;
 
   struct Worker : public BaseProcessor {
-    pthread_t sysThreadId;
-    Fibre*    maintenanceFibre;
+    pthread_t    sysThreadId;
+    Fibre*       maintenanceFibre;
+#if TESTING_WORKER_POLLER
+    PollerFibre* workerPoller;
+#endif
 #ifdef SPLIT_STACK
-    char      sigStack[SIGSTKSZ];
+    char         sigStack[SIGSTKSZ];
 #endif
     Worker(Cluster& c) : BaseProcessor(c), maintenanceFibre(nullptr) {
+#if TESTING_WORKER_POLLER
+      workerPoller = nullptr;
+#endif
       c.Scheduler::addProcessor(*this);
     }
     ~Worker();
@@ -64,6 +70,8 @@ class Cluster : public Scheduler {
     void runIdleLoop()               { BaseProcessor::idleLoop(); }
     static void yieldDirect(Fred& f) { BaseProcessor::yieldDirect(f); }
   };
+
+  static Worker& CurrWorker() { return reinterpret_cast<Worker&>(Context::CurrProcessor()); }
 
   static void maintenance(Cluster* cl);
 
@@ -112,7 +120,9 @@ public:
   void postFork2(_friend<EventScope>);
 
 #if TESTING_WORKER_POLLER
-  static BasePoller& getWorkerPoller();
+  static BasePoller& getWorkerPoller(BaseProcessor& proc) {
+    return *reinterpret_cast<Worker&>(proc).workerPoller;
+  }
 #endif
 
   // Register curent system thread (pthread) as worker.

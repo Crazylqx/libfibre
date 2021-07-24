@@ -25,10 +25,6 @@ static thread_local BaseProcessor* currProc     = nullptr;
 static thread_local Cluster*       currCluster  = nullptr;
 static thread_local EventScope*    currScope    = nullptr;
 
-#if TESTING_WORKER_POLLER
-static thread_local PollerFibre*   workerPoller = nullptr;
-#endif
-
 Fred*          CurrFred()       { RASSERT0(currFred);    return  currFred; }
 BaseProcessor& CurrProcessor()  { RASSERT0(currProc);    return *currProc; }
 Cluster&       CurrCluster()    { RASSERT0(currCluster); return *currCluster; }
@@ -41,10 +37,6 @@ void install(Fibre* fib, BaseProcessor* bp, Cluster* cl, EventScope* es, _friend
   currProc    = bp;
   currCluster = cl;
   currScope   = es;
-#if TESTING_WORKER_POLLER
-  workerPoller = new PollerFibre(*es, *bp, bp, "W-Poller   ", false);
-  workerPoller->start();
-#endif
 }
 
 void installFake(EventScope* es, _friend<BaseThreadPoller>) {
@@ -67,6 +59,10 @@ inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
 #endif
   worker->sysThreadId = pthread_self();
   Context::install(fibre, worker, this, &scope, _friend<Cluster>());
+#if TESTING_WORKER_POLLER
+  worker->workerPoller = new PollerFibre(scope, *worker, worker, "W-Poller   ", false);
+  worker->workerPoller->start();
+#endif
   worker->maintenanceFibre = new Fibre(*worker);
   worker->maintenanceFibre->setPriority(Fred::TopPriority);
   worker->maintenanceFibre->run(maintenance, this);
@@ -108,23 +104,17 @@ void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
     new (&oPollVec[p]) PollerType(scope, stagingProc, this, "O-Poller   ");
   }
 #if TESTING_WORKER_POLLER
-  Context::workerPoller->~PollerFibre();
-  new (Context::workerPoller) PollerFibre(Context::CurrEventScope(), Context::CurrProcessor(), this, "W-Poller   ", false);
+  CurrWorker().workerPoller->~PollerFibre();
+  new (CurrWorker().workerPoller) PollerFibre(Context::CurrEventScope(), Context::CurrProcessor(), this, "W-Poller   ", false);
 #endif
 }
 
 void Cluster::postFork2(_friend<EventScope>) {
   start();
 #if TESTING_WORKER_POLLER
-  Context::workerPoller->start();
+  CurrWorker().workerPoller->start();
 #endif
 }
-
-#if TESTING_WORKER_POLLER
-BasePoller& Cluster::getWorkerPoller() {
-  return *Context::workerPoller;
-}
-#endif
 
 Fibre* Cluster::registerWorker(_friend<EventScope>) {
   Worker* worker = new Worker(*this);
