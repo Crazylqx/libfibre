@@ -10,6 +10,11 @@ CFAFLAGS=$(CFLAGS)
 CFLAGS+=-I. -I../src -I../src/libfibre
 
 LIBS=-lfibre -lrt
+
+ifneq ($(wildcard /usr/include/liburing.h),)
+LIBS+=-luring
+endif
+
 ifeq ($(shell uname),FreeBSD)
 LIBS+=-lpthread -lexecinfo # needed for backtrace_symbols()
 endif

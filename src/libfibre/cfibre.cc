@@ -460,43 +460,43 @@ extern "C" int cfibre_close(int fd) {
 }
 
 extern "C" ssize_t cfibre_send(int socket, const void *buffer, size_t length, int flags) {
-  return lfOutput(send, socket, buffer, length, flags);
+  return lfSend(socket, buffer, length, flags);
 }
 
 extern "C" ssize_t cfibre_sendto(int socket, const void *message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len) {
-  return lfOutput(sendto, socket, message, length, flags, dest_addr, dest_len);
+  return lfSendto(socket, message, length, flags, dest_addr, dest_len);
 }
 
 extern "C" ssize_t cfibre_sendmsg(int socket, const struct msghdr *message, int flags) {
-  return lfOutput(sendmsg, socket, message, flags);
+  return lfSendmsg(socket, message, flags);
 }
 
 extern "C" ssize_t cfibre_write(int fildes, const void *buf, size_t nbyte) {
-  return lfOutput(write, fildes, buf, nbyte);
+  return lfWrite(fildes, buf, nbyte);
 }
 
 extern "C" ssize_t cfibre_writev(int fildes, const struct iovec *iov, int iovcnt) {
-  return lfOutput(writev, fildes, iov, iovcnt);
+  return lfWritev(fildes, iov, iovcnt);
 }
 
 extern "C" ssize_t cfibre_recv(int socket, void *buffer, size_t length, int flags) {
-  return lfInput(recv, socket, buffer, length, flags);
+  return lfRecv(socket, buffer, length, flags);
 }
 
 extern "C" ssize_t cfibre_recvfrom(int socket, void *restrict buffer, size_t length, int flags, struct sockaddr *restrict address, socklen_t *restrict address_len) {
-  return lfInput(recvfrom, socket, buffer, length, flags, address, address_len);
+  return lfRecvfrom(socket, buffer, length, flags, address, address_len);
 }
 
 extern "C" ssize_t cfibre_recvmsg(int socket, struct msghdr *message, int flags) {
-  return lfInput(recvmsg, socket, message, flags);
+  return lfRecvmsg(socket, message, flags);
 }
 
 extern "C" ssize_t cfibre_read(int fildes, void *buf, size_t nbyte) {
-  return lfInput(read, fildes, buf, nbyte);
+  return lfRead(fildes, buf, nbyte);
 }
 
 extern "C" ssize_t cfibre_readv(int fildes, const struct iovec *iov, int iovcnt) {
-  return lfInput(readv, fildes, iov, iovcnt);
+  return lfReadv(fildes, iov, iovcnt);
 }
 
 #if __FreeBSD__

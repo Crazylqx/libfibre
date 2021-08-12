@@ -20,6 +20,9 @@
 #include "runtime/Scheduler.h"
 #include "libfibre/Fibre.h"
 #include "libfibre/Poller.h"
+#if TESTING_IO_URING
+#include "libfibre/IOUring.h"
+#endif
 
 #ifdef SPLIT_STACK
 #include <csignal>  // sigaltstack
@@ -53,6 +56,9 @@ class Cluster : public Scheduler {
   struct Worker : public BaseProcessor {
     pthread_t    sysThreadId;
     Fibre*       maintenanceFibre;
+#if TESTING_IO_URING
+    IOUring*     iouring;
+#endif
 #if TESTING_WORKER_POLLER
     PollerFibre* workerPoller;
 #endif
@@ -60,6 +66,9 @@ class Cluster : public Scheduler {
     char         sigStack[SIGSTKSZ];
 #endif
     Worker(Cluster& c) : BaseProcessor(c), maintenanceFibre(nullptr) {
+#if TESTING_IO_URING
+      iouring = nullptr;
+#endif
 #if TESTING_WORKER_POLLER
       workerPoller = nullptr;
 #endif
@@ -118,6 +127,22 @@ public:
   void preFork(_friend<EventScope>);
   void postFork1(cptr_t parent, _friend<EventScope>);
   void postFork2(_friend<EventScope>);
+
+#if TESTING_IO_URING
+  static IOUring& getWorkerUring() {
+    return *CurrWorker().iouring;
+  }
+
+  static void pollWorker(BaseProcessor& proc) {
+    reinterpret_cast<Worker&>(proc).iouring->poll(_friend<Cluster>());
+  }
+  static void suspendWorker(BaseProcessor& proc) {
+    reinterpret_cast<Worker&>(proc).iouring->suspend(_friend<Cluster>());
+  }
+  static void resumeWorker(BaseProcessor& proc) {
+    reinterpret_cast<Worker&>(proc).iouring->resume(_friend<Cluster>());
+  }
+#endif
 
 #if TESTING_WORKER_POLLER
   static BasePoller& getWorkerPoller(BaseProcessor& proc) {

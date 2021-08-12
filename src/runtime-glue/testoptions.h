@@ -6,6 +6,9 @@
 #define TESTING_ONESHOT_REGISTRATION  1 // use oneshot event polling
 //#define TESTING_POLLER_FIBRE_SPIN 65536 // poller fibre: spin loop of NB polls
 
+//#define TESTING_IO_URING              1 // process io_uring asynchronous events during idle loop (Linux only)
+//#define TESTING_IO_URING_DEFAULT      1 // make io_uring default for sockets
+
 /******************************** lock options ********************************/
 
 //#define TESTING_LOCK_RECURSION        1 // enable mutex recursion in C interface
@@ -16,4 +19,8 @@
 
 #if !TESTING_LOADBALANCING && TESTING_CLUSTER_POLLER_FIBRE
   #error TESTING_CLUSTER_POLLER_FIBRE requires TESTING_LOADBALANCING
+#endif
+
+#if !__linux__ && TESTING_IO_URING
+  #error TESTING_IO_URING is only available on Linux
 #endif

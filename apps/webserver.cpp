@@ -57,14 +57,8 @@ typedef cpuset_t cpu_set_t;
 #define lfListen listen
 #define lfAccept accept
 #define lfClose  close
-template<typename T, class... Args>
-T lfInput( T (*readfunc)(int, Args...), int fd, Args... a) {
-  return readfunc(fd, a...);
-}
-template<typename T, class... Args>
-T lfOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
-  return writefunc(fd, a...);
-}
+#define lfRecv   recv
+#define lfSend   send
 #endif /* __U_CPLUSPLUS__ */
 
 #else
@@ -179,7 +173,7 @@ static inline void sendResponse(void* connFD, int minor_version, const char* hdr
     ((uSocketAccept*)connFD)->send((char*)RESPONSE, RLEN, (int)MSG_NOSIGNAL);
   } catch(uSocketAccept::WriteFailure& rderr) {}
 #else
-  lfOutput(send, (uintptr_t)connFD, (const void*)RESPONSE, RLEN, (int)MSG_NOSIGNAL);
+  lfSend((uintptr_t)connFD, (const void*)RESPONSE, RLEN, (int)MSG_NOSIGNAL);
 #endif
 }
 
@@ -208,7 +202,7 @@ static inline bool connHandler(void* connFD) {
       goto closeAndOut;
     }
 #else
-    while ((rret = lfInput(recv, (uintptr_t)connFD, (void*)(buf + buflen), sizeof(buf) - buflen, 0)) < 0 && _SysErrno() == EINTR);
+    while ((rret = lfRecv((uintptr_t)connFD, (void*)(buf + buflen), sizeof(buf) - buflen, 0)) < 0 && _SysErrno() == EINTR);
 #endif
     if (rret == 0) {
       if (buflen == plen) {

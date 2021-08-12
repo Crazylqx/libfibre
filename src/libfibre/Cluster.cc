@@ -50,6 +50,20 @@ Cluster::Worker::~Worker() {
   if (maintenanceFibre) delete maintenanceFibre;
 }
 
+#if TESTING_IO_URING
+void RuntimeWorkerPoll(BaseProcessor& proc) {
+  Cluster::pollWorker(proc);
+}
+
+void RuntimeWorkerSuspend(BaseProcessor& proc) {
+  Cluster::suspendWorker(proc);
+}
+
+void RuntimeWorkerResume(BaseProcessor& proc) {
+  Cluster::resumeWorker(proc);
+}
+#endif
+
 inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
 #ifdef SPLIT_STACK
   stack_t ss = { .ss_sp = worker->sigStack, .ss_flags = 0, .ss_size = SIGSTKSZ };
@@ -59,6 +73,9 @@ inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
 #endif
   worker->sysThreadId = pthread_self();
   Context::install(fibre, worker, this, &scope, _friend<Cluster>());
+#if TESTING_IO_URING
+  worker->iouring = new IOUring(worker, "W-IOUring ");
+#endif
 #if TESTING_WORKER_POLLER
   worker->workerPoller = new PollerFibre(scope, *worker, worker, "W-Poller   ", false);
   worker->workerPoller->start();
@@ -103,9 +120,13 @@ void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
     oPollVec[p].~PollerType();
     new (&oPollVec[p]) PollerType(scope, stagingProc, this, "O-Poller   ");
   }
+#if TESTING_IO_URING
+  CurrWorker().iouring->~IOUring();
+  new (CurrWorker().iouring) IOUring(&CurrWorker(), "W-IOUring ");
+#endif
 #if TESTING_WORKER_POLLER
   CurrWorker().workerPoller->~PollerFibre();
-  new (CurrWorker().workerPoller) PollerFibre(Context::CurrEventScope(), Context::CurrProcessor(), this, "W-Poller   ", false);
+  new (CurrWorker().workerPoller) PollerFibre(Context::CurrEventScope(), CurrWorker(), &CurrWorker(), "W-Poller   ", false);
 #endif
 }
 

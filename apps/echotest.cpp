@@ -112,7 +112,7 @@ static void servconn(void* arg) {
   char code = 0;
   for (;;) {
     char buf[128];
-    int len = SYSCALL_GE(lfInput(recv, fd, (void*)buf, sizeof(buf), 0), 1);
+    int len = SYSCALL_GE(lfRecv(fd, (void*)buf, sizeof(buf), 0), 1);
     for (int i = 0; i < len; i += 1) {
       if (buf[i] == 127) goto finish;
       code = code ^ buf[i];
@@ -122,11 +122,11 @@ static void servconn(void* arg) {
 finish:
 //  std::cout << ntohs(client.sin_port) << " done receiving" << std::endl;
   // send response
-  SYSCALL_EQ(lfOutput(send, fd, (const void*)&code, sizeof(code), 0), sizeof(code));
+  SYSCALL_EQ(lfSend(fd, (const void*)&code, sizeof(code), 0), sizeof(code));
 //  std::cout << ntohs(client.sin_port) << " done sending" << std::endl;
 
   // wait for client closing the socket
-  SYSCALL_EQ(lfInput(recv, fd, (void*)&code, sizeof(code), 0), 0);
+  SYSCALL_EQ(lfRecv(fd, (void*)&code, sizeof(code), 0), 0);
 //  std::cout << ntohs(client.sin_port) << " client closed" << std::endl;
 
   // close socket and terminate fibre
@@ -221,15 +221,15 @@ void clientconn(sockaddr_in* server) {
   for (int i = 0; i < bcount; i += 1) {
     char buf = random() % 100;
     code = code ^ buf;
-    SYSCALL_EQ(lfOutput(send, fd, (const void*)&buf, sizeof(buf), 0), sizeof(buf));
+    SYSCALL_EQ(lfSend(fd, (const void*)&buf, sizeof(buf), 0), sizeof(buf));
   }
   // send terminal character
   char buf = 127;
-  SYSCALL_EQ(lfOutput(send, fd, (const void*)&buf, sizeof(buf), 0), sizeof(buf));
+  SYSCALL_EQ(lfSend(fd, (const void*)&buf, sizeof(buf), 0), sizeof(buf));
   std::cout << ntohs(local.sin_port) << " done sending" << std::endl;
 
   // receive respone
-  SYSCALL_EQ(lfInput(recv, fd, (void*)&buf, sizeof(buf), 0), sizeof(buf));
+  SYSCALL_EQ(lfRecv(fd, (void*)&buf, sizeof(buf), 0), sizeof(buf));
   std::cout << ntohs(local.sin_port) << " done receiving" << std::endl;
 
   // check code

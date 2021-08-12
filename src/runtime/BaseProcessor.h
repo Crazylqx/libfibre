@@ -23,6 +23,12 @@
 #include "runtime/Stats.h"
 #include "runtime-glue/RuntimeLock.h"
 
+#if TESTING_IO_URING
+extern void RuntimeWorkerPoll(BaseProcessor&);
+extern void RuntimeWorkerSuspend(BaseProcessor&);
+extern void RuntimeWorkerResume(BaseProcessor&);
+#endif
+
 class IdleManager;
 class Scheduler;
 
@@ -147,14 +153,22 @@ public:
     }
 #endif
     stats->idle.count();
+#if TESTING_IO_URING
+    RuntimeWorkerSuspend(*this);
+#else
     haltNotify.P();
+#endif
     return handoverFred;
   }
 
   void resume(Fred* f, _friend<IdleManager>) {
     stats->wake.count();
     handoverFred = f;
+#if TESTING_IO_URING
+    RuntimeWorkerResume(*this);
+#else
     haltNotify.V();
+#endif
   }
 };
 

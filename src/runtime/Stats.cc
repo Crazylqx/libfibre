@@ -25,6 +25,7 @@
 static EventScopeStats*  totalEventScopeStats  = nullptr;
 static TimerStats*       totalTimerStats       = nullptr;
 static PollerStats*      totalPollerStats      = nullptr;
+static IOUringStats*     totalIOUringStats     = nullptr;
 static ClusterStats*     totalClusterStats     = nullptr;
 static IdleManagerStats* totalIdleManagerStats = nullptr;
 static ProcessorStats*   totalProcessorStats   = nullptr;
@@ -79,6 +80,7 @@ void StatsObject::printAll(ostream& os, bool totals) {
 
   totalEventScopeStats  = new EventScopeStats (nullptr, nullptr, "EventScope ");
   totalPollerStats      = new PollerStats     (nullptr, nullptr, "Poller     ");
+  totalIOUringStats     = new IOUringStats    (nullptr, nullptr, "IOUring    ");
   totalTimerStats       = new TimerStats      (nullptr, nullptr, "Timer      ");
   totalClusterStats     = new ClusterStats    (nullptr, nullptr, "Cluster    ");
   totalIdleManagerStats = new IdleManagerStats(nullptr, nullptr, "IdleManager");
@@ -108,6 +110,12 @@ void PollerStats::print(ostream& os) const {
   if (totalPollerStats && this != totalPollerStats) totalPollerStats->aggregate(*this);
   StatsObject::print(os);
   os << " regs:" << regs << " blocks:" << blocks << " empty:" << empty << " events:" << events;
+}
+
+void IOUringStats::print(ostream& os) const {
+  if (totalIOUringStats && this != totalIOUringStats) totalIOUringStats->aggregate(*this);
+  StatsObject::print(os);
+  os << " events:" << events;
 }
 
 void TimerStats::print(ostream& os) const {

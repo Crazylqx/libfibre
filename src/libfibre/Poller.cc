@@ -69,7 +69,7 @@ inline void PollerFibre::pollLoop() {
       spin = 1;
     } else if (spin >= SpinMax) {
       stats->blocks.count();
-      eventScope.blockPollFD(pollFD);
+      eventScope.blockPollFD(pollFD, _friend<PollerFibre>());
       spin = 1;
     } else {
       stats->empty.count();
@@ -80,7 +80,7 @@ inline void PollerFibre::pollLoop() {
 }
 
 void PollerFibre::pollLoopSetup(PollerFibre* This) {
-  This->eventScope.registerPollFD(This->pollFD);
+  This->eventScope.registerPollFD(This->pollFD, _friend<PollerFibre>());
   This->pollLoop();
 }
 
@@ -147,7 +147,7 @@ void* MasterPoller::pollLoopSetup(void* This) {
 }
 
 inline void MasterPoller::prePoll(_friend<BaseThreadPoller>) {
-  if (eventScope.tryblock(timerFD)) {
+  if (eventScope.tryblock(timerFD, _friend<MasterPoller>())) {
 #if __linux__
     uint64_t count; // read timerFD
     if (read(timerFD, (void*)&count, sizeof(count)) != sizeof(count)) return;

@@ -19,7 +19,6 @@
 
 #include "runtime/Container.h"
 
-
 #include <ostream>
 using std::ostream;
 
@@ -235,6 +234,18 @@ struct PollerStats : public StatsObject {
   }
 };
 
+struct IOUringStats : public StatsObject {
+  Distribution events;
+  IOUringStats(cptr_t o, cptr_t p, const char* n = "IOUring") : StatsObject(o, p, n, 0) {}
+  void print(ostream& os) const;
+  void aggregate(const IOUringStats& x) {
+    events.aggregate(x.events);
+  }
+  virtual void reset() {
+    events.reset();
+  }
+};
+
 struct TimerStats : public StatsObject {
   Distribution events;
   TimerStats(cptr_t o, cptr_t p, const char* n = "Timer       ") : StatsObject(o, p, n, 1) {}
@@ -314,12 +325,14 @@ struct ProcessorStats : public StatsObject {
   sort order for output:
   0 EventScope
   0 Poller
+  0 IOUring
   1 Timer
   2 Cluster
   0  Poller
   1  IdleManager
   2  Processor
   0   Poller
+  0   IOUring
 */
 
 #endif /* _Stats_h_ */

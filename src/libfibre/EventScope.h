@@ -28,6 +28,13 @@
 #include <sys/resource.h> // getrlimit
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
+
+#ifdef __GNUC__
+#define restrict __restrict__
+#else
+#define restrict
+#endif
 
 /**
  An EventScope object holds a set of Clusters and provides a common I/O
@@ -42,10 +49,11 @@ class EventScope {
   struct SyncFD {
     SyncSem     iSem;
     SyncSem     oSem;
-    BasePoller* volatile iPoller;
-    BasePoller* volatile oPoller;
-    bool        volatile blocking;
-    SyncFD() : iPoller(nullptr), oPoller(nullptr), blocking(false) {}
+    BasePoller* iPoller;
+    BasePoller* oPoller;
+    bool        blocking;
+    bool        useUring;
+    SyncFD() : iPoller(nullptr), oPoller(nullptr), blocking(false), useUring(false) {}
   } *fdSyncVector;
 
   int fdCount;
@@ -65,6 +73,8 @@ class EventScope {
   // simple kludge to provide event-scope-local data
   void*         clientData;
 
+  EventScopeStats* stats;
+
   // TODO: not available until cluster deletion implemented
   ~EventScope() {
     delete mainFibre;
@@ -78,7 +88,10 @@ class EventScope {
     This->initSync();
     RASSERT0(This->parentScope);
 #if __linux__
-    for (int f = 0; f < This->fdCount; f += 1) This->fdSyncVector[f].blocking = This->parentScope->fdSyncVector[f].blocking;
+    for (int f = 0; f < This->fdCount; f += 1) {
+      This->fdSyncVector[f].blocking = This->parentScope->fdSyncVector[f].blocking;
+      This->fdSyncVector[f].useUring = This->parentScope->fdSyncVector[f].useUring;
+    }
     SYSCALL(unshare(CLONE_FILES));
 #else
     (void)This->parentScope;
@@ -106,9 +119,96 @@ class EventScope {
     mainCluster->startPolling(_friend<EventScope>());                       // start polling now (potentially new event scope)
   }
 
-public:
-  EventScopeStats* stats;
+  void cleanupFD(int fd) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    SyncFD& fdsync = fdSyncVector[fd];
+    fdsync.iSem.reset(0);
+    fdsync.oSem.reset(0);
+    fdsync.iPoller = nullptr;
+    fdsync.oPoller = nullptr;
+    fdsync.blocking = false;
+    fdsync.useUring = false;
+  }
 
+  template<bool Input>
+  inline bool TestEAGAIN() {
+    int serrno = _SysErrno();
+    stats->resets.count((int)(serrno == ECONNRESET));
+#if __FreeBSD__
+    // workaround - suspect: https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=129169 - or similar?
+    return serrno == EAGAIN || (Input == false && serrno == ENOTCONN);
+#else // __linux__
+    return serrno == EAGAIN;
+#endif
+  }
+
+  template<bool Input, bool Cluster>
+  BasePoller& getPoller(int fd) {
+    if (Input) {
+#if TESTING_WORKER_POLLER
+      if (!Cluster) return Cluster::getWorkerPoller(CurrFibre()->getProcessor(_friend<EventScope>()));
+#endif
+      return Context::CurrCluster().getInputPoller(fd);
+    }
+    return Context::CurrCluster().getOutputPoller(fd);
+  }
+
+  template<bool Input, bool Yield, bool Cluster, typename T, class... Args>
+  T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
+    SyncFD& fdsync = fdSyncVector[fd];
+    if (Yield) Fibre::yield();
+    stats->calls.count();
+    T ret = iofunc(fd, a...);
+    if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
+    stats->fails.count();
+    BasePoller*& poller = Input ? fdsync.iPoller : fdsync.oPoller;
+    if (!poller) {
+      poller = &getPoller<Input,Cluster>(fd);
+#if TESTING_ONESHOT_REGISTRATION
+      poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
+#else
+      poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Edge);
+#endif
+    } else {
+#if TESTING_ONESHOT_REGISTRATION
+      poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
+#endif
+    }
+    SyncSem& sem = Input ? fdsync.iSem : fdsync.oSem;
+    for (;;) {
+      sem.P();
+      stats->calls.count();
+      ret = iofunc(fd, a...);
+      if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
+      stats->fails.count();
+#if TESTING_ONESHOT_REGISTRATION
+      poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
+#endif
+    }
+  }
+
+  int checkAsyncCompletion(int fd) {
+    SyncFD& fdsync = fdSyncVector[fd];
+    fdsync.oPoller = &getPoller<false,false>(fd);
+    fdsync.oPoller->setupFD(fd, Poller::Create, Poller::Output, Poller::Oneshot); // register immediately
+    fdsync.oSem.P();                                                              // wait for completion
+    int err;
+    socklen_t sz = sizeof(err);
+    SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &sz));
+    return err;
+  }
+
+  template<typename T, class... Args>
+  T input( T (*readfunc)(int, Args...), int fd, Args... a) {
+    return syncIO<true,true,false>(readfunc, fd, a...); // yield before read
+  }
+
+  template<typename T, class... Args>
+  T output( T (*writefunc)(int, Args...), int fd, Args... a) {
+    return syncIO<false,false,false>(writefunc, fd, a...); // no yield before write
+  }
+
+public:
   /** Create an event scope during bootstrap. */
   static EventScope* bootstrap(size_t pollerCount = 1, size_t workerCount = 1) {
     EventScope* es = new EventScope(pollerCount);
@@ -174,27 +274,7 @@ public:
 
   void setTimer(const Time& timeout) { masterPoller->setTimer(timeout); }
 
-  void setBlocking(int fd, bool nonblocking) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].blocking = !nonblocking;
-  }
-
-  void dupBlocking(int fd, int orig) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].blocking = fdSyncVector[orig].blocking;
-  }
-
-  void cleanupFD(int fd) {
-    RASSERT0(fd >= 0 && fd < fdCount);
-    SyncFD& fdsync = fdSyncVector[fd];
-    fdsync.iSem.reset(0);
-    fdsync.oSem.reset(0);
-    fdsync.iPoller = nullptr;
-    fdsync.oPoller = nullptr;
-    fdsync.blocking = false;
-  }
-
-  bool tryblock(int fd) {
+  bool tryblock(int fd, _friend<MasterPoller>) {
     RASSERT0(fd >= 0 && fd < fdCount);
     return fdSyncVector[fd].iSem.tryP();
   }
@@ -206,12 +286,12 @@ public:
     return sem.V<Enqueue>();
   }
 
-  void registerPollFD(int fd) {
+  void registerPollFD(int fd, _friend<PollerFibre>) {
     RASSERT0(fd >= 0 && fd < fdCount);
     masterPoller->setupFD(fd, Poller::Create, Poller::Input, Poller::Oneshot);
   }
 
-  void blockPollFD(int fd) {
+  void blockPollFD(int fd, _friend<PollerFibre>) {
     RASSERT0(fd >= 0 && fd < fdCount);
     masterPoller->setupFD(fd, Poller::Modify, Poller::Input, Poller::Oneshot);
     fdSyncVector[fd].iSem.P();
@@ -231,88 +311,268 @@ public:
     return result;
   }
 
-  template<bool Input>
-  static inline bool TestEAGAIN() {
-    int serrno = _SysErrno();
-    Context::CurrEventScope().stats->resets.count((int)(serrno == ECONNRESET));
-#if __FreeBSD__
-    // workaround - suspect: https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=129169 - or similar?
-    return serrno == EAGAIN || (Input == false && serrno == ENOTCONN);
-#else // __linux__
-    return serrno == EAGAIN;
-#endif
-  }
-
-  template<bool Input, bool Cluster>
-  BasePoller& getPoller(int fd) {
-    if (Input) {
-#if TESTING_WORKER_POLLER
-      if (!Cluster) return Cluster::getWorkerPoller(CurrFibre()->getProcessor(_friend<EventScope>()));
-#endif
-      return Context::CurrCluster().getInputPoller(fd);
-    }
-    return Context::CurrCluster().getOutputPoller(fd);
-  }
-
-  template<bool Input, bool Yield, bool Cluster, typename T, class... Args>
-  T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
+  template<typename T, class... Args>
+  T syncInput( T (*readfunc)(int, Args...), int fd, Args... a) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    SyncFD& fdsync = fdSyncVector[fd];
-    if (!fdsync.blocking) return iofunc(fd, a...);
-    if (Yield) Fibre::yield();
-    stats->calls.count();
-    T ret = iofunc(fd, a...);
-    if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
-    stats->fails.count();
-    BasePoller* volatile& poller = Input ? fdsync.iPoller : fdsync.oPoller;
-    if (!poller) {
-      poller = &getPoller<Input,Cluster>(fd);
-#if TESTING_ONESHOT_REGISTRATION
-      poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
-#else
-      poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Edge);
-#endif
-    } else {
-#if TESTING_ONESHOT_REGISTRATION
-      poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
-#endif
-    }
-    SyncSem& sem = Input ? fdsync.iSem : fdsync.oSem;
-    for (;;) {
-      sem.P();
-      stats->calls.count();
-      ret = iofunc(fd, a...);
-      if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
-      stats->fails.count();
-#if TESTING_ONESHOT_REGISTRATION
-      poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
-#endif
-    }
+    if (!fdSyncVector[fd].blocking) return readfunc(fd, a...);
+    return input(readfunc, fd, a...);
   }
 
-  int checkAsyncCompletion(int fd) {
+  template<typename T, class... Args>
+  T syncOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    SyncFD& fdsync = fdSyncVector[fd];
-    fdsync.oPoller = &getPoller<false,false>(fd);
-    fdsync.oPoller->setupFD(fd, Poller::Create, Poller::Output, Poller::Oneshot); // register immediately
-    fdsync.oSem.P();                                                              // wait for completion
-    int err;
-    socklen_t sz = sizeof(err);
-    SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &sz));
-    return err;
+    if (!fdSyncVector[fd].blocking) return writefunc(fd, a...);
+    return output(writefunc, fd, a...);
+  }
+
+  int socket(int domain, int type, int protocol, bool useUring) {
+    int ret = ::socket(domain, type | (useUring ? 0 : SOCK_NONBLOCK), protocol);
+    if (ret < 0) return ret;
+    fdSyncVector[ret].blocking = !(type & SOCK_NONBLOCK);
+    fdSyncVector[ret].useUring = useUring;
+    return ret;
+  }
+
+#if TESTING_IO_URING
+  inline bool uring(int fd) { return fdSyncVector[fd].useUring; }
+#endif
+
+  int bind(int fd, const sockaddr *addr, socklen_t addrlen) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    if (!fdSyncVector[fd].blocking) return ::bind(fd, addr, addrlen);
+#if TESTING_IO_URING
+    if (uring(fd)) return ::bind(fd, addr, addrlen);
+#endif
+    int ret = ::bind(fd, addr, addrlen);
+    if (ret < 0) {
+      if (_SysErrno() != EINPROGRESS) return ret;
+      ret = checkAsyncCompletion(fd);
+      if (ret != 0) {
+        _SysErrnoSet() = ret;
+        return -1;
+      }
+    }
+    return ret;
+  }
+
+  int connect(int fd, const sockaddr *addr, socklen_t addrlen) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    if (!fdSyncVector[fd].blocking) return ::connect(fd, addr, addrlen);
+#if TESTING_IO_URING
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_connect, fd, addr, addrlen);
+#endif
+    int ret = ::connect(fd, addr, addrlen);
+    if (ret < 0) {
+      if (_SysErrno() != EINPROGRESS) return ret;
+      ret = checkAsyncCompletion(fd);
+      if (ret != 0) {
+        _SysErrnoSet() = ret;
+        return -1;
+      }
+    }
+    stats->cliconn.count();
+    return ret;
+  }
+
+  int accept4(int fd, sockaddr *addr, socklen_t *addrlen, int flags) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    int ret;
+#if TESTING_IO_URING
+    if (uring(fd)) {
+      ret = fdSyncVector[fd].blocking
+          ? Cluster::getWorkerUring().syncIO(io_uring_prep_accept, fd, addr, addrlen, flags)
+          : ::accept4(fd, addr, addrlen, flags);
+    } else
+#endif
+    ret = fdSyncVector[fd].blocking
+        ? syncIO<true,false,true>(::accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK)
+        : ::accept4(fd, addr, addrlen, flags | SOCK_NONBLOCK);
+    if (ret < 0) return ret;
+    fdSyncVector[ret].blocking = !(flags & SOCK_NONBLOCK);
+    fdSyncVector[ret].useUring = fdSyncVector[fd].useUring;
+    return ret;
+  }
+
+  int dup(int fd) {
+    int ret = ::dup(fd);
+    if (ret < 0) return ret;
+    fdSyncVector[ret].blocking = fdSyncVector[fd].blocking;
+    fdSyncVector[ret].useUring = fdSyncVector[fd].useUring;
+    return ret;
+  }
+
+  int pipe2(int pipefd[2], int flags, bool useUring) {
+    int ret = ::pipe2(pipefd, flags | (useUring ? 0 : O_NONBLOCK));
+    if (ret < 0) return ret;
+    fdSyncVector[pipefd[0]].blocking = !(flags & O_NONBLOCK);
+    fdSyncVector[pipefd[0]].useUring = useUring;
+    fdSyncVector[pipefd[1]].blocking = !(flags & O_NONBLOCK);
+    fdSyncVector[pipefd[1]].useUring = useUring;
+    return ret;
+  }
+
+  int fcntl(int fd, int cmd, int flags) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    int ret = ::fcntl(fd, cmd, flags | (fdSyncVector[fd].useUring ? 0 : O_NONBLOCK));
+    if (ret < 0) return ret;
+    fdSyncVector[fd].blocking = !(flags & O_NONBLOCK);
+    return ret;
+  }
+
+  int close(int fd) {
+    cleanupFD(fd);
+    return ::close(fd);
+  }
+
+  int read(int fd, void *buf, size_t nbyte) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    if (!fdSyncVector[fd].blocking) return ::read(fd, buf, nbyte);
+#if TESTING_IO_URING
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_read, fd, buf, (unsigned)nbyte, (off_t)0);
+#endif
+    return input(::read, fd, buf, nbyte);
+  }
+
+  int pread(int fd, void *buf, size_t nbyte, off_t offset) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    if (!fdSyncVector[fd].blocking) return ::pread(fd, buf, nbyte, offset);
+#if TESTING_IO_URING
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_read, fd, buf, (unsigned)nbyte, offset);
+#endif
+    return input(::pread, fd, buf, nbyte, offset);
+  }
+
+  int readv(int fd, const struct iovec *iovecs, int nr_vecs) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    if (!fdSyncVector[fd].blocking) return ::readv(fd, iovecs, nr_vecs);
+#if TESTING_IO_URING
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_readv, fd, iovecs, (unsigned)nr_vecs, (off_t)0);
+#endif
+    return input(::readv, fd, iovecs, nr_vecs);
+  }
+
+  int preadv(int fd, const struct iovec *iovecs, int nr_vecs, off_t offset) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    if (!fdSyncVector[fd].blocking) return ::preadv(fd, iovecs, nr_vecs, offset);
+#if TESTING_IO_URING
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_readv, fd, iovecs, (unsigned)nr_vecs, offset);
+#endif
+    return input(::preadv, fd, iovecs, nr_vecs, offset);
+  }
+
+  int write(int fd, const void *buf, size_t nbyte) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    if (!fdSyncVector[fd].blocking) return ::write(fd, buf, nbyte);
+#if TESTING_IO_URING
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_write, fd, buf, (unsigned)nbyte, (off_t)0);
+#endif
+    return output(::write, fd, buf, nbyte);
+  }
+
+  int pwrite(int fd, const void *buf, size_t nbyte, off_t offset) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    if (!fdSyncVector[fd].blocking) return ::pwrite(fd, buf, nbyte, offset);
+#if TESTING_IO_URING
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_write, fd, buf, (unsigned)nbyte, offset);
+#endif
+    return output(::pwrite, fd, buf, nbyte, offset);
+  }
+
+  int writev(int fd, const struct iovec *iovecs, int nr_vecs) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    if (!fdSyncVector[fd].blocking) return ::writev(fd, iovecs, nr_vecs);
+#if TESTING_IO_URING
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_writev, fd, iovecs, (unsigned)nr_vecs, (off_t)0);
+#endif
+    return output(::writev, fd, iovecs, nr_vecs);
+  }
+
+  int pwritev(int fd, const struct iovec *iovecs, int nr_vecs, off_t offset) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    if (!fdSyncVector[fd].blocking) return ::pwritev(fd, iovecs, nr_vecs, offset);
+#if TESTING_IO_URING
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_writev, fd, iovecs, (unsigned)nr_vecs, offset);
+#endif
+    return output(::pwritev, fd, iovecs, nr_vecs, offset);
+  }
+
+  ssize_t sendmsg(int socket, const struct msghdr *message, int flags) {
+    RASSERT0(socket >= 0 && socket < fdCount);
+    if (!fdSyncVector[socket].blocking) return ::sendmsg(socket, message, flags);
+#if TESTING_IO_URING
+    if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_sendmsg, socket, message, (unsigned)flags);
+#endif
+    return output(::sendmsg, socket, message, flags);
+  }
+
+  ssize_t sendto(int socket, const void *message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len) {
+    RASSERT0(socket >= 0 && socket < fdCount);
+    if (!fdSyncVector[socket].blocking) return ::sendto(socket, message, length, flags, dest_addr, dest_len);
+#if TESTING_IO_URING
+    if (uring(socket)) {
+      struct iovec iov = { .iov_base = (void*)message, .iov_len = length };
+      const struct msghdr msg = { .msg_name = (struct sockaddr*)dest_addr, .msg_namelen = dest_len,
+        .msg_iov = &iov, .msg_iovlen = 1, .msg_control = nullptr, .msg_controllen = 0, .msg_flags = 0 };
+      return sendmsg(socket, &msg, flags);
+    }
+#endif
+    return output(::sendto, socket, message, length, flags, dest_addr, dest_len);
+  }
+
+  ssize_t send(int socket, const void *buffer, size_t length, int flags) {
+    RASSERT0(socket >= 0 && socket < fdCount);
+    if (!fdSyncVector[socket].blocking) return ::send(socket, buffer, length, flags);
+#if TESTING_IO_URING
+    if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_send, socket, buffer, length, flags);
+#endif
+    return output(::send, socket, buffer, length, flags);
+  }
+
+  ssize_t recvmsg(int socket, struct msghdr *message, int flags) {
+    RASSERT0(socket >= 0 && socket < fdCount);
+    if (!fdSyncVector[socket].blocking) return ::recvmsg(socket, message, flags);
+#if TESTING_IO_URING
+    if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_recvmsg, socket, message, (unsigned)flags);
+#endif
+    return input(::recvmsg, socket, message, flags);
+  }
+
+  ssize_t recvfrom(int socket, void *restrict buffer, size_t length, int flags, struct sockaddr *restrict address, socklen_t *restrict address_len)  {
+    RASSERT0(socket >= 0 && socket < fdCount);
+    if (!fdSyncVector[socket].blocking) return ::recvfrom(socket, buffer, length, flags, address, address_len);
+#if TESTING_IO_URING
+    if (uring(socket)) {
+      struct iovec iov = { .iov_base = buffer, .iov_len = length };
+      struct msghdr msg = { .msg_name = address, .msg_namelen = address_len ? *address_len : 0,
+        .msg_iov = &iov, .msg_iovlen = 1, .msg_control = nullptr, .msg_controllen = 0, .msg_flags = 0 };
+      int ret = recvmsg(socket, &msg, flags);
+      if (ret >= 0 && address_len) *address_len = msg.msg_namelen;
+      return ret;
+    }
+#endif
+    return input(::recvfrom, socket, buffer, length, flags, address, address_len);
+  }
+
+  ssize_t recv(int socket, void *buffer, size_t length, int flags) {
+    RASSERT0(socket >= 0 && socket < fdCount);
+    if (!fdSyncVector[socket].blocking) return ::recv(socket, buffer, length, flags);
+#if TESTING_IO_URING
+    if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_recv, socket, buffer, length, flags);
+#endif
+    return input(::recv, socket, buffer, length, flags);
   }
 };
 
 /** @brief Generic input wrapper. User-level-block if file descriptor not ready for reading. */
 template<typename T, class... Args>
 inline T lfInput( T (*readfunc)(int, Args...), int fd, Args... a) {
-  return Context::CurrEventScope().syncIO<true,true,false>(readfunc, fd, a...); // yield before read
+  return Context::CurrEventScope().syncInput(readfunc, fd, a...); // yield before read
 }
 
 /** @brief Generic output wrapper. User-level-block if file descriptor not ready for writing. */
 template<typename T, class... Args>
 inline T lfOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
-  return Context::CurrEventScope().syncIO<false,false,false>(writefunc, fd, a...); // no yield before write
+  return Context::CurrEventScope().syncOutput(writefunc, fd, a...); // no yield before write
 }
 
 /** @brief Generic wrapper for I/O that cannot be polled. Fibre is migrated to disk cluster for execution. */
@@ -321,96 +581,111 @@ inline T lfDirectIO( T (*diskfunc)(int, Args...), int fd, Args... a) {
   return Context::CurrEventScope().directIO(diskfunc, fd, a...);
 }
 
+#if TESTING_IO_URING && TESTING_IO_URING_DEFAULT
+static const bool DefaultUring = true;
+#else
+static const bool DefaultUring = false;
+#endif
+
 /** @brief Create new socket. */
-inline int lfSocket(int domain, int type, int protocol) {
-  int ret = socket(domain, type | SOCK_NONBLOCK, protocol);
-  if (ret < 0) return ret;
-  Context::CurrEventScope().setBlocking(ret, type & SOCK_NONBLOCK);
-  return ret;
-}
-
-/** @brief Bind socket to local name. */
-inline int lfBind(int fd, const sockaddr *addr, socklen_t addrlen) {
-  int ret = bind(fd, addr, addrlen);
-  if (ret < 0) {
-    if (_SysErrno() != EINPROGRESS) return ret;
-    ret = Context::CurrEventScope().checkAsyncCompletion(fd);
-    if (ret != 0) {
-      _SysErrnoSet() = ret;
-      return -1;
-    }
-  }
-  return ret;
-}
-
-/** @brief Create new connection. */
-inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
-  int ret = connect(fd, addr, addrlen);
-  if (ret < 0) {
-    if (_SysErrno() != EINPROGRESS) return ret;
-    ret = Context::CurrEventScope().checkAsyncCompletion(fd);
-    if (ret != 0) {
-      _SysErrnoSet() = ret;
-      return -1;
-    }
-  }
-  Context::CurrEventScope().stats->cliconn.count();
-  return ret;
+static inline int lfSocket(int domain, int type, int protocol, bool useUring = DefaultUring) {
+  return Context::CurrEventScope().socket(domain, type, protocol, useUring);
 }
 
 /** @brief Set up socket listen queue. */
-inline int lfListen(int fd, int backlog) {
+static inline int lfListen(int fd, int backlog) {
   return listen(fd, backlog);
 }
 
+/** @brief Bind socket to local name. */
+static inline int lfBind(int fd, const sockaddr *addr, socklen_t addrlen) {
+  return Context::CurrEventScope().bind(fd, addr, addrlen);
+}
+
 /** @brief Accept new connection. New file descriptor registered for I/O events. */
-inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
-  int ret = Context::CurrEventScope().syncIO<true,false,true>(accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK);
-  if (ret < 0) return ret;
-  Context::CurrEventScope().setBlocking(ret, flags & SOCK_NONBLOCK);
-  Context::CurrEventScope().stats->srvconn.count();
-  return ret;
+static inline int lfAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
+  return Context::CurrEventScope().accept4(fd, addr, addrlen, flags);
 }
 
-/** @brief Nonblocking accept for listen queue draining. New file descriptor registered for I/O events. */
-inline int lfTryAccept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0) {
-  int ret = accept4(fd, addr, addrlen, flags | SOCK_NONBLOCK);
-  if (ret < 0) return ret;
-  Context::CurrEventScope().setBlocking(ret, flags & SOCK_NONBLOCK);
-  Context::CurrEventScope().stats->srvconn.count();
-  return ret;
+/** @brief Create new connection. */
+static inline int lfConnect(int fd, const sockaddr *addr, socklen_t addrlen) {
+  return Context::CurrEventScope().connect(fd, addr, addrlen);
 }
 
-// not necessarily a good idea (on Linux?)
 /** @brief Clone file descriptor. */
-inline int lfDup(int fd) {
-  int ret = dup(fd);
-  if (ret < 0) return ret;
-  Context::CurrEventScope().dupBlocking(ret, fd);
-  return ret;
+static inline int lfDup(int fd) {
+  return Context::CurrEventScope().dup(fd);
 }
 
 /** @brief Create pipe. */
-inline int lfPipe(int pipefd[2], int flags = 0) {
-  int ret = pipe2(pipefd, flags | O_NONBLOCK);
-  if (ret < 0) return ret;
-  Context::CurrEventScope().setBlocking(pipefd[0], flags & O_NONBLOCK);
-  Context::CurrEventScope().setBlocking(pipefd[1], flags & O_NONBLOCK);
-  return ret;
-}
-
-/** @brief Set file descriptor flags. */
-inline int lfFcntl(int fd, int cmd, int flags) {
-  int ret = ::fcntl(fd, cmd, flags | O_NONBLOCK); // internally, all sockets nonblocking
-  if (ret < 0) return ret;
-  Context::CurrEventScope().setBlocking(fd, flags & O_NONBLOCK);
-  return ret;
+static inline int lfPipe(int pipefd[2], int flags = 0, bool useUring = DefaultUring) {
+  return Context::CurrEventScope().pipe2(pipefd, flags, useUring);
 }
 
 /** @brief Close file descriptor. */
-inline int lfClose(int fd) {
- Context::CurrEventScope().cleanupFD(fd);
-  return close(fd);
+static inline int lfClose(int fd) {
+  return Context::CurrEventScope().close(fd);
+}
+
+/** @brief Set file descriptor flags. */
+static inline int lfFcntl(int fd, int cmd, int flags) {
+  return Context::CurrEventScope().fcntl(fd, cmd, flags);
+}
+
+static inline int lfRead(int fd, void *buf, size_t nbyte) {
+  return Context::CurrEventScope().read(fd, buf, nbyte);
+}
+
+static inline int lfPread(int fd, void *buf, size_t nbyte, off_t offset) {
+  return Context::CurrEventScope().pread(fd, buf, nbyte, offset);
+}
+
+static inline int lfReadv(int fd, const struct iovec *iovecs, int nr_vecs) {
+  return Context::CurrEventScope().readv(fd, iovecs, nr_vecs);
+}
+
+static inline int lfPreadv(int fd, const struct iovec *iovecs, int nr_vecs, off_t offset) {
+  return Context::CurrEventScope().preadv(fd, iovecs, nr_vecs, offset);
+}
+
+static inline int lfWrite(int fd, const void *buf, size_t nbyte) {
+  return Context::CurrEventScope().write(fd, buf, nbyte);
+}
+
+static inline int lfPwrite(int fd, const void *buf, size_t nbyte, off_t offset) {
+  return Context::CurrEventScope().pwrite(fd, buf, nbyte, offset);
+}
+
+static inline int lfWritev(int fd, const struct iovec *iovecs, int nr_vecs) {
+  return Context::CurrEventScope().writev(fd, iovecs, nr_vecs);
+}
+
+static inline int lfPwritev(int fd, const struct iovec *iovecs, int nr_vecs, off_t offset) {
+  return Context::CurrEventScope().pwritev(fd, iovecs, nr_vecs, offset);
+}
+
+static inline ssize_t lfSendmsg(int socket, const struct msghdr *message, int flags) {
+  return Context::CurrEventScope().sendmsg(socket, message, flags);
+}
+
+static inline ssize_t lfSendto(int socket, const void *message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len) {
+  return Context::CurrEventScope().sendto(socket, message, length, flags, dest_addr, dest_len);
+}
+
+static inline ssize_t lfSend(int socket, const void *buffer, size_t length, int flags) {
+  return Context::CurrEventScope().send(socket, buffer, length, flags);
+}
+
+static inline ssize_t lfRecvmsg(int socket, struct msghdr *message, int flags) {
+  return Context::CurrEventScope().recvmsg(socket, message, flags);
+}
+
+static inline ssize_t lfRecvfrom(int socket, void *restrict buffer, size_t length, int flags, struct sockaddr *restrict address, socklen_t *restrict address_len)  {
+  return Context::CurrEventScope().recvfrom(socket, buffer, length, flags, address, address_len);
+}
+
+static inline ssize_t lfRecv(int socket, void *buffer, size_t length, int flags) {
+  return Context::CurrEventScope().recv(socket, buffer, length, flags);
 }
 
 #endif /* _EventScope_h_ */

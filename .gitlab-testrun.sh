@@ -52,6 +52,10 @@ function post() {
 	git checkout src/runtime-glue/testoptions.h
 }
 
+function run_skip() {
+	echo "test skipped"
+}
+
 function run_threadtest() {
 	c=$(expr $count \* 2)
 	FibrePrintStats=1 ./apps/threadtest -t $c -f $(expr $c \* $c) || exit 1
@@ -134,7 +138,22 @@ function prep_9() {
 	echo memcached
 }
 
-emax=9
+function prep_10() {
+	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
+	[ ! -f /usr/include/liburing.h ] && echo skip && return
+	sed -i -e 's/.* TESTING_IO_URING .*/#define TESTING_IO_URING 1/' src/runtime-glue/testoptions.h
+	echo memcached
+}
+
+function prep_11() {
+	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
+	[ ! -f /usr/include/liburing.h ] && echo skip && return
+	sed -i -e 's/.* TESTING_IO_URING .*/#define TESTING_IO_URING 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.* TESTING_IO_URING_DEFAULT .*/#define TESTING_IO_URING_DEFAULT 1/' src/runtime-glue/testoptions.h
+	echo memcached
+}
+
+emax=11
 
 if [ $# -gt 0 ] && [ "$1" != "-f" ]; then
 	if [ $1 -lt 0 -o $1 -gt $emax ]; then
