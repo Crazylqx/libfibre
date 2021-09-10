@@ -272,10 +272,18 @@ public:
   Node* pop_back()  { RASSERT(!empty(), FmtHex(this)); return remove(*back()); }
 };
 
-template<typename T, size_t NUM=0, size_t CNT=1, typename LT=SingleLink<T,CNT>> struct IntrusiveStack : public Stack<T,LT::template Next<NUM>> {};
-template<typename T, size_t NUM=0, size_t CNT=1, typename LT=SingleLink<T,CNT>> struct IntrusiveQueue : public Queue<T,LT::template Next<NUM>> {};
-template<typename T, size_t NUM=0, size_t CNT=1, typename LT=DoubleLink<T,CNT>> struct IntrusiveRing : public Ring<T,LT::template Next<NUM>,LT::template Prev<NUM>> {};
-// NOTE WELL: The intrusive design leads to downcasting in the List class. This only works, if LT is the first class that T inherits from.
-template<typename T, size_t NUM=0, size_t CNT=1, typename LT=DoubleLink<T,CNT>> struct IntrusiveList : public List<T,LT,LT::template Next<NUM>,LT::template Prev<NUM>> {};
+template<typename T, size_t NUM=0, size_t CNT=1, typename LT=SingleLink<T,CNT>>
+struct IntrusiveStack : public Stack<T,LT::template Next<NUM>> {};
+
+template<typename T, size_t NUM=0, size_t CNT=1, typename LT=SingleLink<T,CNT>>
+struct IntrusiveQueue : public Queue<T,LT::template Next<NUM>> {};
+
+template<typename T, size_t NUM=0, size_t CNT=1, typename LT=DoubleLink<T,CNT>>
+struct IntrusiveRing : public Ring<T,LT::template Next<NUM>,LT::template Prev<NUM>> {};
+
+// NOTE WELL: The intrusive design leads to downcasting from link to element.
+//            This only works, if LT is the first class that T inherits from.
+template<typename T, size_t NUM=0, size_t CNT=1, typename LT=DoubleLink<T,CNT>>
+struct IntrusiveList : public List<T,LT,LT::template Next<NUM>,LT::template Prev<NUM>> {};
 
 #endif /* _Container_h_ */

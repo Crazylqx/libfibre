@@ -76,8 +76,8 @@ public:
 };
 
 class BaseProcessor;
-typedef IntrusiveStack<BaseProcessor,0,2> ProcessorStack;
-typedef IntrusiveRing <BaseProcessor,1,2> ProcessorRing;
+typedef IntrusiveList<BaseProcessor,0,2> ProcessorList;
+typedef IntrusiveRing<BaseProcessor,1,2> ProcessorRing;
 
 class BaseProcessor : public DoubleLink<BaseProcessor,2> {
   inline Fred* tryLocal();
@@ -101,6 +101,9 @@ class BaseProcessor : public DoubleLink<BaseProcessor,2> {
 protected:
   Scheduler& scheduler;
   Fred*      idleFred;
+#if TESTING_WAKE_FRED_WORKER
+  bool       halting;
+#endif
 
   WorkerSemaphore haltNotify;
   Fred*           handoverFred;
@@ -115,10 +118,21 @@ protected:
 
 public:
   BaseProcessor(Scheduler& c, const char* n = "Processor  ") : scheduler(c), idleFred(nullptr), haltNotify(0), handoverFred(nullptr) {
+#if TESTING_WAKE_FRED_WORKER
+    halting = false;
+#endif
     stats = new ProcessorStats(this, &c, n);
   }
 
   Scheduler& getScheduler() { return scheduler; }
+
+#if TESTING_WAKE_FRED_WORKER
+  bool isHalting(_friend<IdleManager>) { return halting; }
+  void setHalting(bool h, _friend<IdleManager>) { halting = h; }
+#else
+  bool isHalting(_friend<IdleManager>) { return false; }
+  void setHalting(bool, _friend<IdleManager>) {}
+#endif
 
 #if TESTING_LOADBALANCING
   Fred* tryDequeue(_friend<Scheduler>) {

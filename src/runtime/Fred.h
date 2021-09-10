@@ -23,6 +23,7 @@
 
 class EventScope;
 class BaseProcessor;
+class IdleManager;
 class KernelProcessor;
 class Scheduler;
 struct Suspender;
@@ -192,10 +193,8 @@ public:
     return false;
   }
 
-  BaseProcessor& getProcessor(_friend<EventScope>) {
-    RASSERT0(processor);
-    return *processor;
-  }
+  BaseProcessor& getProcessor(_friend<EventScope>) { RASSERT0(processor); return *processor; }
+  BaseProcessor* getProcessor(_friend<IdleManager>) { RASSERT0(processor); return processor; }
 
   // priority
   Priority getPriority() const  { return priority; }

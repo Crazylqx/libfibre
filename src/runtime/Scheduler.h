@@ -24,7 +24,7 @@
 class IdleManager {
   volatile ssize_t         fredCounter;
   WorkerLock               procLock;
-  ProcessorStack           waitingProcs;
+  ProcessorList            waitingProcs;
   FredQueue<FredReadyLink> waitingFreds;
 
   IdleManagerStats* stats;
@@ -32,7 +32,8 @@ class IdleManager {
   Fred* block(BaseProcessor& proc) {
     procLock.acquire();
     if (waitingFreds.empty()) {
-      waitingProcs.push(proc);
+      proc.setHalting(true, _friend<IdleManager>());
+      waitingProcs.push_front(proc);
       procLock.release();
       return proc.suspend(_friend<IdleManager>());
     } else {
@@ -48,7 +49,13 @@ class IdleManager {
       waitingFreds.push(fred);
       procLock.release();
     } else {
-      BaseProcessor* nextProc = waitingProcs.pop();
+      BaseProcessor* nextProc = fred.getProcessor(_friend<IdleManager>());
+      if (nextProc->isHalting(_friend<IdleManager>())) {
+        waitingProcs.remove(*nextProc);
+      } else {
+        nextProc = waitingProcs.pop_front();
+      }
+      nextProc->setHalting(false, _friend<IdleManager>());
       procLock.release();
       nextProc->resume(&fred, _friend<IdleManager>());
     }
