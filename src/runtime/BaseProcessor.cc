@@ -31,9 +31,9 @@ inline Fred* BaseProcessor::tryStage() {
   if (f) {
     DBG::outl(DBG::Level::Scheduling, "tryStage: ", FmtHex(this), ' ', FmtHex(f));
     if (f->checkAffinity(*this, _friend<BaseProcessor>())) {
-      stats->borrow.count();
+      stats->borrowStage.count();
     } else {
-      stats->stage.count();
+      stats->stealStage.count();
     }
   }
   return f;
@@ -54,9 +54,9 @@ inline Fred* BaseProcessor::trySteal() {
     if (f) {
       DBG::outl(DBG::Level::Scheduling, "trySteal: ", FmtHex(this), ' ', FmtHex(f));
       if (f->checkAffinity(*this, _friend<BaseProcessor>())) {
-        stats->borrow.count();
+        if (local) stats->borrowLocal.count(); else stats->borrowGlobal.count();
       } else {
-        stats->steal.count();
+        if (local) stats->stealLocal.count(); else stats->stealGlobal.count();
       }
       return f;
     }

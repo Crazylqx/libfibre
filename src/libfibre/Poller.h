@@ -21,6 +21,7 @@
 #include "runtime/Stats.h"
 
 class BaseProcessor;
+class Cluster;
 
 #include <pthread.h>
 #include <unistd.h>      // close
@@ -106,7 +107,7 @@ class PollerFibre : public BasePoller {
   static void pollLoopSetup(PollerFibre*);
 
 public:
-  PollerFibre(EventScope&, BaseProcessor&, cptr_t parent, const char* n, bool cluster = true);
+  PollerFibre(EventScope&, BaseProcessor&, cptr_t parent, const char* n, _friend<Cluster>, bool cluster = true);
   ~PollerFibre();
   void start();
 };
@@ -132,7 +133,7 @@ class PollerThread : public BaseThreadPoller {
   static void* pollLoopSetup(void*);
 
 public:
-  PollerThread(EventScope& es, BaseProcessor&, cptr_t parent, const char* n) : BaseThreadPoller(es, parent, n) {}
+  PollerThread(EventScope& es, BaseProcessor&, cptr_t parent, const char* n, _friend<Cluster>) : BaseThreadPoller(es, parent, n) {}
   void prePoll(_friend<BaseThreadPoller>) {}
   void start() { BaseThreadPoller::start(pollLoopSetup); }
 };

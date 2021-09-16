@@ -14,11 +14,15 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
+#include "libfibre/Cluster.h"
 #include "libfibre/Fibre.h"
 
 FastMutex FibreSpecific::mutex;
 Bitmap<FibreSpecific::FIBRE_KEYS_MAX> FibreSpecific::bitmap;
 std::vector<FibreSpecific::Destructor> FibreSpecific::destructors;
+
+Fibre::Fibre(size_t group, size_t idx, Cluster& cluster, size_t size, size_t guard)
+: Fred(cluster.getGroupWorker(group, idx)), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
 void Fibre::exit() {
   ExitException* dummy = nullptr;

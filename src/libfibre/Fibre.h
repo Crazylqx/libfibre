@@ -33,12 +33,8 @@ extern "C" void __splitstack_block_signals(int* next, int* prev);
 extern "C" void __splitstack_block_signals_context(void *context[10], int* next, int* prev);
 extern "C" void __splitstack_getcontext(void *context[10]);
 extern "C" void __splitstack_setcontext(void *context[10]);
-extern "C" void *__splitstack_makecontext(size_t, void *context[10], size_t *);
+extern "C" void* __splitstack_makecontext(size_t, void *context[10], size_t *);
 extern "C" void __splitstack_releasecontext(void *context[10]);
-static const size_t defaultStackSize  = 4096;
-#else
-static const size_t defaultStackSize  = 65536;
-static const size_t defaultStackGuard = 4096;
 #endif
 
 #if TESTING_ENABLE_DEBUGGING
@@ -107,6 +103,17 @@ public:
 
 /** A Fibre object represents an independent execution context backed by a stack. */
 class Fibre : public Fred, public FibreSpecific {
+
+public:
+#ifdef SPLIT_STACK
+  static const size_t DefaultStackSize  = 4096;
+  static const size_t DefaultStackGuard = 0;
+#else
+  static const size_t DefaultStackSize  = 65536;
+  static const size_t DefaultStackGuard = 4096;
+#endif
+
+private:
   FloatingPointFlags fp;       // FP context
   size_t stackSize;            // stack size (including guard)
 #ifdef SPLIT_STACK
@@ -117,7 +124,6 @@ class Fibre : public Fred, public FibreSpecific {
   SyncPoint<WorkerLock> done;  // synchronization (join) at destructor
 
   size_t stackAlloc(size_t size, size_t guard) {
-    if (!size) size = defaultStackSize;
 #ifdef SPLIT_STACK
     (void)guard;
     vaddr stackBottom = (vaddr)__splitstack_makecontext(size, splitStackContext, &size);
@@ -125,7 +131,6 @@ class Fibre : public Fred, public FibreSpecific {
     __splitstack_block_signals_context(splitStackContext, &off, nullptr);
 #else
     // check that requested size/guard is a multiple of page size
-    if (!guard) guard = defaultStackGuard;
     RASSERT(aligned(size, _lfPagesize), size);
     RASSERT(aligned(guard, _lfPagesize), size);
     // reserve/map size + protection
@@ -172,20 +177,21 @@ public:
   struct ExitException {};
 
   /** Constructor. */
-  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), bool background = false, size_t size = 0, size_t guard = 0)
+  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), bool background = false, size_t size = DefaultStackSize, size_t guard = DefaultStackGuard)
   : Fred(sched, background), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
-  /** Constructor setting affinity to processor. */
-  Fibre(BaseProcessor &sp, size_t size = 0, size_t guard = 0)
-  : Fred(sp, Fred::FixedAffinity), stackSize(stackAlloc(size, guard)) { initDebug(); }
+  /** Constructor with group index placement */
+  Fibre(size_t group, size_t idx, Cluster& cluster, size_t size = DefaultStackSize, size_t guard = DefaultStackGuard);
 
   /** Constructor to immediately start fibre with `func(arg)`. */
   Fibre(funcvoid1_t func, ptr_t arg, bool background = false)
   : Fibre(Context::CurrProcessor().getScheduler(), background) { run(func, arg); }
 
-  // constructor for idle loop or main loop (bootstrap) on existing pthread stack
-  Fibre(BaseProcessor &p, _friend<Cluster>)
-  : Fred(p), stackSize(0) { initDebug(); }
+  // constructor for idle loop or main loop (bootstrap) on existing pthread stack (size = 0)
+  // constructor with setting affinity to processor (size != 0)
+  Fibre(BaseProcessor &p, _friend<Cluster>, size_t size = DefaultStackSize, size_t guard = DefaultStackGuard)
+  : Fred(p, size ? Fred::FixedAffinity : Fred::DefaultAffinity),
+    stackSize(size ? stackAlloc(size, guard) : 0) { initDebug(); }
 
   //  explicit final notification for idle loop or main loop (bootstrap) on pthread stack
   void endDirect(_friend<Cluster>) {

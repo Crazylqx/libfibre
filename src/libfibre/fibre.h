@@ -48,8 +48,8 @@ struct fibre_attr_t {
   bool background;
   Cluster* cluster;
   void init() {
-    stackSize = 0;
-    guardSize = 0;
+    stackSize = Fibre::DefaultStackSize;
+    guardSize = Fibre::DefaultStackGuard;
     detached = false;
     background = false;
     cluster = &Context::CurrCluster();

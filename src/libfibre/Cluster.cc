@@ -77,10 +77,10 @@ inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
   worker->iouring = new IOUring(worker, "W-IOUring ");
 #endif
 #if TESTING_WORKER_POLLER
-  worker->workerPoller = new PollerFibre(scope, *worker, worker, "W-Poller   ", false);
+  worker->workerPoller = new PollerFibre(scope, *worker, worker, "W-Poller   ", _friend<Cluster>(), false);
   worker->workerPoller->start();
 #endif
-  worker->maintenanceFibre = new Fibre(*worker);
+  worker->maintenanceFibre = new Fibre(*worker, _friend<Cluster>());
   worker->maintenanceFibre->setPriority(Fred::TopPriority);
   worker->maintenanceFibre->run(maintenance, this);
 }
@@ -97,7 +97,7 @@ void* Cluster::threadHelper(Argpack* args) {
 }
 
 inline void Cluster::registerIdleWorker(Worker* worker, Fibre* initFibre) {
-  Fibre* idleFibre = new Fibre(*worker, _friend<Cluster>()); // idle fibre on pthread stack
+  Fibre* idleFibre = new Fibre(*worker, _friend<Cluster>(), 0); // idle fibre on pthread stack
   setupWorker(idleFibre, worker);
   worker->setIdleLoop(idleFibre);
   Worker::yieldDirect(*initFibre);                           // run init fibre right away
@@ -114,11 +114,11 @@ void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
   new (stats) FredStats::ClusterStats(this, parent);
   for (size_t p = 0; p < iPollCount; p += 1) {
     iPollVec[p].~PollerType();
-    new (&iPollVec[p]) PollerType(scope, stagingProc, this, "I-Poller   ");
+    new (&iPollVec[p]) PollerType(scope, stagingProc, this, "I-Poller   ", _friend<Cluster>());
   }
   for (size_t p = 0; p < oPollCount; p += 1) {
     oPollVec[p].~PollerType();
-    new (&oPollVec[p]) PollerType(scope, stagingProc, this, "O-Poller   ");
+    new (&oPollVec[p]) PollerType(scope, stagingProc, this, "O-Poller   ", _friend<Cluster>());
   }
 #if TESTING_IO_URING
   CurrWorker().iouring->~IOUring();
@@ -126,7 +126,7 @@ void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
 #endif
 #if TESTING_WORKER_POLLER
   CurrWorker().workerPoller->~PollerFibre();
-  new (CurrWorker().workerPoller) PollerFibre(Context::CurrEventScope(), CurrWorker(), &CurrWorker(), "W-Poller   ", false);
+  new (CurrWorker().workerPoller) PollerFibre(Context::CurrEventScope(), CurrWorker(), &CurrWorker(), "W-Poller   ", _friend<Cluster>(), false);
 #endif
 }
 
@@ -139,9 +139,9 @@ void Cluster::postFork2(_friend<EventScope>) {
 
 Fibre* Cluster::registerWorker(_friend<EventScope>) {
   Worker* worker = new Worker(*this);
-  Fibre* mainFibre = new Fibre(*worker, _friend<Cluster>()); // caller continues on pthread stack
+  Fibre* mainFibre = new Fibre(*worker, _friend<Cluster>(), 0); // caller continues on pthread stack
   setupWorker(mainFibre, worker);
-  Fibre* idleFibre = new Fibre(*worker);                     // idle fibre on new stack
+  Fibre* idleFibre = new Fibre(*worker, _friend<Cluster>()); // idle fibre on new stack
   idleFibre->setup((ptr_t)fibreHelper, worker);              // set up idle fibre for execution
   worker->setIdleLoop(idleFibre);
   return mainFibre;
@@ -149,7 +149,7 @@ Fibre* Cluster::registerWorker(_friend<EventScope>) {
 
 pthread_t Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
   Worker* worker = new Worker(*this);
-  Fibre* initFibre = new Fibre(*worker);
+  Fibre* initFibre = new Fibre(*worker, _friend<Cluster>());
   if (initFunc) {   // run init routine in dedicated fibre, so it can block
     initFibre->setup((ptr_t)initFunc, initArg);
   } else {

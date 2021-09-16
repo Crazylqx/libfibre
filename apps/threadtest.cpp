@@ -25,6 +25,7 @@ extern "C" {
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
+#include <string.h>
 #include <unistd.h> // getopt
 }
 #define nullptr 0p
@@ -37,6 +38,7 @@ extern "C" {
 #include <cassert>
 #include <cmath>
 #include <csignal>
+#include <cstring>
 #include <unistd.h> // getopt
 using namespace std;
 
@@ -103,14 +105,15 @@ static volatile bool running = false;
 // alarm invoked every second
 static void alarmHandler(int) {
   ticks += 1;
+  char buf[64];
   if (ticks >= duration) {
-    fprintf(stderr, "\r");
-    fflush(stderr);
+    sprintf(buf, "\r");
     running = false;
   } else {
-    fprintf(stderr, "\r%u", ticks);
-    fflush(stderr);
+    sprintf(buf, "\r%u", ticks);
   }
+  SYSCALLIO(write(STDERR_FILENO, buf, strlen(buf)));
+  fsync(STDERR_FILENO);
 }
 
 // help message

@@ -297,9 +297,12 @@ struct ProcessorStats : public Base {
   Counter enq;
   Counter deq;
   Counter handover;
-  Counter stage;
-  Counter borrow;
-  Counter steal;
+  Counter borrowLocal;
+  Counter borrowGlobal;
+  Counter borrowStage;
+  Counter stealLocal;
+  Counter stealGlobal;
+  Counter stealStage;
   Counter idle;
   Counter wake;
   ProcessorStats(cptr_t o, cptr_t p, const char* n = "Processor  ") : Base(o, p, n, 2) {}
@@ -308,9 +311,12 @@ struct ProcessorStats : public Base {
     enq.aggregate(x.enq);
     deq.aggregate(x.deq);
     handover.aggregate(x.handover);
-    stage.aggregate(x.stage);
-    borrow.aggregate(x.borrow);
-    steal.aggregate(x.steal);
+    borrowLocal.aggregate(x.borrowLocal);
+    borrowGlobal.aggregate(x.borrowGlobal);
+    borrowStage.aggregate(x.borrowStage);
+    stealLocal.aggregate(x.stealLocal);
+    stealGlobal.aggregate(x.stealGlobal);
+    stealStage.aggregate(x.stealStage);
     idle.aggregate(x.idle);
     wake.aggregate(x.wake);
   }
@@ -318,9 +324,12 @@ struct ProcessorStats : public Base {
     enq.reset();
     deq.reset();
     handover.reset();
-    stage.reset();
-    borrow.reset();
-    steal.reset();
+    borrowLocal.reset();
+    borrowGlobal.reset();
+    borrowStage.reset();
+    stealLocal.reset();
+    stealGlobal.reset();
+    stealStage.reset();
     idle.reset();
     wake.reset();
   }

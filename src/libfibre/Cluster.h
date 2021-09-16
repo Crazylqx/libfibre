@@ -91,8 +91,8 @@ class Cluster : public Scheduler {
     stats = new FredStats::ClusterStats(this, &es);
     iPollVec = (PollerType*)new char[sizeof(PollerType[iPollCount])];
     oPollVec = (PollerType*)new char[sizeof(PollerType[oPollCount])];
-    for (size_t p = 0; p < iPollCount; p += 1) new (&iPollVec[p]) PollerType(scope, stagingProc, this, "I-Poller   ");
-    for (size_t p = 0; p < oPollCount; p += 1) new (&oPollVec[p]) PollerType(scope, stagingProc, this, "O-Poller   ");
+    for (size_t p = 0; p < iPollCount; p += 1) new (&iPollVec[p]) PollerType(scope, stagingProc, this, "I-Poller   ", _friend<Cluster>());
+    for (size_t p = 0; p < oPollCount; p += 1) new (&oPollVec[p]) PollerType(scope, stagingProc, this, "O-Poller   ", _friend<Cluster>());
   }
 
   void start() {
