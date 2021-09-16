@@ -17,8 +17,8 @@
 #include "libfibre/Fibre.h"
 
 FastMutex FibreSpecific::mutex;
-Bitmap<FibreSpecific::FIBRE_KEYS_MAX> FibreSpecific::bmap;
-std::vector<FibreSpecific::Destructor> FibreSpecific::destrVector;
+Bitmap<FibreSpecific::FIBRE_KEYS_MAX> FibreSpecific::bitmap;
+std::vector<FibreSpecific::Destructor> FibreSpecific::destructors;
 
 void Fibre::exit() {
   ExitException* dummy = nullptr;

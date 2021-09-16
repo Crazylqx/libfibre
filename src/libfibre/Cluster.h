@@ -51,7 +51,7 @@ class Cluster : public Scheduler {
   WorkerSemaphore             confirmSem;
   WorkerSemaphore             sleepSem;
 
-  ClusterStats* stats;
+  FredStats::ClusterStats* stats;
 
   struct Worker : public BaseProcessor {
     pthread_t    sysThreadId;
@@ -85,7 +85,7 @@ class Cluster : public Scheduler {
   static void maintenance(Cluster* cl);
 
   Cluster(EventScope& es, size_t ipcnt, size_t opcnt = 1) : scope(es), iPollCount(ipcnt), oPollCount(opcnt), pauseProc(nullptr) {
-    stats = new ClusterStats(this, &es);
+    stats = new FredStats::ClusterStats(this, &es);
     iPollVec = (PollerType*)new char[sizeof(PollerType[iPollCount])];
     oPollVec = (PollerType*)new char[sizeof(PollerType[oPollCount])];
     for (size_t p = 0; p < iPollCount; p += 1) new (&iPollVec[p]) PollerType(scope, stagingProc, this, "I-Poller   ");

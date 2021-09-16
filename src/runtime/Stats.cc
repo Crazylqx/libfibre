@@ -20,6 +20,8 @@
 #include <cstring>
 #include <map>
 
+namespace FredStats {
+
 #if TESTING_ENABLE_STATISTICS
 
 static EventScopeStats*  totalEventScopeStats  = nullptr;
@@ -29,6 +31,16 @@ static IOUringStats*     totalIOUringStats     = nullptr;
 static ClusterStats*     totalClusterStats     = nullptr;
 static IdleManagerStats* totalIdleManagerStats = nullptr;
 static ProcessorStats*   totalProcessorStats   = nullptr;
+
+static IntrusiveQueue<Base> statsList;
+
+void StatsClear(int) {
+  for (Base* o = statsList.front(); o != statsList.edge(); o = statsList.next(*o)) o->reset();
+}
+
+void StatsReset() {
+  new (&statsList) IntrusiveQueue<FredStats::Base>;
+}
 
 struct PrintStatsNode {
   cptr_t object;
@@ -41,9 +53,9 @@ struct PrintStatsNode {
   }
 };
 
-static std::multimap<PrintStatsNode,const StatsObject*> statsMap;
+typedef std::multimap<PrintStatsNode,const Base*> PrintStatsMap;
 
-void StatsObject::printRecursive(const StatsObject* o, ostream& os, size_t depth) {
+void PrintRecursive(const Base* o, size_t depth, ostream& os, PrintStatsMap& statsMap) {
   cptr_t next = nullptr;
   if (o) {
     next = o->object;
@@ -58,88 +70,101 @@ void StatsObject::printRecursive(const StatsObject* o, ostream& os, size_t depth
     if (iter == statsMap.end() || iter->first.object != next) break;
     o = iter->second;
     statsMap.erase(iter);
-    printRecursive(o, os, depth);
+    PrintRecursive(o, depth, os, statsMap);
   }
 }
 
-void StatsObject::reset() {}
+void StatsPrint(ostream& os, bool totals) {
+  char* env = getenv("FibrePrintStats");
+  if (env) {
+    PrintStatsMap statsMap;
 
-void StatsObject::resetAll(int) {
-  for (StatsObject* o = lst->front(); o != lst->edge(); o = lst->next(*o)) o->reset();
+    while (!statsList.empty()) {
+      const Base* o = statsList.pop();
+      statsMap.insert( {{o->parent, o->sort, o->name}, o} );
+    }
+
+    totalEventScopeStats  = new EventScopeStats (nullptr, nullptr, "EventScope ");
+    totalPollerStats      = new PollerStats     (nullptr, nullptr, "Poller     ");
+    totalIOUringStats     = new IOUringStats    (nullptr, nullptr, "IOUring    ");
+    totalTimerStats       = new TimerStats      (nullptr, nullptr, "Timer      ");
+    totalClusterStats     = new ClusterStats    (nullptr, nullptr, "Cluster    ");
+    totalIdleManagerStats = new IdleManagerStats(nullptr, nullptr, "IdleManager");
+    totalProcessorStats   = new ProcessorStats  (nullptr, nullptr, "Processor  ");
+
+    PrintRecursive(nullptr, 0, os, statsMap);
+
+    if (!totals) return;
+
+    os << "TOTALS:" << std::endl;
+
+    while (!statsList.empty()) {
+      const Base* o = statsList.pop();
+      o->print(os);
+      os << std::endl;
+      delete o;
+    }
+  }
 }
 
-void StatsObject::print(ostream& os) const {
+Base::Base(cptr_t const o, cptr_t const p, const char* const n, const size_t s) 
+: object(o), parent(p), name(n), sort(s) { statsList.push(*this); }
+
+Base::~Base() {}
+
+void Base::reset() {}
+
+void Base::print(ostream& os) const {
   os << name << ' ' << FmtHex(object);
-}
-
-void StatsObject::printAll(ostream& os, bool totals) {
-  while (!lst->empty()) {
-    const StatsObject* o = lst->pop();
-    statsMap.insert( {{o->parent, o->sort, o->name}, o} );
-  }
-
-  totalEventScopeStats  = new EventScopeStats (nullptr, nullptr, "EventScope ");
-  totalPollerStats      = new PollerStats     (nullptr, nullptr, "Poller     ");
-  totalIOUringStats     = new IOUringStats    (nullptr, nullptr, "IOUring    ");
-  totalTimerStats       = new TimerStats      (nullptr, nullptr, "Timer      ");
-  totalClusterStats     = new ClusterStats    (nullptr, nullptr, "Cluster    ");
-  totalIdleManagerStats = new IdleManagerStats(nullptr, nullptr, "IdleManager");
-  totalProcessorStats   = new ProcessorStats  (nullptr, nullptr, "Processor  ");
-
-  printRecursive(nullptr, os, 0);
-
-  if (!totals) return;
-
-  os << "TOTALS:" << std::endl;
-
-  while (!lst->empty()) {
-    const StatsObject* o = lst->pop();
-    o->print(os);
-    os << std::endl;
-    delete o;
-  }
 }
 
 void EventScopeStats::print(ostream& os) const {
   if (totalEventScopeStats && this != totalEventScopeStats) totalEventScopeStats->aggregate(*this);
-  StatsObject::print(os);
+  Base::print(os);
   os << " srvconn:" << srvconn << " cliconn:" << cliconn << " resets:" << resets << " calls:" << calls << " fails:" << fails;
 }
 
 void PollerStats::print(ostream& os) const {
   if (totalPollerStats && this != totalPollerStats) totalPollerStats->aggregate(*this);
-  StatsObject::print(os);
+  Base::print(os);
   os << " regs:" << regs << " blocks:" << blocks << " empty:" << empty << " events:" << events;
 }
 
 void IOUringStats::print(ostream& os) const {
   if (totalIOUringStats && this != totalIOUringStats) totalIOUringStats->aggregate(*this);
-  StatsObject::print(os);
+  Base::print(os);
   os << " events:" << events;
 }
 
 void TimerStats::print(ostream& os) const {
   if (totalTimerStats && this != totalTimerStats) totalTimerStats->aggregate(*this);
-  StatsObject::print(os);
+  Base::print(os);
   os << " events:" << events;
 }
 
 void ClusterStats::print(ostream& os) const {
   if (totalClusterStats && this != totalClusterStats) totalClusterStats->aggregate(*this);
-  StatsObject::print(os);
+  Base::print(os);
   os << " procs:" << procs << " sleeps:" << sleeps;
 }
 
 void IdleManagerStats::print(ostream& os) const {
   if (totalIdleManagerStats && this != totalIdleManagerStats) totalIdleManagerStats->aggregate(*this);
-  StatsObject::print(os);
+  Base::print(os);
   os << " ready:" << ready << " blocked:" << blocked;
 }
 
 void ProcessorStats::print(ostream& os) const {
   if (totalProcessorStats && this != totalProcessorStats) totalProcessorStats->aggregate(*this);
-  StatsObject::print(os);
+  Base::print(os);
   os << " E:" << enq << " D:" << deq << " H:" << handover << " S:" << stage << " B:" << borrow << " T:" << steal << " I:" << idle << " W:" << wake;
 }
 
+#else
+
+void StatsClear(int) {}
+void StatsReset() {}
+
 #endif /* TESTING_ENABLE_STATISTICS */
+
+} // namespace FredStats

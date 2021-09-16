@@ -69,11 +69,11 @@ public:
 private:
   WorkerLock lock;
   std::multimap<Time, Node*> queue;
-  TimerStats* stats;
+  FredStats::TimerStats* stats;
 
 public:
-  TimerQueue(cptr_t parent = nullptr) { stats = new TimerStats(this, parent); }
-  void reinit(cptr_t parent) { new (stats) TimerStats(this, parent); }
+  TimerQueue(cptr_t parent = nullptr) { stats = new FredStats::TimerStats(this, parent); }
+  void reinit(cptr_t parent) { new (stats) FredStats::TimerStats(this, parent); }
   bool empty() const { return queue.empty(); }
 
   void checkExpiry() {

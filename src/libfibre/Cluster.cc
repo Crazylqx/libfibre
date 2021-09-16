@@ -111,7 +111,7 @@ void Cluster::preFork(_friend<EventScope>) {
 }
 
 void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
-  new (stats) ClusterStats(this, parent);
+  new (stats) FredStats::ClusterStats(this, parent);
   for (size_t p = 0; p < iPollCount; p += 1) {
     iPollVec[p].~PollerType();
     new (&iPollVec[p]) PollerType(scope, stagingProc, this, "I-Poller   ");

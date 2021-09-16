@@ -27,7 +27,7 @@ class IdleManager {
   ProcessorList            waitingProcs;
   FredQueue<FredReadyLink> waitingFreds;
 
-  IdleManagerStats* stats;
+  FredStats::IdleManagerStats* stats;
 
   Fred* block(BaseProcessor& proc) {
     procLock.acquire();
@@ -62,7 +62,7 @@ class IdleManager {
   }
 
 public:
-  IdleManager(cptr_t parent) : fredCounter(0) { stats = new IdleManagerStats(this, parent); }
+  IdleManager(cptr_t parent) : fredCounter(0) { stats = new FredStats::IdleManagerStats(this, parent); }
 
   bool tryGetReadyFred() {
     ssize_t c = fredCounter;

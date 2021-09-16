@@ -54,54 +54,54 @@ public:
   typedef void (*Destructor)(void*);
 private:
   static FastMutex mutex;
-  static Bitmap<FIBRE_KEYS_MAX> bmap;
-  static std::vector<Destructor> destrVector;
-  std::vector<void*> valueVector;
+  static Bitmap<FIBRE_KEYS_MAX> bitmap;
+  static std::vector<Destructor> destructors;
+  std::vector<void*> values;
 protected:
-  FibreSpecific(size_t e = 0) : valueVector(e) {}
+  FibreSpecific(size_t e = 0) : values(e) {}
   void clearSpecific() {
-    size_t start = bmap.find();
+    size_t start = bitmap.find();
     if (start >= FIBRE_KEYS_MAX) return;
     size_t idx = start;
     do {
-      if (destrVector[idx]) destrVector[idx](valueVector[idx]);
-      idx = bmap.findnext(idx);
+      if (destructors[idx]) destructors[idx](values[idx]);
+      idx = bitmap.findnext(idx);
     } while (idx > start);
   }
 public:
   void setspecific(size_t idx, void *value) {
     RASSERT(idx < FIBRE_KEYS_MAX, idx);
-    RASSERT(bmap.test(idx), idx);
-    if (idx >= valueVector.size()) {
-      if (valueVector.size() == 0) valueVector.resize(1);
-      while (idx >= valueVector.size()) valueVector.resize(valueVector.size() * 2);
+    RASSERT(bitmap.test(idx), idx);
+    if (idx >= values.size()) {
+      if (values.size() == 0) values.resize(1);
+      while (idx >= values.size()) values.resize(values.size() * 2);
     }
-    valueVector[idx] = value;
+    values[idx] = value;
   }
   void* getspecific(size_t idx) {
     RASSERT(idx < FIBRE_KEYS_MAX, idx);
-    RASSERT(bmap.test(idx), idx);
-    RASSERT(idx < valueVector.size(), idx);
-    return valueVector[idx];
+    RASSERT(bitmap.test(idx), idx);
+    RASSERT(idx < values.size(), idx);
+    return values[idx];
   }
   static size_t key_create(Destructor d = nullptr) {
     ScopedLock<FastMutex> sl(mutex);
-    size_t idx = bmap.find(false);
+    size_t idx = bitmap.find(false);
     RASSERT(idx < FIBRE_KEYS_MAX, idx);
-    bmap.set(idx);
-    if (idx >= destrVector.size()) {
-      if (destrVector.size() == 0) destrVector.resize(1);
-      while (idx >= destrVector.size()) destrVector.resize(destrVector.size() * 2);
+    bitmap.set(idx);
+    if (idx >= destructors.size()) {
+      if (destructors.size() == 0) destructors.resize(1);
+      while (idx >= destructors.size()) destructors.resize(destructors.size() * 2);
     }
-    destrVector[idx] = d;
+    destructors[idx] = d;
     return idx;
   }
   static void key_delete(size_t idx) {
     ScopedLock<FastMutex> sl(mutex);
     RASSERT(idx < FIBRE_KEYS_MAX, idx);
-    RASSERT(bmap.test(idx), idx);
-    bmap.clr(idx);
-    destrVector[idx] = nullptr;
+    RASSERT(bitmap.test(idx), idx);
+    bitmap.clr(idx);
+    destructors[idx] = nullptr;
   }
 };
 

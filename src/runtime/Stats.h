@@ -30,22 +30,25 @@ static inline Number sqrt(Number x) { return x; }
 #include <cmath>
 #endif
 
+namespace FredStats {
+
+void StatsClear(int = 0);
+void StatsReset();
+
 #if TESTING_ENABLE_STATISTICS
 
-class StatsObject : public SingleLink<StatsObject> {
-  cptr_t object;
-  cptr_t parent;
-  const char* name;
+void StatsPrint(ostream&, bool);
+
+struct Base : public SingleLink<Base> {
+  cptr_t const object;
+  cptr_t const parent;
+  const char* const name;
   const size_t sort;
-  static void printRecursive(const StatsObject* o, ostream& os, size_t depth);
-public:
-  static IntrusiveQueue<StatsObject>* lst;
-  StatsObject(cptr_t o, cptr_t p, const char* n, const size_t s) : object(o), parent(p), name(n), sort(s) { lst->push(*this); }
-  virtual ~StatsObject() {}
+
+  Base(cptr_t const o, cptr_t const p, const char* const n, const size_t s);
+  virtual ~Base();
   virtual void reset();
-  static void resetAll(int);
   virtual void print(ostream& os) const;
-  static void printAll(ostream& os, bool totals);
 };
 
 class Counter {
@@ -158,8 +161,10 @@ inline ostream& operator<<(ostream& os, const Distribution& x) {
 
 #else
 
-struct StatsObject {
-  StatsObject(cptr_t, cptr_t, const char*, const size_t) {}
+static inline void StatsPrint(ostream&, bool) {}
+
+struct Base {
+  Base(cptr_t, cptr_t, const char*, const size_t) {}
 };
 
 struct Counter {
@@ -189,13 +194,13 @@ struct Distribution {
 
 #endif /* TESTING_ENABLE_STATISTICS */
 
-struct EventScopeStats : public StatsObject {
+struct EventScopeStats : public Base {
   Counter srvconn;
   Counter cliconn;
   Counter resets;
   Counter calls;
   Counter fails;
-  EventScopeStats(cptr_t o, cptr_t p, const char* n = "EventScope   ") : StatsObject(o, p, n, 0) {}
+  EventScopeStats(cptr_t o, cptr_t p, const char* n = "EventScope   ") : Base(o, p, n, 0) {}
   void print(ostream& os) const;
   void aggregate(const EventScopeStats& x) {
     srvconn.aggregate(x.srvconn);
@@ -213,12 +218,12 @@ struct EventScopeStats : public StatsObject {
   }
 };
 
-struct PollerStats : public StatsObject {
+struct PollerStats : public Base {
   Counter regs;
   Counter blocks;
   Counter empty;
   Distribution events;
-  PollerStats(cptr_t o, cptr_t p, const char* n = "Poller") : StatsObject(o, p, n, 0) {}
+  PollerStats(cptr_t o, cptr_t p, const char* n = "Poller") : Base(o, p, n, 0) {}
   void print(ostream& os) const;
   void aggregate(const PollerStats& x) {
     regs.aggregate(x.regs);
@@ -234,9 +239,9 @@ struct PollerStats : public StatsObject {
   }
 };
 
-struct IOUringStats : public StatsObject {
+struct IOUringStats : public Base {
   Distribution events;
-  IOUringStats(cptr_t o, cptr_t p, const char* n = "IOUring") : StatsObject(o, p, n, 0) {}
+  IOUringStats(cptr_t o, cptr_t p, const char* n = "IOUring") : Base(o, p, n, 0) {}
   void print(ostream& os) const;
   void aggregate(const IOUringStats& x) {
     events.aggregate(x.events);
@@ -246,9 +251,9 @@ struct IOUringStats : public StatsObject {
   }
 };
 
-struct TimerStats : public StatsObject {
+struct TimerStats : public Base {
   Distribution events;
-  TimerStats(cptr_t o, cptr_t p, const char* n = "Timer       ") : StatsObject(o, p, n, 1) {}
+  TimerStats(cptr_t o, cptr_t p, const char* n = "Timer       ") : Base(o, p, n, 1) {}
   void print(ostream& os) const;
   void aggregate(const TimerStats& x) {
     events.aggregate(x.events);
@@ -258,10 +263,10 @@ struct TimerStats : public StatsObject {
   }
 };
 
-struct ClusterStats : public StatsObject {
+struct ClusterStats : public Base {
   Counter procs;
   Counter sleeps;
-  ClusterStats(cptr_t o, cptr_t p, const char* n = "Cluster     ") : StatsObject(o, p, n, 2) {}
+  ClusterStats(cptr_t o, cptr_t p, const char* n = "Cluster     ") : Base(o, p, n, 2) {}
   void print(ostream& os) const;
   void aggregate(const ClusterStats& x) {
     procs.aggregate(x.procs);
@@ -273,10 +278,10 @@ struct ClusterStats : public StatsObject {
   }
 };
 
-struct IdleManagerStats : public StatsObject {
+struct IdleManagerStats : public Base {
   Distribution ready;
   Distribution blocked;
-  IdleManagerStats(cptr_t o, cptr_t p, const char* n = "IdleManager") : StatsObject(o, p, n, 1) {}
+  IdleManagerStats(cptr_t o, cptr_t p, const char* n = "IdleManager") : Base(o, p, n, 1) {}
   void print(ostream& os) const;
   void aggregate(const IdleManagerStats& x) {
     ready.aggregate(x.ready);
@@ -288,7 +293,7 @@ struct IdleManagerStats : public StatsObject {
   }
 };
 
-struct ProcessorStats : public StatsObject {
+struct ProcessorStats : public Base {
   Counter enq;
   Counter deq;
   Counter handover;
@@ -297,7 +302,7 @@ struct ProcessorStats : public StatsObject {
   Counter steal;
   Counter idle;
   Counter wake;
-  ProcessorStats(cptr_t o, cptr_t p, const char* n = "Processor  ") : StatsObject(o, p, n, 2) {}
+  ProcessorStats(cptr_t o, cptr_t p, const char* n = "Processor  ") : Base(o, p, n, 2) {}
   void print(ostream& os) const;
   void aggregate(const ProcessorStats& x) {
     enq.aggregate(x.enq);
@@ -320,6 +325,8 @@ struct ProcessorStats : public StatsObject {
     wake.reset();
   }
 };
+
+} // namespace FredStats
 
 /*
   sort order for output:

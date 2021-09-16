@@ -108,7 +108,7 @@ protected:
   WorkerSemaphore haltNotify;
   Fred*           handoverFred;
 
-  ProcessorStats* stats;
+  FredStats::ProcessorStats* stats;
 
   void idleLoop();
 
@@ -121,7 +121,7 @@ public:
 #if TESTING_WAKE_FRED_WORKER
     halting = false;
 #endif
-    stats = new ProcessorStats(this, &c, n);
+    stats = new FredStats::ProcessorStats(this, &c, n);
   }
 
   Scheduler& getScheduler() { return scheduler; }

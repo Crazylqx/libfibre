@@ -34,18 +34,6 @@ WorkerLock*                    _lfFredDebugLock = &_dummy2; // Fibre.h
 FredList<FredDebugLink>*       _lfFredDebugList = &_dummy3; // Fibre.h
 #endif
 
-#if TESTING_ENABLE_STATISTICS
-IntrusiveQueue<StatsObject>* StatsObject::lst = nullptr ; // Stats.h
-static std::ios ioFormatFlags(nullptr);
-
-static void _lfStatsPrint() {
-  std::cout.copyfmt(ioFormatFlags);
-  char* env = getenv("FibrePrintStats");
-  if (env) StatsObject::printAll(std::cout, env[0] == 't' || env[0] == 'T');
-  delete StatsObject::lst;
-}
-#endif
-
 // ******************** BOOTSTRAP *************************
 
 static const char* DebugOptions[] = {
@@ -59,25 +47,30 @@ static const char* DebugOptions[] = {
 
 static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug options mismatch");
 
+static std::ios ioFormatFlags(nullptr);
+
+static void _lfPrintStats() {
+  std::cout.copyfmt(ioFormatFlags);
+  char* env = getenv("FibrePrintStats");
+  if (env) FredStats::StatsPrint(std::cout, env[0] == 't' || env[0] == 'T');
+}
+
 EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
   _lfPagesize = sysconf(_SC_PAGESIZE);
+  ioFormatFlags.copyfmt(std::cout);
+  SYSCALL(atexit(_lfPrintStats));
   char* env = getenv("FibreDebugString");
   if (env) DBG::init(DebugOptions, env, false);
-#if TESTING_ENABLE_STATISTICS
-  StatsObject::lst = new IntrusiveQueue<StatsObject>;
-  ioFormatFlags.copyfmt(std::cout);
-  SYSCALL(atexit(_lfStatsPrint));
   env = getenv("FibreStatsSignal");
   if (env) {
     int signum = strtol(env, NULL, 10);
     if (signum == 0) signum = SIGUSR1;
     struct sigaction sa;
-    sa.sa_handler = StatsObject::resetAll;
+    sa.sa_handler = FredStats::StatsClear;
     sa.sa_flags = SA_RESTART;
     sigemptyset(&sa.sa_mask);
     SYSCALL(sigaction(signum, &sa, 0));
   }
-#endif
   env = getenv("FibrePollerCount");
   if (env) {
     int cnt = atoi(env);
@@ -95,9 +88,7 @@ pid_t FibreFork() {
   Context::CurrEventScope().preFork();
   pid_t ret = fork();
   if (ret == 0) {
-#if TESTING_ENABLE_STATISTICS
-    new (StatsObject::lst) IntrusiveQueue<StatsObject>;
-#endif
+    FredStats::StatsReset();
     Context::CurrEventScope().postFork(); // child: clean up runtime system
   }
   return ret;

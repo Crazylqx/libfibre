@@ -73,7 +73,7 @@ class EventScope {
   // simple kludge to provide event-scope-local data
   void*         clientData;
 
-  EventScopeStats* stats;
+  FredStats::EventScopeStats* stats;
 
   // TODO: not available until cluster deletion implemented
   ~EventScope() {
@@ -101,7 +101,7 @@ class EventScope {
 
   EventScope(size_t pollerCount, EventScope* ps = nullptr) : parentScope(ps), timerQueue(this), diskCluster(nullptr) {
     RASSERT0(pollerCount > 0);
-    stats = new EventScopeStats(this, nullptr);
+    stats = new FredStats::EventScopeStats(this, nullptr);
     mainCluster = new Cluster(*this, pollerCount, _friend<EventScope>());   // create main cluster
   }
 
@@ -241,7 +241,7 @@ public:
   }
 
   void postFork() {
-    new (stats) EventScopeStats(this, nullptr);
+    new (stats) FredStats::EventScopeStats(this, nullptr);
     timerQueue.reinit(this);
     delete masterPoller;
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling

@@ -59,7 +59,7 @@ protected:
   EventScope&   eventScope;
   volatile bool pollTerminate;
 
-  PollerStats* stats;
+  FredStats::PollerStats* stats;
 
   template<bool Blocking>
   inline int doPoll();
@@ -71,7 +71,7 @@ protected:
 
 public:
   BasePoller(EventScope& es, cptr_t parent, const char* n = "BasePoller") : eventScope(es), pollTerminate(false) {
-    stats = new PollerStats(this, parent, n);
+    stats = new FredStats::PollerStats(this, parent, n);
 #if __FreeBSD__
     pollFD = SYSCALLIO(kqueue());
 #else // __linux__ below

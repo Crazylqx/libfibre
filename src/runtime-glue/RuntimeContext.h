@@ -20,10 +20,10 @@
 #include "runtime/Basics.h"
 
 class BaseProcessor;
+class BaseThreadPoller;
 class Cluster;
 class EventScope;
 class Fred;
-class BaseThreadPoller;
 
 // routine definitions are in Cluster.cc
 namespace Context {

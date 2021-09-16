@@ -27,7 +27,7 @@ class IOUring {
   struct io_uring ring;
   static const int NumEntries = 4096;
 
-  IOUringStats* stats;
+  FredStats::IOUringStats* stats;
 
   struct Block {
     Fibre* fibre;
@@ -45,7 +45,7 @@ class IOUring {
 
 public:
   IOUring(cptr_t parent, const char* n) {
-    stats = new IOUringStats(this, parent, n);
+    stats = new FredStats::IOUringStats(this, parent, n);
     haltFD = SYSCALLIO(eventfd(0, EFD_CLOEXEC));
     SYSCALLIO(io_uring_queue_init(NumEntries, &ring, 0));
   }
