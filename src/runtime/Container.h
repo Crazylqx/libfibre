@@ -173,14 +173,16 @@ public:
     insert_before(next, elem, elem);
   }
 
+  template<bool force = false>
   static void insert_after(Node& prev, Node& first, Node& last) {
-    RASSERT(!Prev(first), FmtHex(Prev(first))); // assume link invalidated at pop
-    RASSERT(!Next(last), FmtHex(Next(last)));   // assume link invalidated at pop
+    RASSERT(force || !Prev(first), FmtHex(Prev(first))); // assume link invalidated at pop
+    RASSERT(force || !Next(last), FmtHex(Next(last)));   // assume link invalidated at pop
     combine_after(prev, first, last);
   }
 
+  template<bool force = false>
   static void insert_after(Node& prev, Node& elem) {
-    insert_after(prev, elem, elem);
+    insert_after<force>(prev, elem, elem);
   }
 
   static Node* remove(Node& first, Node& last) {

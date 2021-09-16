@@ -76,10 +76,11 @@ public:
 };
 
 class BaseProcessor;
-typedef IntrusiveList<BaseProcessor,0,2> ProcessorList;
-typedef IntrusiveRing<BaseProcessor,1,2> ProcessorRing;
+typedef IntrusiveList<BaseProcessor,0,3> ProcessorList;
+typedef IntrusiveRing<BaseProcessor,1,3> ProcessorRingLocal;
+typedef IntrusiveRing<BaseProcessor,2,3> ProcessorRingGlobal;
 
-class BaseProcessor : public DoubleLink<BaseProcessor,2> {
+class BaseProcessor : public DoubleLink<BaseProcessor,3> {
   inline Fred* tryLocal();
 #if TESTING_LOADBALANCING
   inline Fred* tryStage();

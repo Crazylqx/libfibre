@@ -41,9 +41,15 @@ inline Fred* BaseProcessor::tryStage() {
 
 inline Fred* BaseProcessor::trySteal() {
   BaseProcessor* victim = this;
+  bool local = true;
   for (;;) {
-    victim = ProcessorRing::next(*victim);
-    if (victim == this) return nullptr;
+    if (local) {
+      victim = ProcessorRingLocal::next(*victim);
+      if (victim == this) { local = false; continue; }
+    } else {
+      victim = ProcessorRingGlobal::next(*victim);
+      if (victim == this) return nullptr;
+    }
     Fred* f = victim->readyQueue.tryDequeue();
     if (f) {
       DBG::outl(DBG::Level::Scheduling, "trySteal: ", FmtHex(this), ' ', FmtHex(f));

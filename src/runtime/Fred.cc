@@ -161,15 +161,20 @@ void Fred::rebalance() {
 
 // migrate to scheduler; clear affinity
 void Fred::migrateNow(Scheduler& scheduler) {
-  migrateNow(scheduler.placement(_friend<Fred>(), true));
-}
-
-// migrate to proessor; clear affinity
-void Fred::migrateNow(BaseProcessor& proc) {
   Fred* f = Context::CurrFred();
   f->affinity = DefaultAffinity;
-  f->processor = &proc;
+  f->processor = &scheduler.placement(_friend<Fred>(), true);
   f->yieldForce();
+}
+
+void Fred::migrateLocal(BaseProcessor& proc) {
+#if TESTING_SHARED_READYQUEUE
+  return;
+#endif
+  Fred* f = Context::CurrFred();
+  RASSERT0(&f->processor->getScheduler() == &proc.getScheduler());
+  f->processor = &proc;
+  if (!f->yieldGlobal()) f->yieldForce();
 }
 
 // migrate to scheduler (for disk I/O), don't change affinity

@@ -78,7 +78,10 @@ class Cluster : public Scheduler {
     void setIdleLoop(Fibre* f)       { BaseProcessor::idleFred = f; }
     void runIdleLoop()               { BaseProcessor::idleLoop(); }
     static void yieldDirect(Fred& f) { BaseProcessor::yieldDirect(f); }
+    pthread_t getSysID()             { return sysThreadId; }
   };
+
+  std::vector<std::vector<Worker*>> workerGroups;
 
   static Worker& CurrWorker() { return reinterpret_cast<Worker&>(Context::CurrProcessor()); }
 
@@ -165,9 +168,38 @@ public:
     BaseProcessor* p = placeProc;
     for (size_t i = 0; i < cnt && i < ringCount; i += 1) {
       tid[i] = reinterpret_cast<Worker*>(p)->sysThreadId;
-      p = ProcessorRing::next(*p);
+      p = ProcessorRingGlobal::next(*p);
     }
     return ringCount;
+  }
+
+  void formWorkerGroups(const std::vector<size_t>& groupSizes) {
+    ScopedLock<WorkerLock> sl(ringLock);
+    size_t cnt = ringCount;
+    BaseProcessor* procGroupStart = placeProc;
+    workerGroups.resize(groupSizes.size());
+    for (size_t g = 0; g < groupSizes.size(); g += 1) {
+      RASSERT(cnt >= groupSizes[g], cnt, groupSizes[g]);
+      BaseProcessor* proc = procGroupStart;
+      workerGroups[g].resize(groupSizes[g]);
+      for (size_t w = 0;;) {
+        workerGroups[g][w] = reinterpret_cast<Worker*>(proc);
+        if (++w >= groupSizes[g]) break;
+        BaseProcessor* prev = proc;
+        proc = ProcessorRingGlobal::next(*proc);
+        ProcessorRingLocal::insert_after<true>(*prev, *proc);
+      }
+      procGroupStart = ProcessorRingGlobal::next(*proc);
+      cnt -= groupSizes[g];
+    }
+    RASSERT(cnt == 0, cnt);
+  }
+
+  Worker& getGroupWorker(size_t g, size_t idx) {
+    RASSERT(g < workerGroups.size(), g, workerGroups.size());
+    Worker* w = workerGroups[g][idx % workerGroups[g].size()];
+    RASSERT0(w);
+    return *w;
   }
 
   /** Get individual access to pollers. */

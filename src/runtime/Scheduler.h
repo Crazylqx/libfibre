@@ -114,11 +114,12 @@ public:
   void addProcessor(BaseProcessor& proc) {
     ScopedLock<WorkerLock> sl(ringLock);
     if (placeProc == nullptr) {
-      ProcessorRing::close(proc);
+      ProcessorRingGlobal::close(proc);
       placeProc = &proc;
     } else {
-      ProcessorRing::insert_after(*placeProc, proc);
+      ProcessorRingGlobal::insert_after(*placeProc, proc);
     }
+    ProcessorRingLocal::close(proc);
     ringCount += 1;
   }
 
@@ -126,10 +127,11 @@ public:
     ScopedLock<WorkerLock> sl(ringLock);
     RASSERT0(placeProc);
     // move placeProc, if necessary
-    if (placeProc == &proc) placeProc = ProcessorRing::next(*placeProc);
+    if (placeProc == &proc) placeProc = ProcessorRingGlobal::next(*placeProc);
     // ring empty?
     if (placeProc == &proc) placeProc = nullptr;
-    ProcessorRing::remove(proc);
+    ProcessorRingGlobal::remove(proc);
+    ProcessorRingLocal::remove(proc);
     ringCount -= 1;
   }
 
@@ -143,7 +145,7 @@ public:
     RASSERT0(placeProc);
     // ring insert is traversal-safe, so could use separate 'placeLock' here
     ScopedLock<WorkerLock> sl(ringLock);
-    placeProc = ProcessorRing::next(*placeProc);
+    placeProc = ProcessorRingGlobal::next(*placeProc);
     return *placeProc;
 #endif
     (void)staging;

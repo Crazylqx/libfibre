@@ -203,7 +203,7 @@ public:
   // migration
   void rebalance();
   static void migrateNow(Scheduler&);
-  static void migrateNow(BaseProcessor&);
+  static void migrateLocal(BaseProcessor&);
   static BaseProcessor& migrateNow(Scheduler&, _friend<EventScope>);
   static void migrateNow(BaseProcessor&, _friend<EventScope>);
 };
