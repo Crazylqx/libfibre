@@ -92,6 +92,8 @@ void StatsPrint(ostream& os, bool totals) {
     totalIdleManagerStats = new IdleManagerStats(nullptr, nullptr, "IdleManager");
     totalProcessorStats   = new ProcessorStats  (nullptr, nullptr, "Processor  ");
 
+    os << "LIBFIBRE STATS ================================================" << std::endl;
+
     PrintRecursive(nullptr, 0, os, statsMap);
 
     if (!totals) return;
@@ -127,13 +129,13 @@ void EventScopeStats::print(ostream& os) const {
 void PollerStats::print(ostream& os) const {
   if (totalPollerStats && this != totalPollerStats) totalPollerStats->aggregate(*this);
   Base::print(os);
-  os << " regs:" << regs << " blocks:" << blocks << " empty:" << empty << " events:" << events;
+  os << " regs:" << regs << " blocks:" << blocks << " empty:" << empty << " eventsB:" << eventsB << " eventsNB:" << eventsNB;
 }
 
 void IOUringStats::print(ostream& os) const {
   if (totalIOUringStats && this != totalIOUringStats) totalIOUringStats->aggregate(*this);
   Base::print(os);
-  os << " events:" << events;
+  os << " eventsB:" << eventsB << " eventsNB:" << eventsNB;
 }
 
 void TimerStats::print(ostream& os) const {

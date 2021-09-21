@@ -50,7 +50,6 @@ inline Fred* BasePoller::notifyOne(EventType& ev) {
 }
 
 inline void BasePoller::notifyAll(int evcnt) {
-  stats->events.count(evcnt);
   for (int e = 0; e < evcnt; e += 1) notifyOne(events[e]);
 }
 
@@ -64,6 +63,7 @@ inline void PollerFibre::pollLoop() {
   while (!pollTerminate) {
     int evcnt = doPoll<false>();
     if fastpath(evcnt > 0) {
+      stats->eventsNB.count(evcnt);
       notifyAll(evcnt);
       Fibre::yieldGlobal();
       spin = 1;
@@ -111,7 +111,10 @@ inline void BaseThreadPoller::pollLoop(T& This) {
     This.prePoll(_friend<BaseThreadPoller>());
     This.stats->blocks.count();
     int evcnt = This.template doPoll<true>();
-    if (evcnt > 0) This.notifyAll(evcnt);
+    if (evcnt > 0) {
+      This.stats->eventsB.count(evcnt);
+      This.notifyAll(evcnt);
+    }
   }
 }
 

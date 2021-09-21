@@ -222,32 +222,38 @@ struct PollerStats : public Base {
   Counter regs;
   Counter blocks;
   Counter empty;
-  Distribution events;
+  Distribution eventsB;
+  Distribution eventsNB;
   PollerStats(cptr_t o, cptr_t p, const char* n = "Poller") : Base(o, p, n, 0) {}
   void print(ostream& os) const;
   void aggregate(const PollerStats& x) {
     regs.aggregate(x.regs);
     blocks.aggregate(x.blocks);
     empty.aggregate(x.empty);
-    events.aggregate(x.events);
+    eventsB.aggregate(x.eventsB);
+    eventsNB.aggregate(x.eventsNB);
   }
   virtual void reset() {
     regs.reset();
     blocks.reset();
     empty.reset();
-    events.reset();
+    eventsB.reset();
+    eventsNB.reset();
   }
 };
 
 struct IOUringStats : public Base {
-  Distribution events;
+  Distribution eventsB;
+  Distribution eventsNB;
   IOUringStats(cptr_t o, cptr_t p, const char* n = "IOUring") : Base(o, p, n, 0) {}
   void print(ostream& os) const;
   void aggregate(const IOUringStats& x) {
-    events.aggregate(x.events);
+    eventsB.aggregate(x.eventsB);
+    eventsNB.aggregate(x.eventsNB);
   }
   virtual void reset() {
-    events.reset();
+    eventsB.reset();
+    eventsNB.reset();
   }
 };
 

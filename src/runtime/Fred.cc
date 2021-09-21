@@ -102,20 +102,20 @@ void Fred::suspendInternal() {
 }
 
 inline void Fred::yieldTo(Fred& nextFred) {
-  CHECK_PREEMPTION(1);          // expect preemption still enabled
+  CHECK_PREEMPTION(1);           // expect preemption still enabled
   RuntimeDisablePreemption();
-  switchFred<Yield>(nextFred);
+  switchFred<Yield>(nextFred);   // yield without updating fredCounter
   RuntimeEnablePreemption();
 }
 
 inline void Fred::yieldResume(Fred& nextFred) {
-  CHECK_PREEMPTION(1);          // expect preemption still enabled
+  CHECK_PREEMPTION(1);           // expect preemption still enabled
   RuntimeDisablePreemption();
-  switchFred<Resume>(nextFred);
+  switchFred<Resume>(nextFred);  // yield and increase fredCounter
   RuntimeEnablePreemption();
 }
 
-inline void Fred::yieldForce() {
+inline void Fred::yieldForce() { // force schedule (even to idle) and yiled
   yieldResume(Context::CurrProcessor().scheduleFull(_friend<Fred>()));
 }
 
@@ -129,10 +129,6 @@ bool Fred::yieldGlobal() {
   Fred* nextFred = Context::CurrProcessor().scheduleYieldGlobal(_friend<Fred>());
   if (nextFred) Context::CurrFred()->yieldTo(*nextFred);
   return nextFred;
-}
-
-void Fred::forceYield() {
-  Context::CurrFred()->yieldForce();
 }
 
 void Fred::idleYieldTo(Fred& nextFred, _friend<BaseProcessor>) {

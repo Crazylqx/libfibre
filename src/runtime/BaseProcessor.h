@@ -24,9 +24,11 @@
 #include "runtime-glue/RuntimeLock.h"
 
 #if TESTING_IO_URING
-extern void RuntimeWorkerPoll(BaseProcessor&);
+extern bool RuntimeWorkerPoll(BaseProcessor&);
 extern void RuntimeWorkerSuspend(BaseProcessor&);
 extern void RuntimeWorkerResume(BaseProcessor&);
+#else
+static inline bool RuntimeWorkerPoll(BaseProcessor&) { return false; }
 #endif
 
 class IdleManager;

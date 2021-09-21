@@ -24,7 +24,7 @@
 
 #include <fcntl.h>        // O_NONBLOCK
 #include <limits.h>       // PTHREAD_STACK_MIN
-#include <unistd.h>       // close
+#include <unistd.h>       // various syscalls
 #include <sys/resource.h> // getrlimit
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -130,6 +130,17 @@ class EventScope {
     fdsync.useUring = false;
   }
 
+  template<bool Input, bool Cluster>
+  BasePoller& getPoller(int fd) {
+    if (Input) {
+#if TESTING_WORKER_POLLER
+      if (!Cluster) return Cluster::getWorkerPoller(CurrFibre()->getProcessor(_friend<EventScope>()));
+#endif
+      return Context::CurrCluster().getInputPoller(fd);
+    }
+    return Context::CurrCluster().getOutputPoller(fd);
+  }
+
   template<bool Input>
   inline bool TestEAGAIN() {
     int serrno = _SysErrno();
@@ -142,45 +153,36 @@ class EventScope {
 #endif
   }
 
-  template<bool Input, bool Cluster>
-  BasePoller& getPoller(int fd) {
-    if (Input) {
-#if TESTING_WORKER_POLLER
-      if (!Cluster) return Cluster::getWorkerPoller(CurrFibre()->getProcessor(_friend<EventScope>()));
-#endif
-      return Context::CurrCluster().getInputPoller(fd);
-    }
-    return Context::CurrCluster().getOutputPoller(fd);
+  template<bool Input, typename T, class... Args>
+  bool tryIO( T&ret, T (*iofunc)(int, Args...), int fd, Args... a) {
+    stats->calls.count();
+    ret = iofunc(fd, a...);
+    if (ret >= 0 || !TestEAGAIN<Input>()) return true;
+    stats->fails.count();
+    return false;
   }
 
   template<bool Input, bool Yield, bool Cluster, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
+    T ret;
     SyncFD& fdsync = fdSyncVector[fd];
     if (Yield) Fibre::yield();
-    stats->calls.count();
-    T ret = iofunc(fd, a...);
-    if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
-    stats->fails.count();
+    if (tryIO<Input>( ret, iofunc, fd, a...)) return ret;
+    SyncSem& sem = Input ? fdsync.iSem : fdsync.oSem;
     BasePoller*& poller = Input ? fdsync.iPoller : fdsync.oPoller;
     if (!poller) {
       poller = &getPoller<Input,Cluster>(fd);
 #if TESTING_ONESHOT_REGISTRATION
       poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
+    } else {
+      poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
 #else
       poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Edge);
 #endif
-    } else {
-#if TESTING_ONESHOT_REGISTRATION
-      poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
-#endif
     }
-    SyncSem& sem = Input ? fdsync.iSem : fdsync.oSem;
     for (;;) {
       sem.P();
-      stats->calls.count();
-      ret = iofunc(fd, a...);
-      if (ret >= 0 || !TestEAGAIN<Input>()) return ret;
-      stats->fails.count();
+      if (tryIO<Input>( ret, iofunc, fd, a...)) return ret;
 #if TESTING_ONESHOT_REGISTRATION
       poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
 #endif
@@ -199,12 +201,12 @@ class EventScope {
   }
 
   template<typename T, class... Args>
-  T input( T (*readfunc)(int, Args...), int fd, Args... a) {
+  T blockingInput( T (*readfunc)(int, Args...), int fd, Args... a) {
     return syncIO<true,true,false>(readfunc, fd, a...); // yield before read
   }
 
   template<typename T, class... Args>
-  T output( T (*writefunc)(int, Args...), int fd, Args... a) {
+  T blockingOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
     return syncIO<false,false,false>(writefunc, fd, a...); // no yield before write
   }
 
@@ -315,14 +317,14 @@ public:
   T syncInput( T (*readfunc)(int, Args...), int fd, Args... a) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return readfunc(fd, a...);
-    return input(readfunc, fd, a...);
+    return blockingInput(readfunc, fd, a...);
   }
 
   template<typename T, class... Args>
   T syncOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return writefunc(fd, a...);
-    return output(writefunc, fd, a...);
+    return blockingOutput(writefunc, fd, a...);
   }
 
   int socket(int domain, int type, int protocol, bool useUring) {
@@ -390,6 +392,7 @@ public:
     if (ret < 0) return ret;
     fdSyncVector[ret].blocking = !(flags & SOCK_NONBLOCK);
     fdSyncVector[ret].useUring = fdSyncVector[fd].useUring;
+    stats->srvconn.count();
     return ret;
   }
 
@@ -428,72 +431,72 @@ public:
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::read(fd, buf, nbyte);
 #if TESTING_IO_URING
-    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_read, fd, buf, (unsigned)nbyte, (off_t)0);
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_read, fd, buf, (unsigned)nbyte, (UringOffsetType)0);
 #endif
-    return input(::read, fd, buf, nbyte);
+    return blockingInput(::read, fd, buf, nbyte);
   }
 
   int pread(int fd, void *buf, size_t nbyte, off_t offset) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::pread(fd, buf, nbyte, offset);
 #if TESTING_IO_URING
-    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_read, fd, buf, (unsigned)nbyte, offset);
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_read, fd, buf, (unsigned)nbyte, (UringOffsetType)offset);
 #endif
-    return input(::pread, fd, buf, nbyte, offset);
+    return blockingInput(::pread, fd, buf, nbyte, offset);
   }
 
   int readv(int fd, const struct iovec *iovecs, int nr_vecs) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::readv(fd, iovecs, nr_vecs);
 #if TESTING_IO_URING
-    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_readv, fd, iovecs, (unsigned)nr_vecs, (off_t)0);
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_readv, fd, iovecs, (unsigned)nr_vecs, (UringOffsetType)0);
 #endif
-    return input(::readv, fd, iovecs, nr_vecs);
+    return blockingInput(::readv, fd, iovecs, nr_vecs);
   }
 
   int preadv(int fd, const struct iovec *iovecs, int nr_vecs, off_t offset) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::preadv(fd, iovecs, nr_vecs, offset);
 #if TESTING_IO_URING
-    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_readv, fd, iovecs, (unsigned)nr_vecs, offset);
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_readv, fd, iovecs, (unsigned)nr_vecs, (UringOffsetType)offset);
 #endif
-    return input(::preadv, fd, iovecs, nr_vecs, offset);
+    return blockingInput(::preadv, fd, iovecs, nr_vecs, offset);
   }
 
   int write(int fd, const void *buf, size_t nbyte) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::write(fd, buf, nbyte);
 #if TESTING_IO_URING
-    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_write, fd, buf, (unsigned)nbyte, (off_t)0);
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_write, fd, buf, (unsigned)nbyte, (UringOffsetType)0);
 #endif
-    return output(::write, fd, buf, nbyte);
+    return blockingOutput(::write, fd, buf, nbyte);
   }
 
   int pwrite(int fd, const void *buf, size_t nbyte, off_t offset) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::pwrite(fd, buf, nbyte, offset);
 #if TESTING_IO_URING
-    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_write, fd, buf, (unsigned)nbyte, offset);
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_write, fd, buf, (unsigned)nbyte, (UringOffsetType)offset);
 #endif
-    return output(::pwrite, fd, buf, nbyte, offset);
+    return blockingOutput(::pwrite, fd, buf, nbyte, offset);
   }
 
   int writev(int fd, const struct iovec *iovecs, int nr_vecs) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::writev(fd, iovecs, nr_vecs);
 #if TESTING_IO_URING
-    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_writev, fd, iovecs, (unsigned)nr_vecs, (off_t)0);
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_writev, fd, iovecs, (unsigned)nr_vecs, (UringOffsetType)0);
 #endif
-    return output(::writev, fd, iovecs, nr_vecs);
+    return blockingOutput(::writev, fd, iovecs, nr_vecs);
   }
 
   int pwritev(int fd, const struct iovec *iovecs, int nr_vecs, off_t offset) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::pwritev(fd, iovecs, nr_vecs, offset);
 #if TESTING_IO_URING
-    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_writev, fd, iovecs, (unsigned)nr_vecs, offset);
+    if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_writev, fd, iovecs, (unsigned)nr_vecs, (UringOffsetType)offset);
 #endif
-    return output(::pwritev, fd, iovecs, nr_vecs, offset);
+    return blockingOutput(::pwritev, fd, iovecs, nr_vecs, offset);
   }
 
   ssize_t sendmsg(int socket, const struct msghdr *message, int flags) {
@@ -502,7 +505,7 @@ public:
 #if TESTING_IO_URING
     if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_sendmsg, socket, message, (unsigned)flags);
 #endif
-    return output(::sendmsg, socket, message, flags);
+    return blockingOutput(::sendmsg, socket, message, flags);
   }
 
   ssize_t sendto(int socket, const void *message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len) {
@@ -516,7 +519,7 @@ public:
       return sendmsg(socket, &msg, flags);
     }
 #endif
-    return output(::sendto, socket, message, length, flags, dest_addr, dest_len);
+    return blockingOutput(::sendto, socket, message, length, flags, dest_addr, dest_len);
   }
 
   ssize_t send(int socket, const void *buffer, size_t length, int flags) {
@@ -525,7 +528,7 @@ public:
 #if TESTING_IO_URING
     if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_send, socket, buffer, length, flags);
 #endif
-    return output(::send, socket, buffer, length, flags);
+    return blockingOutput(::send, socket, buffer, length, flags);
   }
 
   ssize_t recvmsg(int socket, struct msghdr *message, int flags) {
@@ -534,7 +537,7 @@ public:
 #if TESTING_IO_URING
     if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_recvmsg, socket, message, (unsigned)flags);
 #endif
-    return input(::recvmsg, socket, message, flags);
+    return blockingInput(::recvmsg, socket, message, flags);
   }
 
   ssize_t recvfrom(int socket, void *restrict buffer, size_t length, int flags, struct sockaddr *restrict address, socklen_t *restrict address_len)  {
@@ -550,7 +553,7 @@ public:
       return ret;
     }
 #endif
-    return input(::recvfrom, socket, buffer, length, flags, address, address_len);
+    return blockingInput(::recvfrom, socket, buffer, length, flags, address, address_len);
   }
 
   ssize_t recv(int socket, void *buffer, size_t length, int flags) {
@@ -559,7 +562,7 @@ public:
 #if TESTING_IO_URING
     if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_recv, socket, buffer, length, flags);
 #endif
-    return input(::recv, socket, buffer, length, flags);
+    return blockingInput(::recv, socket, buffer, length, flags);
   }
 };
 

@@ -13,6 +13,10 @@ LIBS=-lfibre -lrt
 
 ifneq ($(wildcard /usr/include/liburing.h),)
 LIBS+=-luring
+else
+ifneq ($(wildcard /usr/local/include/liburing.h),)
+LIBS+=-L/usr/local/lib -Wl,-rpath=/usr/local/lib -luring
+endif
 endif
 
 ifeq ($(shell uname),FreeBSD)

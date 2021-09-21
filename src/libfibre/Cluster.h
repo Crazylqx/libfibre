@@ -136,8 +136,8 @@ public:
     return *CurrWorker().iouring;
   }
 
-  static void pollWorker(BaseProcessor& proc) {
-    reinterpret_cast<Worker&>(proc).iouring->poll(_friend<Cluster>());
+  static bool pollWorker(BaseProcessor& proc) {
+    return reinterpret_cast<Worker&>(proc).iouring->poll(_friend<Cluster>());
   }
   static void suspendWorker(BaseProcessor& proc) {
     reinterpret_cast<Worker&>(proc).iouring->suspend(_friend<Cluster>());

@@ -135,7 +135,6 @@ public:
   // context switching - static -> apply to Context::CurrFred()
   static bool yield();
   static bool yieldGlobal();
-  static void forceYield();
   static void idleYieldTo(Fred& nextFred, _friend<BaseProcessor>);
   static void preempt();
   static void terminate() __noreturn;

@@ -22,16 +22,25 @@
 #include <liburing.h>
 #include <sys/eventfd.h>
 
+#if defined(OLDURING)
+typedef off_t UringOffsetType; // liburing version 2.0 and lower
+#else
+typedef __u64 UringOffsetType; // liburing version 2.1 and higher
+#endif
+
 class IOUring {
   int haltFD;
   struct io_uring ring;
   static const int NumEntries = 4096;
+  static const int MaxCQE = 1024;
+  struct io_uring_cqe* cqe[MaxCQE];
 
   FredStats::IOUringStats* stats;
 
   struct Block {
     Fibre* fibre;
-    int retcode;
+    volatile int retcode;
+    Block(Fibre* f) : fibre(f) {}
   };
 
   template<class... Args>
@@ -53,37 +62,41 @@ public:
     io_uring_queue_exit(&ring);
     SYSCALL(close(haltFD));
   }
-  size_t poll(_friend<Cluster>) {
-    size_t evcnt = 0;
-    struct io_uring_cqe* cqe;
-    while (io_uring_peek_cqe(&ring, &cqe) == 0) {
-      evcnt += 1;
-      Block* b = (Block*)io_uring_cqe_get_data(cqe);
-      RASSERT0(b);
+
+  void processCQE(struct io_uring_cqe* cqe, size_t& evcnt, size_t& resume) {
+    Block* b = (Block*)io_uring_cqe_get_data(cqe);
+    if (b) {
       b->retcode = cqe->res;
       b->fibre->resume();
-      io_uring_cqe_seen(&ring, cqe);
+      evcnt += 1;
+    } else {
+      RASSERT(resume == 0, resume);
+      resume += 1;
     }
-    return evcnt;
   }
+
+  template<bool Blocking = false>
+  size_t poll(_friend<Cluster>) {
+    size_t resume = 0;
+    size_t evcnt = 0;
+    if (Blocking) {
+      while (TRY_SYSCALL(io_uring_wait_cqe(&ring, cqe), EINTR) < 0);
+      processCQE(cqe[0], evcnt, resume);
+      io_uring_cq_advance(&ring, 1);
+    }
+    size_t cnt = io_uring_peek_batch_cqe(&ring, cqe, MaxCQE);
+    for (size_t idx = 0; idx < cnt; idx += 1) processCQE(cqe[idx], evcnt, resume);
+    io_uring_cq_advance(&ring, cnt);
+    if (Blocking) stats->eventsB.count(evcnt);
+    else stats->eventsNB.count(evcnt);
+    return Blocking ? resume : evcnt;
+  }
+
   void suspend(_friend<Cluster> fc) {
     uint64_t count;
-    submit(nullptr, io_uring_prep_read, haltFD, (void*)&count, (unsigned)sizeof(count), (off_t)0);
-    struct io_uring_cqe* cqe;
-    size_t evcnt = 0;
-    for (;;) {
-      while (TRY_SYSCALL(io_uring_wait_cqe(&ring, &cqe), EINTR) < 0);
-      evcnt += 1;
-      Block* b = (Block*)io_uring_cqe_get_data(cqe);
-      if (!b) break;
-      b->retcode = cqe->res;
-      b->fibre->resume();
-      io_uring_cqe_seen(&ring, cqe);
-    }
-    io_uring_cqe_seen(&ring, cqe); // cqe for eventfd
+    submit(nullptr, io_uring_prep_read, haltFD, (void*)&count, (unsigned)sizeof(count), (UringOffsetType)0);
+    while (poll<true>(fc) == 0) {}
     RASSERT(count == 1, count);
-    evcnt += poll(fc); // process all available completions
-    stats->events.count(evcnt);
   }
   void resume(_friend<Cluster>) {
     uint64_t val = 1;
@@ -92,7 +105,7 @@ public:
 
   template<class... Args>
   int syncIO( void (*prepfunc)(struct io_uring_sqe *sqe, Args...), Args... a) {
-    Block b = { CurrFibre(), 0 };
+    Block b(CurrFibre());
     RuntimeDisablePreemption();
     submit(&b, prepfunc, a...);
     Suspender::suspend<false>(*b.fibre);
