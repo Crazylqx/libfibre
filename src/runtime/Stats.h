@@ -159,6 +159,34 @@ inline ostream& operator<<(ostream& os, const Distribution& x) {
   return os;
 }
 
+struct Queue {
+  volatile Number qlen;
+  Distribution qdist;
+public:
+  Queue() : qlen(0) {}
+  void add(Number n = 1) {
+    __atomic_add_fetch( &qlen, n, __ATOMIC_RELAXED);
+    qdist.count(qlen);
+  }
+  void remove(Number n = 1) {
+    __atomic_sub_fetch( &qlen, n, __ATOMIC_RELAXED);
+  }
+  void aggregate(const Queue& x) {
+    qlen += x.qlen;
+    qdist.aggregate(x.qdist);
+  }
+  void reset() {
+    qlen = 0;
+    qdist.reset();
+  }
+};
+
+inline ostream& operator<<(ostream& os, const Queue& x) {
+  if (x.qlen != 0) os << " QUEUE";
+  os << x.qdist;
+  return os;
+}
+
 #else
 
 static inline void StatsPrint(ostream&, bool) {}
@@ -189,6 +217,13 @@ struct HashTable {
 struct Distribution {
   void count(Number) {}
   void aggregate(const Distribution&) {}
+  void reset() {}
+};
+
+struct Queue {
+  void add(Number = 1) {}
+  void remove(Number = 1) {}
+  void aggregate(const Queue&) {}
   void reset() {}
 };
 
@@ -224,7 +259,7 @@ struct PollerStats : public Base {
   Counter empty;
   Distribution eventsB;
   Distribution eventsNB;
-  PollerStats(cptr_t o, cptr_t p, const char* n = "Poller") : Base(o, p, n, 0) {}
+  PollerStats(cptr_t o, cptr_t p, const char* n = "Poller") : Base(o, p, n, 1) {}
   void print(ostream& os) const;
   void aggregate(const PollerStats& x) {
     regs.aggregate(x.regs);
@@ -245,7 +280,7 @@ struct PollerStats : public Base {
 struct IOUringStats : public Base {
   Distribution eventsB;
   Distribution eventsNB;
-  IOUringStats(cptr_t o, cptr_t p, const char* n = "IOUring") : Base(o, p, n, 0) {}
+  IOUringStats(cptr_t o, cptr_t p, const char* n = "IOUring") : Base(o, p, n, 1) {}
   void print(ostream& os) const;
   void aggregate(const IOUringStats& x) {
     eventsB.aggregate(x.eventsB);
@@ -300,7 +335,6 @@ struct IdleManagerStats : public Base {
 };
 
 struct ProcessorStats : public Base {
-  Counter enq;
   Counter deq;
   Counter handover;
   Counter borrowLocal;
@@ -314,7 +348,6 @@ struct ProcessorStats : public Base {
   ProcessorStats(cptr_t o, cptr_t p, const char* n = "Processor  ") : Base(o, p, n, 2) {}
   void print(ostream& os) const;
   void aggregate(const ProcessorStats& x) {
-    enq.aggregate(x.enq);
     deq.aggregate(x.deq);
     handover.aggregate(x.handover);
     borrowLocal.aggregate(x.borrowLocal);
@@ -327,7 +360,6 @@ struct ProcessorStats : public Base {
     wake.aggregate(x.wake);
   }
   virtual void reset() {
-    enq.reset();
     deq.reset();
     handover.reset();
     borrowLocal.reset();
@@ -338,6 +370,18 @@ struct ProcessorStats : public Base {
     stealStage.reset();
     idle.reset();
     wake.reset();
+  }
+};
+
+struct ReadyQueueStats : public Base {
+  Queue queue;
+  ReadyQueueStats(cptr_t o, cptr_t p, const char* n = "ReadyQueue") : Base(o, p, n, 0) {}
+  void print(ostream& os) const;
+  void aggregate(const ReadyQueueStats& x) {
+    queue.aggregate(x.queue);
+  }
+  virtual void reset() {
+    queue.reset();
   }
 };
 
@@ -353,8 +397,9 @@ struct ProcessorStats : public Base {
   0  Poller
   1  IdleManager
   2  Processor
-  0   Poller
-  0   IOUring
+  0   ReadyQueue
+  1   IOUring
+  1   Poller
 */
 
 #endif /* _Stats_h_ */

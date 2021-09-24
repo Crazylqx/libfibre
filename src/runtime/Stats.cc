@@ -159,7 +159,6 @@ void IdleManagerStats::print(ostream& os) const {
 void ProcessorStats::print(ostream& os) const {
   if (totalProcessorStats && this != totalProcessorStats) totalProcessorStats->aggregate(*this);
   Base::print(os);
-  os << " E:"  << enq;
   os << " D:"  << deq;
   if (handover)     os << " H:"  << handover;
   if (borrowLocal)  os << " BL:" << borrowLocal;
@@ -170,6 +169,11 @@ void ProcessorStats::print(ostream& os) const {
   if (stealStage)   os << " TS:" << stealStage;
   os << " I:" << idle;
   os << " W:" << wake;
+}
+
+void ReadyQueueStats::print(ostream& os) const {
+  Base::print(os);
+  os << queue;
 }
 
 #else

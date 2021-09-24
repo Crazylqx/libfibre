@@ -77,7 +77,7 @@ inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
   worker->iouring = new IOUring(worker, "W-IOUring ");
 #endif
 #if TESTING_WORKER_POLLER
-  worker->workerPoller = new PollerFibre(scope, *worker, worker, "W-Poller   ", _friend<Cluster>(), false);
+  worker->workerPoller = new PollerFibre(scope, *worker, worker, "W-Poller  ", _friend<Cluster>(), false);
   worker->workerPoller->start();
 #endif
   worker->maintenanceFibre = new Fibre(*worker, _friend<Cluster>());
@@ -126,7 +126,7 @@ void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
 #endif
 #if TESTING_WORKER_POLLER
   CurrWorker().workerPoller->~PollerFibre();
-  new (CurrWorker().workerPoller) PollerFibre(Context::CurrEventScope(), CurrWorker(), &CurrWorker(), "W-Poller   ", _friend<Cluster>(), false);
+  new (CurrWorker().workerPoller) PollerFibre(Context::CurrEventScope(), CurrWorker(), &CurrWorker(), "W-Poller  ", _friend<Cluster>(), false);
 #endif
 }
 

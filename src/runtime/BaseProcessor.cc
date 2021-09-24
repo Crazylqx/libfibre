@@ -92,6 +92,7 @@ void BaseProcessor::idleLoop() {
     Fred* nextFred = nullptr;
 #endif
     if (nextFred) {
+      DBG::outl(DBG::Level::Scheduling, "handover: ", FmtHex(this), ' ', FmtHex(nextFred));
       nextFred->checkAffinity(*this, _friend<BaseProcessor>());
       stats->handover.count();
     } else {

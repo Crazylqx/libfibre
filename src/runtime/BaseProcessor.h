@@ -31,12 +31,15 @@ extern void RuntimeWorkerResume(BaseProcessor&);
 static inline bool RuntimeWorkerPoll(BaseProcessor&) { return false; }
 #endif
 
+class BaseProcessor;
 class IdleManager;
 class Scheduler;
 
 class ReadyQueue {
   WorkerLock readyLock;
   FredReadyQueue queue[Fred::NumPriority];
+
+  FredStats::ReadyQueueStats* stats;
 
   ReadyQueue(const ReadyQueue&) = delete;            // no copy
   ReadyQueue& operator=(const ReadyQueue&) = delete; // no assignment
@@ -50,19 +53,22 @@ class ReadyQueue {
   }
 
 public:
-  ReadyQueue() = default;
+  ReadyQueue(BaseProcessor& bp) { stats = new FredStats::ReadyQueueStats(this, &bp); }
 
   Fred* dequeue() {
 #if TESTING_LOADBALANCING
     ScopedLock<WorkerLock> sl(readyLock);
 #endif
-    return dequeueInternal();
+    Fred* f = dequeueInternal();
+    stats->queue.remove((int)(bool)f);
+    return f;
   }
 
 #if TESTING_LOADBALANCING
   Fred* tryDequeue() {
     if (!readyLock.tryAcquire()) return nullptr;
     Fred* f = dequeueInternal();
+    stats->queue.remove((int)(bool)f);
     readyLock.release();
     return f;
   }
@@ -74,6 +80,7 @@ public:
     ScopedLock<WorkerLock> sl(readyLock);
 #endif
     queue[f.getPriority()].push(f);
+    stats->queue.add();
   }
 };
 
@@ -97,7 +104,6 @@ class BaseProcessor : public DoubleLink<BaseProcessor,3> {
 
   void enqueueFred(Fred& f) {
     DBG::outl(DBG::Level::Scheduling, "Fred ", FmtHex(&f), " queueing on ", FmtHex(this));
-    stats->enq.count();
     readyQueue.enqueue(f);
   }
 
@@ -120,7 +126,7 @@ protected:
   }
 
 public:
-  BaseProcessor(Scheduler& c, const char* n = "Processor  ") : scheduler(c), idleFred(nullptr), haltNotify(0), handoverFred(nullptr) {
+  BaseProcessor(Scheduler& c, const char* n = "Processor  ") : readyQueue(*this), scheduler(c), idleFred(nullptr), haltNotify(0), handoverFred(nullptr) {
 #if TESTING_WAKE_FRED_WORKER
     halting = false;
 #endif
