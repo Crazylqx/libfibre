@@ -100,7 +100,7 @@ void BaseProcessor::idleLoop() {
     }
     yieldDirect(*nextFred);
 #else /* TESTING_LOADBALANCING */
-    if (!readyCount.P()) readySem.P();
+    if (!readyCount.P()) haltSem.P(*this);
     Fred* nextFred = tryLocal();
     RASSERT0(nextFred);
     yieldDirect(*nextFred);

@@ -75,11 +75,13 @@ public:
     }
   }
 
-  template<bool Blocking = false>
+  enum PollType : size_t { Poll, Suspend, Test };
+
+  template<PollType PT>
   size_t poll(_friend<Cluster>) {
     size_t resume = 0;
     size_t evcnt = 0;
-    if (Blocking) {
+    if (PT == Suspend) {
       while (TRY_SYSCALL(io_uring_wait_cqe(&ring, cqe), EINTR) < 0);
       processCQE(cqe[0], evcnt, resume);
       io_uring_cq_advance(&ring, 1);
@@ -87,15 +89,15 @@ public:
     size_t cnt = io_uring_peek_batch_cqe(&ring, cqe, MaxCQE);
     for (size_t idx = 0; idx < cnt; idx += 1) processCQE(cqe[idx], evcnt, resume);
     io_uring_cq_advance(&ring, cnt);
-    if (Blocking) stats->eventsB.count(evcnt);
+    if (PT == Suspend) stats->eventsB.count(evcnt);
     else stats->eventsNB.count(evcnt);
-    return Blocking ? resume : evcnt;
+    return (PT == Poll) ? evcnt : resume;
   }
 
   void suspend(_friend<Cluster> fc) {
     uint64_t count;
     submit(nullptr, io_uring_prep_read, haltFD, (void*)&count, (unsigned)sizeof(count), (UringOffsetType)0);
-    while (poll<true>(fc) == 0) {}
+    while (poll<Suspend>(fc) == 0) {}
     RASSERT(count == 1, count);
   }
   void resume(_friend<Cluster>) {

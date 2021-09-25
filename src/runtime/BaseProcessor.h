@@ -20,16 +20,8 @@
 #include "runtime/Benaphore.h"
 #include "runtime/Debug.h"
 #include "runtime/Fred.h"
+#include "runtime/HaltSemaphore.h"
 #include "runtime/Stats.h"
-#include "runtime-glue/RuntimeLock.h"
-
-#if TESTING_IO_URING
-extern bool RuntimeWorkerPoll(BaseProcessor&);
-extern void RuntimeWorkerSuspend(BaseProcessor&);
-extern void RuntimeWorkerResume(BaseProcessor&);
-#else
-static inline bool RuntimeWorkerPoll(BaseProcessor&) { return false; }
-#endif
 
 class BaseProcessor;
 class IdleManager;
@@ -90,17 +82,19 @@ typedef IntrusiveRing<BaseProcessor,1,3> ProcessorRingLocal;
 typedef IntrusiveRing<BaseProcessor,2,3> ProcessorRingGlobal;
 
 class BaseProcessor : public DoubleLink<BaseProcessor,3> {
-  inline Fred* tryLocal();
+  ReadyQueue    readyQueue;
+
+  inline Fred*  tryLocal();
 #if TESTING_LOADBALANCING
-  inline Fred* tryStage();
-  inline Fred* trySteal();
-  inline Fred* scheduleInternal();
-  bool addReadyFred(Fred& f);
+  inline Fred*  tryStage();
+  inline Fred*  trySteal();
+  inline Fred*  scheduleInternal();
+  bool          addReadyFred(Fred& f);
 #else
-  Benaphore<> readyCount;
-  OsSemaphore readySem;
+  Benaphore<>   readyCount;
 #endif
-  ReadyQueue readyQueue;
+  HaltSemaphore haltSem;
+  Fred*         handoverFred;
 
   void enqueueFred(Fred& f) {
     DBG::outl(DBG::Level::Scheduling, "Fred ", FmtHex(&f), " queueing on ", FmtHex(this));
@@ -114,9 +108,6 @@ protected:
   bool       halting;
 #endif
 
-  WorkerSemaphore haltNotify;
-  Fred*           handoverFred;
-
   FredStats::ProcessorStats* stats;
 
   void idleLoop();
@@ -126,7 +117,7 @@ protected:
   }
 
 public:
-  BaseProcessor(Scheduler& c, const char* n = "Processor  ") : readyQueue(*this), scheduler(c), idleFred(nullptr), haltNotify(0), handoverFred(nullptr) {
+  BaseProcessor(Scheduler& c, const char* n = "Processor  ") : readyQueue(*this), haltSem(0), handoverFred(nullptr), scheduler(c), idleFred(nullptr) {
 #if TESTING_WAKE_FRED_WORKER
     halting = false;
 #endif
@@ -158,7 +149,7 @@ public:
     if (!addReadyFred(f)) enqueueFred(f);
 #else
     enqueueFred(f);
-    if (!readyCount.V()) readySem.V();
+    if (!readyCount.V()) haltSem.V(*this);
 #endif
   }
 
@@ -171,27 +162,19 @@ public:
 #if TESTING_HALT_SPIN
     static const size_t SpinMax = TESTING_HALT_SPIN;
     for (size_t i = 0; i < SpinMax; i += 1) {
-      if fastpath(haltNotify.tryP()) return handoverFred;
+      if fastpath(haltSem.tryP(*this)) return handoverFred;
       Pause();
     }
 #endif
     stats->idle.count();
-#if TESTING_IO_URING
-    RuntimeWorkerSuspend(*this);
-#else
-    haltNotify.P();
-#endif
+    haltSem.P(*this);
     return handoverFred;
   }
 
   void resume(Fred* f, _friend<IdleManager>) {
     stats->wake.count();
     handoverFred = f;
-#if TESTING_IO_URING
-    RuntimeWorkerResume(*this);
-#else
-    haltNotify.V();
-#endif
+    haltSem.V(*this);
   }
 };
 

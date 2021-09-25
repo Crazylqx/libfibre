@@ -51,14 +51,15 @@ Cluster::Worker::~Worker() {
 }
 
 #if TESTING_IO_URING
+bool RuntimeWorkerTest(BaseProcessor& proc) {
+  return Cluster::testWorker(proc);
+}
 bool RuntimeWorkerPoll(BaseProcessor& proc) {
   return Cluster::pollWorker(proc);
 }
-
 void RuntimeWorkerSuspend(BaseProcessor& proc) {
   Cluster::suspendWorker(proc);
 }
-
 void RuntimeWorkerResume(BaseProcessor& proc) {
   Cluster::resumeWorker(proc);
 }
