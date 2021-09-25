@@ -161,9 +161,26 @@ public:
 
   /** Create one new worker (pthread) and add to cluster.
       Start `initFunc(initArg)` as dedicated fibre immediately after creation. */
-  pthread_t addWorker(funcvoid1_t initFunc = nullptr, ptr_t initArg = nullptr);
+  Worker& addWorker(funcvoid1_t initFunc = nullptr, ptr_t initArg = nullptr);
   /** Create new workers (pthreads) and add to cluster. */
   void addWorkers(size_t cnt = 1) { for (size_t i = 0; i < cnt; i += 1) addWorker(); }
+
+  size_t addGroup(size_t cnt) {
+    std::vector<Worker*> group(cnt);
+    for (size_t w = 0; w < cnt; w += 1) group[w] = &addWorker();
+    workerGroups.push_back(group);
+    return workerGroups.size() - 1;
+  }
+
+  Worker& addGroupWorker(size_t gidx, funcvoid1_t initFunc = nullptr, ptr_t initArg = nullptr) {
+    Worker& w = addWorker(initFunc, initArg);
+    workerGroups[gidx].push_back(&w);
+    return w;
+  }
+
+  void addGroupWorkers(size_t gidx, size_t cnt = 1) {
+    for (size_t i = 0; i < cnt; i += 1) addGroupWorker(gidx);
+  }
 
   /** Obtain system-level ids for workers (pthread_t). */
   size_t getWorkerSysIDs(pthread_t* tid = nullptr, size_t cnt = 0) {

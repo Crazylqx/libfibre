@@ -92,20 +92,18 @@ void StatsPrint(ostream& os, bool totals) {
     totalIdleManagerStats = new IdleManagerStats(nullptr, nullptr, "IdleManager");
     totalProcessorStats   = new ProcessorStats  (nullptr, nullptr, "Processor  ");
 
-    os << "LIBFIBRE STATS ================================================" << std::endl;
-
+    os << "LIBFIBRE STATS BEGIN ==========================================" << std::endl;
     PrintRecursive(nullptr, 0, os, statsMap);
-
-    if (!totals) return;
-
-    os << "TOTALS:" << std::endl;
-
-    while (!statsList.empty()) {
-      const Base* o = statsList.pop();
-      o->print(os);
-      os << std::endl;
-      delete o;
+    if (totals) {
+      os << "TOTALS:" << std::endl;
+      while (!statsList.empty()) {
+        const Base* o = statsList.pop();
+        o->print(os);
+        os << std::endl;
+        delete o;
+      }
     }
+    os << "LIBFIBRE STATS END ============================================" << std::endl;
   }
 }
 

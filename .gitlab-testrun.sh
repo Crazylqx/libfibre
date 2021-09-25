@@ -35,12 +35,14 @@ else
 	PERF_SERVER="perf stat -p \$(pidof memcached)"
 fi
 
+[ -f /usr/local/lib/liburing.so ] && LOCALURING=/usr/local/lib
+
 function pre() {
 	[ "$1" = "skip" ] && return
 	$MAKE clean all || exit 1
 	[ "$1" = "memcached" ] || return
 	FPATH=$PWD
-	cd memcached; ./configure2.sh $FPATH; cd -
+	cd memcached; ./configure2.sh $FPATH $LOCALURING; cd -
 	$MAKE -C memcached all -j $count || exit 1
 }
 
@@ -140,14 +142,14 @@ function prep_9() {
 
 function prep_10() {
 	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
-	[ ! -f /usr/include/liburing.h ] && echo skip && return
+	[ ! -f /usr/include/liburing.h ] && [ ! -f /usr/local/include/liburing.h ] && echo skip && return
 	sed -i -e 's/.* TESTING_IO_URING .*/#define TESTING_IO_URING 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
 function prep_11() {
 	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
-	[ ! -f /usr/include/liburing.h ] && echo skip && return
+	[ ! -f /usr/include/liburing.h ] && [ ! -f /usr/local/include/liburing.h ] && echo skip && return
 	sed -i -e 's/.* TESTING_IO_URING .*/#define TESTING_IO_URING 1/' src/runtime-glue/testoptions.h
 	sed -i -e 's/.* TESTING_IO_URING_DEFAULT .*/#define TESTING_IO_URING_DEFAULT 1/' src/runtime-glue/testoptions.h
 	echo memcached

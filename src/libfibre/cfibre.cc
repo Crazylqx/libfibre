@@ -69,7 +69,7 @@ extern "C" cfibre_cluster_t cfibre_cluster_self() {
 }
 
 extern "C" int cfibre_add_worker(cfibre_cluster_t cluster, pthread_t* tid, void (*init_routine) (void *), void *arg) {
-  *tid = cluster->addWorker(init_routine, arg);
+  *tid = cluster->addWorker(init_routine, arg).getSysID();
   return 0;
 }
 

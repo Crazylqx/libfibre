@@ -148,7 +148,7 @@ Fibre* Cluster::registerWorker(_friend<EventScope>) {
   return mainFibre;
 }
 
-pthread_t Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
+Cluster::Worker& Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
   Worker* worker = new Worker(*this);
   Fibre* initFibre = new Fibre(*worker, _friend<Cluster>());
   if (initFunc) {   // run init routine in dedicated fibre, so it can block
@@ -167,7 +167,7 @@ pthread_t Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
   SYSCALL(pthread_create(&tid, &attr, (funcptr1_t)threadHelper, &args));
   SYSCALL(pthread_attr_destroy(&attr));
   delete initFibre; // also synchronization that 'args' not needed anymore
-  return tid;
+  return *worker;
 }
 
 void Cluster::pause() {

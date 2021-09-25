@@ -19,6 +19,7 @@
 
 #include "runtime/BlockingSync.h"
 
+#include <cstring>
 #include <liburing.h>
 #include <sys/eventfd.h>
 
@@ -56,7 +57,10 @@ public:
   IOUring(cptr_t parent, const char* n) {
     stats = new FredStats::IOUringStats(this, parent, n);
     haltFD = SYSCALLIO(eventfd(0, EFD_CLOEXEC));
-    SYSCALLIO(io_uring_queue_init(NumEntries, &ring, 0));
+    struct io_uring_params p;
+    memset(&p, 0, sizeof(p));
+    SYSCALLIO(io_uring_queue_init_params(NumEntries, &ring, &p));
+    DBG::outl(DBG::Level::Polling, "SQE: ", p.sq_entries, " CQE: ", p.cq_entries);
   }
   ~IOUring() {
     io_uring_queue_exit(&ring);

@@ -548,7 +548,7 @@ public:
       struct iovec iov = { .iov_base = buffer, .iov_len = length };
       struct msghdr msg = { .msg_name = address, .msg_namelen = address_len ? *address_len : 0,
         .msg_iov = &iov, .msg_iovlen = 1, .msg_control = nullptr, .msg_controllen = 0, .msg_flags = 0 };
-      int ret = recvmsg(socket, &msg, flags);
+      ssize_t ret = recvmsg(socket, &msg, flags);
       if (ret >= 0 && address_len) *address_len = msg.msg_namelen;
       return ret;
     }

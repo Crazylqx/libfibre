@@ -7,7 +7,7 @@ variables:
 test1:
   stage: test
   before_script:
-    - "git clone https://git.uwaterloo.ca/mkarsten/memcached-1.5.7-libfibre memcached"
+    - "git clone https://git.uwaterloo.ca/mkarsten/memcached-1.6.9-libfibre memcached"
   script:
     - "./.gitlab-testrun.sh"
   after_script:
