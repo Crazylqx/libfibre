@@ -215,7 +215,9 @@ static inline bool connHandler(void* connFD) {
       if (_SysErrno() == ECONNRESET) {
 //        cerr << "ECONNRESET: FD " << (uintptr_t)connFD << endl;
       } else {
-        cerr << "read error: FD " << (uintptr_t)connFD << ' ' << _SysErrno() << endl;
+        static FredMutex lock;
+        ScopedLock<FredMutex> sl(lock);
+        cerr << "read error: FD " << (uintptr_t)connFD << ' ' << rret << ' ' << _SysErrno() << endl;
       }
       goto closeAndOut;
     }

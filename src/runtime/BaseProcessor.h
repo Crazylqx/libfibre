@@ -124,6 +124,9 @@ public:
     stats = new FredStats::ProcessorStats(this, &c, n);
   }
 
+  void countFredCreated() { stats->create.count(); }
+  void countFredStarted() { stats->start.count(); }
+
   Scheduler& getScheduler() { return scheduler; }
 
 #if TESTING_WAKE_FRED_WORKER

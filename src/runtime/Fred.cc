@@ -23,6 +23,7 @@ Fred::Fred(BaseProcessor& proc, Affinity affinity)
 #if TESTING_SHARED_READYQUEUE
   this->affinity = FixedAffinity;
 #endif
+  processor->countFredCreated();
 }
 
 Fred::Fred(Scheduler& scheduler, bool backgroundQueue)

@@ -40,7 +40,7 @@ class IOUring {
 
   struct Block {
     Fibre* fibre;
-    volatile int retcode;
+    int retcode;
     Block(Fibre* f) : fibre(f) {}
   };
 
@@ -115,7 +115,9 @@ public:
     RuntimeDisablePreemption();
     submit(&b, prepfunc, a...);
     Suspender::suspend<false>(*b.fibre);
-    return b.retcode;
+    int ret = (volatile int)b.retcode; // uring conveys errno via result code
+    if (ret < 0 && _SysErrno() == 0) _SysErrnoSet() = -ret;
+    return ret;
   }
 };
 

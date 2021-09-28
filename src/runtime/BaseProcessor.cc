@@ -67,8 +67,8 @@ inline Fred* BaseProcessor::scheduleInternal() {
   Fred* nextFred;
   do {
     if ((nextFred = tryLocal())) return nextFred;
+    if ((nextFred = tryStage())) return nextFred;
   } while (RuntimeWorkerPoll(*this));
-  if ((nextFred = tryStage())) return nextFred;
   if ((nextFred = trySteal())) return nextFred;
   return nullptr;
 }

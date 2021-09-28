@@ -20,6 +20,7 @@
 #include "libfibre/Fibre.h"
 
 inline void RuntimeStartFred(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) {
+  Context::CurrProcessor().countFredStarted();
   try {
     func(arg1, arg2, arg3);
   } catch (Fibre::ExitException*) {}

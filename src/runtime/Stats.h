@@ -335,6 +335,8 @@ struct IdleManagerStats : public Base {
 };
 
 struct ProcessorStats : public Base {
+  Counter create;
+  Counter start;
   Counter deq;
   Counter handover;
   Counter borrowLocal;
@@ -348,6 +350,8 @@ struct ProcessorStats : public Base {
   ProcessorStats(cptr_t o, cptr_t p, const char* n = "Processor  ") : Base(o, p, n, 2) {}
   void print(ostream& os) const;
   void aggregate(const ProcessorStats& x) {
+    create.aggregate(x.create);
+    start.aggregate(x.start);
     deq.aggregate(x.deq);
     handover.aggregate(x.handover);
     borrowLocal.aggregate(x.borrowLocal);
@@ -360,6 +364,8 @@ struct ProcessorStats : public Base {
     wake.aggregate(x.wake);
   }
   virtual void reset() {
+    create.reset();
+    start.reset();
     deq.reset();
     handover.reset();
     borrowLocal.reset();
