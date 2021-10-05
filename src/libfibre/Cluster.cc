@@ -46,10 +46,6 @@ void installFake(EventScope* es, _friend<BaseThreadPoller>) {
 
 } // namespace Context
 
-Cluster::Worker::~Worker() {
-  if (maintenanceFibre) delete maintenanceFibre;
-}
-
 #if TESTING_IO_URING
 bool RuntimeWorkerTest(BaseProcessor& proc) {
   return Cluster::testWorker(proc);
@@ -81,9 +77,6 @@ inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
   worker->workerPoller = new PollerFibre(scope, *worker, worker, "W-Poller  ", _friend<Cluster>(), false);
   worker->workerPoller->start();
 #endif
-  worker->maintenanceFibre = new Fibre(*worker, _friend<Cluster>());
-  worker->maintenanceFibre->setPriority(Fred::TopPriority);
-  worker->maintenanceFibre->run(maintenance, this);
 }
 
 void Cluster::initDummy(ptr_t) {}
@@ -172,22 +165,29 @@ Cluster::Worker& Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
 
 void Cluster::pause() {
   ringLock.acquire();
-  stats->procs.count(ringCount);
-  pauseProc = &Context::CurrProcessor();
-  for (size_t p = 1; p < ringCount; p += 1) pauseSem.V();
-  for (size_t p = 1; p < ringCount; p += 1) confirmSem.P();
+  stats->pause.count(ringCount);
+  for (BaseProcessor* proc = placeProc;;) {
+    if (proc != &Context::CurrProcessor()) {
+      Fibre* f = new Fibre(*proc, _friend<Cluster>());
+      f->setPriority(Fred::TopPriority);
+      f->run(pauseOperation, this);
+      pauseFibres.push_back(f);
+    }
+    proc = ProcessorRingGlobal::next(*proc);
+    if (proc == placeProc) break;
+  }
+  RASSERT(pauseFibres.size() == ringCount-1, pauseFibres.size(), ringCount-1);
+  for (size_t p = 1; p < ringCount; p += 1) pauseConfirmSem.P();
 }
 
 void Cluster::resume() {
-  for (size_t p = 1; p < ringCount; p += 1) sleepSem.V();
+  for (size_t p = 1; p < ringCount; p += 1) pauseSem.V();
+  for (auto f : pauseFibres) delete f;
+  pauseFibres.clear();
   ringLock.release();
 }
 
-void Cluster::maintenance(Cluster* cl) {
-  for (;;) {
-    cl->pauseSem.P();
-    cl->stats->sleeps.count();
-    cl->confirmSem.V();
-    cl->sleepSem.P();
-  }
+void Cluster::pauseOperation(Cluster* cl) {
+  cl->pauseConfirmSem.V();
+  cl->pauseSem.P();
 }

@@ -305,17 +305,14 @@ struct TimerStats : public Base {
 };
 
 struct ClusterStats : public Base {
-  Counter procs;
-  Counter sleeps;
+  Counter pause;
   ClusterStats(cptr_t o, cptr_t p, const char* n = "Cluster     ") : Base(o, p, n, 2) {}
   void print(ostream& os) const;
   void aggregate(const ClusterStats& x) {
-    procs.aggregate(x.procs);
-    sleeps.aggregate(x.sleeps);
+    pause.aggregate(x.pause);
   }
   virtual void reset() {
-    procs.reset();
-    sleeps.reset();
+    pause.reset();
   }
 };
 

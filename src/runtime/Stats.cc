@@ -145,7 +145,7 @@ void TimerStats::print(ostream& os) const {
 void ClusterStats::print(ostream& os) const {
   if (totalClusterStats && this != totalClusterStats) totalClusterStats->aggregate(*this);
   Base::print(os);
-  os << " procs:" << procs << " sleeps:" << sleeps;
+  os << " pause:" << pause;
 }
 
 void IdleManagerStats::print(ostream& os) const {

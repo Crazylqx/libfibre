@@ -24,6 +24,8 @@
 #include "libfibre/IOUring.h"
 #endif
 
+#include <list>
+
 #ifdef SPLIT_STACK
 #include <csignal>  // sigaltstack
 #endif
@@ -31,7 +33,7 @@
 /**
 A Cluster object provides a scheduling scope and uses processors (pthreads)
 to execute fibres.  It also manages I/O pollers and provides a
-stop-the-world pause mechanism.
+simple stop-the-world pause mechanism.
 */
 class Cluster : public Scheduler {
   EventScope& scope;
@@ -46,16 +48,15 @@ class Cluster : public Scheduler {
   size_t      iPollCount;
   size_t      oPollCount;
 
-  BaseProcessor*              pauseProc;
-  LockedSemaphore<WorkerLock> pauseSem;
-  WorkerSemaphore             confirmSem;
-  WorkerSemaphore             sleepSem;
+  std::list<Fibre*> pauseFibres;
+  WorkerSemaphore   pauseSem;
+  WorkerSemaphore   pauseConfirmSem;
+  static void       pauseOperation(Cluster* cl);
 
   FredStats::ClusterStats* stats;
 
   struct Worker : public BaseProcessor {
     pthread_t    sysThreadId;
-    Fibre*       maintenanceFibre;
 #if TESTING_IO_URING
     IOUring*     iouring;
 #endif
@@ -65,7 +66,7 @@ class Cluster : public Scheduler {
 #ifdef SPLIT_STACK
     char         sigStack[SIGSTKSZ];
 #endif
-    Worker(Cluster& c) : BaseProcessor(c), maintenanceFibre(nullptr) {
+    Worker(Cluster& c) : BaseProcessor(c) {
 #if TESTING_IO_URING
       iouring = nullptr;
 #endif
@@ -85,9 +86,7 @@ class Cluster : public Scheduler {
 
   static Worker& CurrWorker() { return reinterpret_cast<Worker&>(Context::CurrProcessor()); }
 
-  static void maintenance(Cluster* cl);
-
-  Cluster(EventScope& es, size_t ipcnt, size_t opcnt = 1) : scope(es), iPollCount(ipcnt), oPollCount(opcnt), pauseProc(nullptr) {
+  Cluster(EventScope& es, size_t ipcnt, size_t opcnt = 1) : scope(es), iPollCount(ipcnt), oPollCount(opcnt) {
     stats = new FredStats::ClusterStats(this, &es);
     iPollVec = (PollerType*)new char[sizeof(PollerType[iPollCount])];
     oPollVec = (PollerType*)new char[sizeof(PollerType[oPollCount])];
@@ -102,8 +101,8 @@ class Cluster : public Scheduler {
 
   struct Argpack {
     Cluster* cluster;
-    Worker* worker;
-    Fibre* initFibre;
+    Worker*  worker;
+    Fibre*   initFibre;
   };
 
   inline void  setupWorker(Fibre*, Worker*);
@@ -121,8 +120,7 @@ public:
   void startPolling(_friend<EventScope>) { start(); }
 
   ~Cluster() {
-    // TODO: wait until all work is done, i.e., all regular fibres have left
-    // TODO: delete all processors: join pthread via maintenance fibre?
+    // TODO: wait until regular fibres have left, then delete processors?
     delete [] iPollVec;
     delete [] oPollVec;
   }
