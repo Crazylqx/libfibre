@@ -47,11 +47,11 @@ void installFake(EventScope* es, _friend<BaseThreadPoller>) {
 } // namespace Context
 
 #if TESTING_IO_URING
-bool RuntimeWorkerTest(BaseProcessor& proc) {
-  return Cluster::testWorker(proc);
-}
 bool RuntimeWorkerPoll(BaseProcessor& proc) {
   return Cluster::pollWorker(proc);
+}
+bool RuntimeWorkerTrySuspend(BaseProcessor& proc) {
+  return Cluster::trySuspendWorker(proc);
 }
 void RuntimeWorkerSuspend(BaseProcessor& proc) {
   Cluster::suspendWorker(proc);

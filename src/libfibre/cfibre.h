@@ -113,16 +113,20 @@ void cfibre_set_errno(int);
 
 int cfibre_attr_init(cfibre_attr_t *attr);
 int cfibre_attr_destroy(cfibre_attr_t *attr);
+int cfibre_attr_setcluster(cfibre_attr_t *attr, cfibre_cluster_t cluster);
+int cfibre_attr_getcluster(const cfibre_attr_t *attr, cfibre_cluster_t *cluster);
+int cfibre_attr_setbackground(cfibre_attr_t *attr, int background);
+int cfibre_attr_getbackground(const cfibre_attr_t *attr, int *background);
 int cfibre_attr_setstacksize(cfibre_attr_t *attr, size_t stacksize);
 int cfibre_attr_getstacksize(const cfibre_attr_t *attr, size_t *stacksize);
 int cfibre_attr_setguardsize(cfibre_attr_t *attr, size_t guardsize);
 int cfibre_attr_getguardsize(const cfibre_attr_t *attr, size_t *guardsize);
+int cfibre_attr_setpriority(cfibre_attr_t *attr, int priority);
+int cfibre_attr_getpriority(const cfibre_attr_t *attr, int *priority);
+int cfibre_attr_setaffinity(cfibre_attr_t *attr, int affinity);
+int cfibre_attr_getaffinity(const cfibre_attr_t *attr, int *affinity);
 int cfibre_attr_setdetachstate(cfibre_attr_t *attr, int detachstate);
 int cfibre_attr_getdetachstate(const cfibre_attr_t *attr, int *detachstate);
-int cfibre_attr_setbackground(cfibre_attr_t *attr, int background);
-int cfibre_attr_getbackground(const cfibre_attr_t *attr, int *background);
-int cfibre_attr_setcluster(cfibre_attr_t *attr, cfibre_cluster_t cluster);
-int cfibre_attr_getcluster(const cfibre_attr_t *attr, cfibre_cluster_t *cluster);
 
 int cfibre_create(cfibre_t *thread, const cfibre_attr_t *attr, void *(*start_routine) (void *), void *arg);
 int cfibre_join(cfibre_t thread, void **retval);

@@ -167,7 +167,7 @@ class EventScope {
     T ret;
     SyncFD& fdsync = fdSyncVector[fd];
     if (Yield) Fibre::yield();
-    if (tryIO<Input>( ret, iofunc, fd, a...)) return ret;
+    if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
     SyncSem& sem = Input ? fdsync.iSem : fdsync.oSem;
     BasePoller*& poller = Input ? fdsync.iPoller : fdsync.oPoller;
     if (!poller) {

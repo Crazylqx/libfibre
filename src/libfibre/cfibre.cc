@@ -111,6 +111,22 @@ extern "C" void cfibre_set_errno(int e) {
   _SysErrnoSet() = e;
 }
 
+extern "C" int cfibre_attr_setcluster(cfibre_attr_t *attr, cfibre_cluster_t cluster) {
+  return fibre_attr_setcluster(*attr, cluster);
+}
+
+extern "C" int cfibre_attr_getcluster(const cfibre_attr_t *attr, cfibre_cluster_t *cluster) {
+  return fibre_attr_getcluster(*attr, (Cluster**)cluster);
+}
+
+extern "C" int cfibre_attr_setbackground(cfibre_attr_t *attr, int background) {
+  return fibre_attr_setbackground(*attr, background);
+}
+
+extern "C" int cfibre_attr_getbackground(const cfibre_attr_t *attr, int *background) {
+  return fibre_attr_getbackground(*attr, background);
+}
+
 extern "C" int cfibre_attr_setstacksize(cfibre_attr_t *attr, size_t stacksize) {
   return fibre_attr_setstacksize(*attr, stacksize);
 }
@@ -127,28 +143,28 @@ extern "C" int cfibre_attr_getguardsize(const cfibre_attr_t *attr, size_t *guard
   return fibre_attr_getguardsize(*attr, guardsize);
 }
 
+extern "C" int cfibre_attr_setpriority(cfibre_attr_t *attr, int priority) {
+  return fibre_attr_setpriority(*attr, priority);
+}
+
+extern "C" int cfibre_attr_getpriority(const cfibre_attr_t *attr, int *priority) {
+  return fibre_attr_getpriority(*attr, priority);
+}
+
+extern "C" int cfibre_attr_setaffinity(cfibre_attr_t *attr, int affinity) {
+  return fibre_attr_setaffinity(*attr, affinity);
+}
+
+extern "C" int cfibre_attr_getaffinity(const cfibre_attr_t *attr, int *affinity) {
+  return fibre_attr_getaffinity(*attr, affinity);
+}
+
 extern "C" int cfibre_attr_setdetachstate(cfibre_attr_t *attr, int detachstate) {
   return fibre_attr_setdetachstate(*attr, detachstate);
 }
 
 extern "C" int cfibre_attr_getdetachstate(const cfibre_attr_t *attr, int *detachstate) {
   return fibre_attr_getdetachstate(*attr, detachstate);
-}
-
-extern "C" int cfibre_attr_setbackground(cfibre_attr_t *attr, int background) {
-  return fibre_attr_setbackground(*attr, background);
-}
-
-extern "C" int cfibre_attr_getbackground(const cfibre_attr_t *attr, int *background) {
-  return fibre_attr_getbackground(*attr, background);
-}
-
-extern "C" int cfibre_attr_setcluster(cfibre_attr_t *attr, cfibre_cluster_t cluster) {
-  return fibre_attr_setcluster(*attr, cluster);
-}
-
-extern "C" int cfibre_attr_getcluster(const cfibre_attr_t *attr, cfibre_cluster_t *cluster) {
-  return fibre_attr_getcluster(*attr, (Cluster**)cluster);
 }
 
 extern "C" int cfibre_create(cfibre_t *thread, const cfibre_attr_t *attr, void *(*start_routine) (void *), void *arg) {

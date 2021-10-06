@@ -42,17 +42,21 @@ typedef FastMutex fibre_fastmutex_t;
 #endif
 
 struct fibre_attr_t {
+  Cluster* cluster;
+  bool background;
   size_t stackSize;
   size_t guardSize;
+  size_t priority;
+  bool affinity;
   bool detached;
-  bool background;
-  Cluster* cluster;
   void init() {
+    cluster = &Context::CurrCluster();
+    background = false;
     stackSize = Fibre::DefaultStackSize;
     guardSize = Fibre::DefaultStackGuard;
+    priority = Fibre::DefaultPriority;
+    affinity = true;
     detached = false;
-    background = false;
-    cluster = &Context::CurrCluster();
   }
 };
 
@@ -111,6 +115,30 @@ inline int fibre_attr_destroy(fibre_attr_t *) {
   return 0;
 }
 
+/** @brief Set cluster attribute for fibre creation. */
+inline int fibre_attr_setcluster(fibre_attr_t *attr, Cluster *cluster) {
+  attr->cluster = cluster;
+  return 0;
+}
+
+/** @brief Get cluster attribute for fibre creation. */
+inline int fibre_attr_getcluster(const fibre_attr_t *attr, Cluster **cluster) {
+  *cluster = attr->cluster;
+  return 0;
+}
+
+/** @brief Set background attribute for fibre creation. */
+inline int fibre_attr_setbackground(fibre_attr_t *attr, int background) {
+  attr->background = background;
+  return 0;
+}
+
+/** @brief Get background attribute for fibre creation. */
+inline int fibre_attr_getbackground(const fibre_attr_t *attr, int *background) {
+  *background = attr->background;
+  return 0;
+}
+
 /** @brief Set stack size for fibre creation. (`pthread_attr_setstacksize`). */
 inline int fibre_attr_setstacksize(fibre_attr_t *attr, size_t stacksize) {
   attr->stackSize = stacksize;
@@ -135,6 +163,30 @@ inline int fibre_attr_getguardsize(const fibre_attr_t *attr, size_t *guardsize) 
   return 0;
 }
 
+/** @brief Set priority attribute for fibre creation. */
+inline int fibre_attr_setpriority(fibre_attr_t *attr, int priority) {
+  attr->priority = priority;
+  return 0;
+}
+
+/** @brief Get priority attribute for fibre creation. */
+inline int fibre_attr_getpriority(const fibre_attr_t *attr, int *priority) {
+  *priority = attr->priority;
+  return 0;
+}
+
+/** @brief Set affinity attribute for fibre creation. */
+inline int fibre_attr_setaffinity(fibre_attr_t *attr, int affinity) {
+  attr->affinity = affinity;
+  return 0;
+}
+
+/** @brief Get affinity attribute for fibre creation. */
+inline int fibre_attr_getaffinity(const fibre_attr_t *attr, int *affinity) {
+  *affinity = attr->affinity;
+  return 0;
+}
+
 /** @brief Set detach attribute for fibre creation. (`pthread_attr_setdetachstate`) */
 inline int fibre_attr_setdetachstate(fibre_attr_t *attr, int detachstate) {
   attr->detached = detachstate;
@@ -147,30 +199,6 @@ inline int fibre_attr_getdetachstate(const fibre_attr_t *attr, int *detachstate)
   return 0;
 }
 
-/** @brief Set background attribute for fibre creation. */
-inline int fibre_attr_setbackground(fibre_attr_t *attr, int background) {
-  attr->background = background;
-  return 0;
-}
-
-/** @brief Get background attribute for fibre creation. */
-inline int fibre_attr_getbackground(const fibre_attr_t *attr, int *background) {
-  *background = attr->background;
-  return 0;
-}
-
-/** @brief Set cluster attribute for fibre creation. */
-inline int fibre_attr_setcluster(fibre_attr_t *attr, Cluster *cluster) {
-  attr->cluster = cluster;
-  return 0;
-}
-
-/** @brief Get cluster attribute for fibre creation. */
-inline int fibre_attr_getcluster(const fibre_attr_t *attr, Cluster **cluster) {
-  *cluster = attr->cluster;
-  return 0;
-}
-
 /** @brief Create and start fibre. (`pthread_create`) */
 inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *(*start_routine) (void *), void *arg) {
   Fibre* f;
@@ -178,6 +206,8 @@ inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *(*start
     f = new Fibre;
   } else {
     f = new Fibre(*attr->cluster, attr->background, attr->stackSize, attr->guardSize);
+    f->setPriority(Fibre::Priority(attr->priority));
+    if (!attr->affinity) f->setAffinity(Fibre::NoAffinity);
     if (attr->detached) f->detach();
   }
   *thread = f->run(start_routine, arg);

@@ -44,6 +44,25 @@ class IOUring {
     Block(Fibre* f) : fibre(f) {}
   };
 
+  enum PollType : size_t { Poll, Suspend, Try };
+
+  template<PollType PT>
+  size_t internalPoll() {
+    size_t resume = 0;
+    size_t evcnt = 0;
+    if (PT == Suspend) {
+      while (TRY_SYSCALL(io_uring_wait_cqe(&ring, cqe), EINTR) < 0);
+      processCQE(cqe[0], evcnt, resume);
+      io_uring_cq_advance(&ring, 1);
+    }
+    size_t cnt = io_uring_peek_batch_cqe(&ring, cqe, MaxCQE);
+    for (size_t idx = 0; idx < cnt; idx += 1) processCQE(cqe[idx], evcnt, resume);
+    io_uring_cq_advance(&ring, cnt);
+    if (PT == Suspend) stats->eventsB.count(evcnt);
+    else stats->eventsNB.count(evcnt);
+    return (PT == Poll) ? evcnt : resume;
+  }
+
   template<class... Args>
   void submit(Block* b, void (*prepfunc)(struct io_uring_sqe *sqe, Args...), Args... a) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
@@ -79,29 +98,16 @@ public:
     }
   }
 
-  enum PollType : size_t { Poll, Suspend, Test };
-
-  template<PollType PT>
   size_t poll(_friend<Cluster>) {
-    size_t resume = 0;
-    size_t evcnt = 0;
-    if (PT == Suspend) {
-      while (TRY_SYSCALL(io_uring_wait_cqe(&ring, cqe), EINTR) < 0);
-      processCQE(cqe[0], evcnt, resume);
-      io_uring_cq_advance(&ring, 1);
-    }
-    size_t cnt = io_uring_peek_batch_cqe(&ring, cqe, MaxCQE);
-    for (size_t idx = 0; idx < cnt; idx += 1) processCQE(cqe[idx], evcnt, resume);
-    io_uring_cq_advance(&ring, cnt);
-    if (PT == Suspend) stats->eventsB.count(evcnt);
-    else stats->eventsNB.count(evcnt);
-    return (PT == Poll) ? evcnt : resume;
+    return internalPoll<Poll>();
   }
-
-  void suspend(_friend<Cluster> fc) {
+  size_t trySuspend(_friend<Cluster>) {
+    return internalPoll<Try>();
+  }
+  void suspend(_friend<Cluster>) {
     uint64_t count;
     submit(nullptr, io_uring_prep_read, haltFD, (void*)&count, (unsigned)sizeof(count), (UringOffsetType)0);
-    while (poll<Suspend>(fc) == 0) {}
+    while (internalPoll<Suspend>() == 0) {}
     RASSERT(count == 1, count);
   }
   void resume(_friend<Cluster>) {
