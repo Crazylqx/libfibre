@@ -278,15 +278,21 @@ struct PollerStats : public Base {
 };
 
 struct IOUringStats : public Base {
+  Distribution attempts;
+  Distribution submits;
   Distribution eventsB;
   Distribution eventsNB;
   IOUringStats(cptr_t o, cptr_t p, const char* n = "IOUring") : Base(o, p, n, 1) {}
   void print(ostream& os) const;
   void aggregate(const IOUringStats& x) {
+    attempts.aggregate(x.attempts);
+    submits.aggregate(x.submits);
     eventsB.aggregate(x.eventsB);
     eventsNB.aggregate(x.eventsNB);
   }
   virtual void reset() {
+    attempts.reset();
+    submits.reset();
     eventsB.reset();
     eventsNB.reset();
   }

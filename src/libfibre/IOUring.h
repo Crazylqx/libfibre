@@ -32,9 +32,10 @@ typedef __u64 UringOffsetType; // liburing version 2.1 and higher
 class IOUring {
   int haltFD;
   struct io_uring ring;
+  size_t sqe_count;
+  static const int BatchSize = 64;
   static const int NumEntries = 4096;
-  static const int MaxCQE = 1024;
-  struct io_uring_cqe* cqe[MaxCQE];
+  struct io_uring_cqe* cqe[NumEntries];
 
   FredStats::IOUringStats* stats;
 
@@ -48,6 +49,7 @@ class IOUring {
 
   template<PollType PT>
   size_t internalPoll() {
+    if (sqe_count > 0) submitRing();
     size_t resume = 0;
     size_t evcnt = 0;
     if (PT == Suspend) {
@@ -55,7 +57,7 @@ class IOUring {
       processCQE(cqe[0], evcnt, resume);
       io_uring_cq_advance(&ring, 1);
     }
-    size_t cnt = io_uring_peek_batch_cqe(&ring, cqe, MaxCQE);
+    size_t cnt = io_uring_peek_batch_cqe(&ring, cqe, NumEntries);
     for (size_t idx = 0; idx < cnt; idx += 1) processCQE(cqe[idx], evcnt, resume);
     io_uring_cq_advance(&ring, cnt);
     if (PT == Suspend) stats->eventsB.count(evcnt);
@@ -63,17 +65,32 @@ class IOUring {
     return (PT == Poll) ? evcnt : resume;
   }
 
+  bool submitRing() {
+    stats->attempts.count(sqe_count);
+    int submitted = TRY_SYSCALL_GE(io_uring_submit(&ring), 1, EBUSY);
+    if (submitted < 0) return false;
+    stats->submits.count(submitted);
+    sqe_count -= submitted;
+    return true;
+  }
+
   template<class... Args>
   void submit(Block* b, void (*prepfunc)(struct io_uring_sqe *sqe, Args...), Args... a) {
-    struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
-    RASSERT0(sqe);
+    struct io_uring_sqe* sqe;
+    for (;;) {
+      sqe = io_uring_get_sqe(&ring);
+      if (sqe) break;
+      if (!submitRing()) internalPoll<Poll>();
+    }
+    sqe_count += 1;
     prepfunc(sqe, a...);
     io_uring_sqe_set_data(sqe, b);
-    SYSCALL_EQ(io_uring_submit(&ring), 1);
+    if (sqe_count < BatchSize) return;
+    if (!submitRing()) internalPoll<Poll>();
   }
 
 public:
-  IOUring(cptr_t parent, const char* n) {
+  IOUring(cptr_t parent, const char* n) : sqe_count(0) {
     stats = new FredStats::IOUringStats(this, parent, n);
     haltFD = SYSCALLIO(eventfd(0, EFD_CLOEXEC));
     struct io_uring_params p;

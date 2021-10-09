@@ -133,7 +133,7 @@ void PollerStats::print(ostream& os) const {
 void IOUringStats::print(ostream& os) const {
   if (totalIOUringStats && this != totalIOUringStats) totalIOUringStats->aggregate(*this);
   Base::print(os);
-  os << " eventsB:" << eventsB << " eventsNB:" << eventsNB;
+  os << " attempts:" << attempts << " submits:" << submits << " eventsB:" << eventsB << " eventsNB:" << eventsNB;
 }
 
 void TimerStats::print(ostream& os) const {
