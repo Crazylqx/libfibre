@@ -557,6 +557,42 @@ public:
 
 /****************************** (Almost-)Lock-Free Synchronization ******************************/
 
+// state: 0-clear, 1-event, PTR-fibre
+class AtomicSync {
+  Fred* state;
+  static const uintptr_t Clear = 0;
+  static const uintptr_t Event = 1;
+public:
+  AtomicSync() : state((Fred*)Clear) {}
+  bool check() const { return state <= (Fred*)Event; }
+  void reset() { RASSERT(check(), state); state = (Fred*)Clear; }
+
+  bool tryP() {
+    Fred* exp = (Fred*)Event;
+    return __atomic_compare_exchange_n(&state, &exp, (Fred*)Clear, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+  }
+
+  void P(Fred* f = Context::CurrFred()) {
+    Fred* exp = (Fred*)Clear;
+    if (__atomic_compare_exchange_n(&state, &exp, f, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+      Suspender::suspend(*f);
+    } else {
+      RASSERT(state == (Fred*)Event, FmtHex(state));
+      state = (Fred*)Clear;
+    }
+  }
+
+  template<bool Enqueue = true>
+  Fred* V() {
+    Fred* exp = (Fred*)Clear;
+    if (__atomic_compare_exchange_n(&state, &exp, (Fred*)Event, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return nullptr;
+    if (exp == (Fred*)Event) return nullptr;
+    state = (Fred*)Clear;
+    if (Enqueue) exp->resume();
+    return exp;
+  }
+};
+
 template<typename Lock = DummyLock, int SpinStart = 1, int SpinEnd = 128>
 class LimitedSemaphore0 {
   Lock lock;

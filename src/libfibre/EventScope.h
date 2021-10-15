@@ -45,15 +45,12 @@ class EventScope {
   // A vector for FDs works well here in principle, because POSIX guarantees lowest-numbered FDs:
   // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
   // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
-  typedef LockedSemaphore<WorkerLock,true> SyncSem;
   struct SyncFD {
-    SyncSem     iSem;
-    SyncSem     oSem;
-    BasePoller* iPoller;
-    BasePoller* oPoller;
+    AtomicSync  sync[2];
+    BasePoller* poller[2];
     bool        blocking;
     bool        useUring;
-    SyncFD() : iPoller(nullptr), oPoller(nullptr), blocking(false), useUring(false) {}
+    SyncFD() : poller{nullptr,nullptr}, blocking(false), useUring(false) {}
   } *fdSyncVector;
 
   int fdCount;
@@ -122,10 +119,10 @@ class EventScope {
   void cleanupFD(int fd) {
     RASSERT0(fd >= 0 && fd < fdCount);
     SyncFD& fdsync = fdSyncVector[fd];
-    fdsync.iSem.reset(0);
-    fdsync.oSem.reset(0);
-    fdsync.iPoller = nullptr;
-    fdsync.oPoller = nullptr;
+    fdsync.sync[false].reset();
+    fdsync.sync[true].reset();
+    fdsync.poller[false] = nullptr;
+    fdsync.poller[true] = nullptr;
     fdsync.blocking = false;
     fdsync.useUring = false;
   }
@@ -168,8 +165,7 @@ class EventScope {
     SyncFD& fdsync = fdSyncVector[fd];
     if (Yield) Fibre::yield();
     if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
-    SyncSem& sem = Input ? fdsync.iSem : fdsync.oSem;
-    BasePoller*& poller = Input ? fdsync.iPoller : fdsync.oPoller;
+    BasePoller*& poller = fdsync.poller[Input];
     if (!poller) {
       poller = &getPoller<Input,Cluster>(fd);
 #if TESTING_ONESHOT_REGISTRATION
@@ -181,7 +177,7 @@ class EventScope {
 #endif
     }
     for (;;) {
-      sem.P();
+      fdsync.sync[Input].P();
       if (tryIO<Input>( ret, iofunc, fd, a...)) return ret;
 #if TESTING_ONESHOT_REGISTRATION
       poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
@@ -191,9 +187,9 @@ class EventScope {
 
   int checkAsyncCompletion(int fd) {
     SyncFD& fdsync = fdSyncVector[fd];
-    fdsync.oPoller = &getPoller<false,false>(fd);
-    fdsync.oPoller->setupFD(fd, Poller::Create, Poller::Output, Poller::Oneshot); // register immediately
-    fdsync.oSem.P();                                                              // wait for completion
+    fdsync.poller[false] = &getPoller<false,false>(fd);
+    fdsync.poller[false]->setupFD(fd, Poller::Create, Poller::Output, Poller::Oneshot); // register immediately
+    fdsync.sync[false].P();                                                             // wait for completion
     int err;
     socklen_t sz = sizeof(err);
     SYSCALL(getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &sz));
@@ -249,8 +245,8 @@ public:
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
     mainCluster->postFork1(this, _friend<EventScope>());
     for (int f = 0; f < fdCount; f += 1) {
-      RASSERT(fdSyncVector[f].iSem.getValue() >= 0, f);
-      RASSERT(fdSyncVector[f].oSem.getValue() >= 0, f);
+      RASSERT(fdSyncVector[f].sync[false].check(), f);
+      RASSERT(fdSyncVector[f].sync[true].check(), f);
     }
     mainCluster->postFork2(_friend<EventScope>());
   }
@@ -278,14 +274,13 @@ public:
 
   bool tryblock(int fd, _friend<MasterPoller>) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    return fdSyncVector[fd].iSem.tryP();
+    return fdSyncVector[fd].sync[true].tryP();
   }
 
   template<bool Input, bool Enqueue = true>
   Fred* unblock(int fd, _friend<BasePoller>) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    SyncSem& sem = Input ? fdSyncVector[fd].iSem : fdSyncVector[fd].oSem;
-    return sem.V<Enqueue>();
+    return fdSyncVector[fd].sync[Input].V<Enqueue>();
   }
 
   void registerPollFD(int fd, _friend<PollerFibre>) {
@@ -296,12 +291,12 @@ public:
   void blockPollFD(int fd, _friend<PollerFibre>) {
     RASSERT0(fd >= 0 && fd < fdCount);
     masterPoller->setupFD(fd, Poller::Modify, Poller::Input, Poller::Oneshot);
-    fdSyncVector[fd].iSem.P();
+    fdSyncVector[fd].sync[true].P();
   }
 
   void unblockPollFD(int fd, _friend<PollerFibre>) {
     RASSERT0(fd >= 0 && fd < fdCount);
-    fdSyncVector[fd].iSem.V();
+    fdSyncVector[fd].sync[true].V();
   }
 
   template<typename T, class... Args>
