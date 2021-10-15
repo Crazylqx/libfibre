@@ -290,6 +290,13 @@ public:
     return fdSyncVector[fd].sync[true].tryP();
   }
 
+#if TESTING_WORKER_POLLER
+  bool tryblock(int fd, _friend<WorkerPoller>) {
+    RASSERT0(fd >= 0 && fd < fdCount);
+    return fdSyncVector[fd].sync[true].tryP();
+  }
+#endif
+
   template<bool Input, bool Enqueue = true>
   Fred* unblock(int fd, _friend<BasePoller>) {
     RASSERT0(fd >= 0 && fd < fdCount);

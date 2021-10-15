@@ -46,7 +46,7 @@ void installFake(EventScope* es, _friend<BaseThreadPoller>) {
 
 } // namespace Context
 
-#if TESTING_IO_URING
+#if TESTING_IO_URING || TESTING_WORKER_POLLER
 bool RuntimeWorkerPoll(BaseProcessor& proc) {
   return Cluster::pollWorker(proc);
 }
@@ -74,8 +74,7 @@ inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
   worker->iouring = new IOUring(worker, "W-IOUring ");
 #endif
 #if TESTING_WORKER_POLLER
-  worker->workerPoller = new PollerFibre(scope, *worker, worker, "W-Poller  ", _friend<Cluster>(), false);
-  worker->workerPoller->start();
+  worker->workerPoller = new WorkerPoller(scope, worker, "W-Poller  ");
 #endif
 }
 
@@ -119,16 +118,12 @@ void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
   new (CurrWorker().iouring) IOUring(&CurrWorker(), "W-IOUring ");
 #endif
 #if TESTING_WORKER_POLLER
-  CurrWorker().workerPoller->~PollerFibre();
-  new (CurrWorker().workerPoller) PollerFibre(Context::CurrEventScope(), CurrWorker(), &CurrWorker(), "W-Poller  ", _friend<Cluster>(), false);
+  new (CurrWorker().workerPoller) WorkerPoller(Context::CurrEventScope(), &CurrWorker(), "W-Poller  ");
 #endif
 }
 
 void Cluster::postFork2(_friend<EventScope>) {
   start();
-#if TESTING_WORKER_POLLER
-  CurrWorker().workerPoller->start();
-#endif
 }
 
 Fibre* Cluster::registerWorker(_friend<EventScope>) {

@@ -19,6 +19,7 @@
 
 template<bool Blocking>
 inline int BasePoller::doPoll() {
+  stats->blocks.count(Blocking);
 #if __FreeBSD__
   static const timespec ts = Time::zero();
   int evcnt = kevent(pollFD, nullptr, 0, events, MaxPoll, Blocking ? nullptr : &ts);
@@ -27,6 +28,8 @@ inline int BasePoller::doPoll() {
 #endif
   if (evcnt < 0) { RASSERT(_SysErrno() == EINTR, _SysErrno()); evcnt = 0; } // gracefully handle EINTR
   DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " got ", evcnt, " events from ", pollFD);
+  if (evcnt == 0) stats->empty.count();
+  else (Blocking ? stats->eventsB : stats->eventsNB).count(evcnt);
   return evcnt;
 }
 
@@ -53,6 +56,32 @@ inline void BasePoller::notifyAll(int evcnt) {
   for (int e = 0; e < evcnt; e += 1) notifyOne(events[e]);
 }
 
+#if TESTING_WORKER_POLLER
+template<WorkerPoller::PollType PT>
+size_t WorkerPoller::internalPoll() {
+  int evcnt = (PT == Suspend) ? doPoll<true>() : doPoll<false>();
+  notifyAll(evcnt);
+  if (PT == Poll) return evcnt;
+  if (!eventScope.tryblock(haltFD, _friend<WorkerPoller>())) return 0;
+  uint64_t count;
+  SYSCALLIO(read(haltFD, (void*)&count, (unsigned)sizeof(count)));
+  RASSERT(count == 1, count);
+  return 1;
+}
+
+size_t WorkerPoller::poll(_friend<Cluster>) {
+  return internalPoll<Poll>();
+}
+
+size_t WorkerPoller::trySuspend(_friend<Cluster>) {
+  return internalPoll<Try>();
+}
+
+void WorkerPoller::suspend(_friend<Cluster>) {
+  while (internalPoll<Suspend>() == 0);
+}
+#endif
+
 inline void PollerFibre::pollLoop() {
 #if TESTING_POLLER_FIBRE_SPIN
   static const size_t SpinMax = TESTING_POLLER_FIBRE_SPIN;
@@ -63,16 +92,13 @@ inline void PollerFibre::pollLoop() {
   while (!pollTerminate) {
     int evcnt = doPoll<false>();
     if fastpath(evcnt > 0) {
-      stats->eventsNB.count(evcnt);
       notifyAll(evcnt);
       Fibre::yieldGlobal();
       spin = 1;
     } else if (spin >= SpinMax) {
-      stats->blocks.count();
       eventScope.blockPollFD(pollFD, _friend<PollerFibre>());
       spin = 1;
     } else {
-      stats->empty.count();
       Fibre::yieldGlobal();
       spin += 1;
     }
@@ -109,12 +135,8 @@ inline void BaseThreadPoller::pollLoop(T& This) {
   Context::installFake(&This.eventScope, _friend<BaseThreadPoller>());
   while (!This.pollTerminate) {
     This.prePoll(_friend<BaseThreadPoller>());
-    This.stats->blocks.count();
     int evcnt = This.template doPoll<true>();
-    if (evcnt > 0) {
-      This.stats->eventsB.count(evcnt);
-      This.notifyAll(evcnt);
-    }
+    This.notifyAll(evcnt);
   }
 }
 
@@ -129,7 +151,7 @@ void BaseThreadPoller::terminate(_friend<EventScope>) {
   DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD);
   SYSCALL(pthread_join(pollThread, nullptr));
 #else // __linux__ below
-  int waker = SYSCALLIO(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)); // binary semaphore semantics w/o EFD_SEMAPHORE
+  int waker = SYSCALLIO(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
   setupFD(waker, Create, Input, Oneshot);
   uint64_t val = 1;
   val = SYSCALL_EQ(write(waker, &val, sizeof(val)), sizeof(val));

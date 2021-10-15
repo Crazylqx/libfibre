@@ -21,7 +21,7 @@
 
 class BaseProcessor;
 
-#if TESTING_IO_URING
+#if TESTING_IO_URING || TESTING_WORKER_POLLER
 
 extern bool RuntimeWorkerPoll(BaseProcessor&);
 extern bool RuntimeWorkerTrySuspend(BaseProcessor&);

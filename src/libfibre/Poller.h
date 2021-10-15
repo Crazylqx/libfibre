@@ -101,6 +101,27 @@ public:
   }
 };
 
+#if TESTING_WORKER_POLLER
+class WorkerPoller : public BasePoller {
+  int haltFD;
+  enum PollType : size_t { Poll, Suspend, Try };
+  template<PollType PT> inline size_t internalPoll();
+public:
+  WorkerPoller(EventScope& es, cptr_t parent, const char* n = "W-Poller  ") : BasePoller(es, parent, n) {
+    haltFD = SYSCALLIO(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
+    setupFD(haltFD, Poller::Create, Poller::Input, Poller::Level);
+  }
+  ~WorkerPoller() { SYSCALL(close(haltFD)); }
+  size_t poll(_friend<Cluster>);
+  size_t trySuspend(_friend<Cluster>);
+  void suspend(_friend<Cluster>);
+  void resume(_friend<Cluster>) {
+    uint64_t val = 1;
+    SYSCALL_EQ(write(haltFD, &val, sizeof(val)), sizeof(val));
+  }
+};
+#endif
+
 class PollerFibre : public BasePoller {
   Fibre* pollFibre;
   inline void pollLoop();
@@ -156,7 +177,7 @@ public:
 #else
     (void)fdCount;
     timerFD = SYSCALLIO(timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC));
-    setupFD(timerFD, Create, Input, Edge);
+    setupFD(timerFD, Create, Input, Level);
 #endif
   }
 

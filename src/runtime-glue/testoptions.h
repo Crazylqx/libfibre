@@ -18,6 +18,10 @@
 
 /******************************** sanity checks ********************************/
 
+#if TESTING_WORKER_POLLER && TESTING_IO_URING
+  #error TESTING_WORKER_POLLER and TESTING_IO_URING cannot be combined
+#endif
+
 #if !TESTING_LOADBALANCING && TESTING_CLUSTER_POLLER_FIBRE
   #error TESTING_CLUSTER_POLLER_FIBRE requires TESTING_LOADBALANCING
 #endif

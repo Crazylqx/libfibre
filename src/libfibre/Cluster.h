@@ -61,7 +61,7 @@ class Cluster : public Scheduler {
     IOUring*     iouring;
 #endif
 #if TESTING_WORKER_POLLER
-    PollerFibre* workerPoller;
+    WorkerPoller* workerPoller;
 #endif
 #ifdef SPLIT_STACK
     char         sigStack[SIGSTKSZ];
@@ -151,6 +151,19 @@ public:
 #if TESTING_WORKER_POLLER
   static BasePoller& getWorkerPoller(BaseProcessor& proc) {
     return *reinterpret_cast<Worker&>(proc).workerPoller;
+  }
+
+  static bool pollWorker(BaseProcessor& proc) {
+    return reinterpret_cast<Worker&>(proc).workerPoller->poll(_friend<Cluster>());
+  }
+  static bool trySuspendWorker(BaseProcessor& proc) {
+    return reinterpret_cast<Worker&>(proc).workerPoller->trySuspend(_friend<Cluster>());
+  }
+  static void suspendWorker(BaseProcessor& proc) {
+    reinterpret_cast<Worker&>(proc).workerPoller->suspend(_friend<Cluster>());
+  }
+  static void resumeWorker(BaseProcessor& proc) {
+    reinterpret_cast<Worker&>(proc).workerPoller->resume(_friend<Cluster>());
   }
 #endif
 
