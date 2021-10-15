@@ -162,13 +162,25 @@ class EventScope {
   template<bool Input, bool Yield, bool Cluster, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
     T ret;
-    SyncFD& fdsync = fdSyncVector[fd];
-    if (Yield) Fibre::yield();
-    if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
-    BasePoller*& poller = fdsync.poller[Input];
+    AtomicSync& sync = fdSyncVector[fd].sync[Input];
+    BasePoller*& poller = fdSyncVector[fd].poller[Input];
+#if TESTING_EVENTPOLL_LEVEL
+    if (!Yield) if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
     if (!poller) {
       poller = &getPoller<Input,Cluster>(fd);
-#if TESTING_ONESHOT_REGISTRATION
+      poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Yield ? Poller::Level : Poller::Edge);
+    }
+    for (;;) {
+      if (Yield) sync.wait();
+      else sync.P();
+      if (tryIO<Input>( ret, iofunc, fd, a...)) return ret;
+    }
+#else /* TESTING_EVENTPOLL_LEVEL */
+    if (Yield) Fibre::yield();
+    if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
+    if (!poller) {
+      poller = &getPoller<Input,Cluster>(fd);
+#if TESTING_EVENTPOLL_ONESHOT
       poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
     } else {
       poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
@@ -177,12 +189,13 @@ class EventScope {
 #endif
     }
     for (;;) {
-      fdsync.sync[Input].P();
+      sync.P();
       if (tryIO<Input>( ret, iofunc, fd, a...)) return ret;
-#if TESTING_ONESHOT_REGISTRATION
+#if TESTING_EVENTPOLL_ONESHOT
       poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
 #endif
     }
+#endif /* TESTING_EVENTPOLL_LEVEL */
   }
 
   int checkAsyncCompletion(int fd) {

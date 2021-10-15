@@ -3,7 +3,8 @@
 //#define TESTING_WORKER_POLLER         1 // poll events directly from each worker
 #define TESTING_CLUSTER_POLLER_FIBRE  1 // per-cluster poller(s): fibre vs. pthread
 #define TESTING_CLUSTER_POLLER_FLOAT  1 // per-cluster poller fibres(s): float vs. background
-#define TESTING_ONESHOT_REGISTRATION  1 // use oneshot event polling
+#define TESTING_EVENTPOLL_ONESHOT     1 // use oneshot event polling
+//#define TESTING_EVENTPOLL_LEVEL       1 // use level-trigger event polling
 //#define TESTING_POLLER_FIBRE_SPIN 65536 // poller fibre: spin loop of NB polls
 
 //#define TESTING_IO_URING              1 // process io_uring asynchronous events during idle loop (Linux only)

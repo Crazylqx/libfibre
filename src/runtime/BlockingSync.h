@@ -567,6 +567,11 @@ public:
   bool check() const { return state <= (Fred*)Event; }
   void reset() { RASSERT(check(), state); state = (Fred*)Clear; }
 
+  void wait(Fred* f = Context::CurrFred()) {
+    state = f;
+    Suspender::suspend(*f);
+  }
+
   bool tryP() {
     Fred* exp = (Fred*)Event;
     return __atomic_compare_exchange_n(&state, &exp, (Fred*)Clear, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
