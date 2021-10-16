@@ -31,6 +31,7 @@ typedef __u64 UringOffsetType; // liburing version 2.1 and higher
 
 class IOUring {
   int haltFD;
+  uint64_t count;
   struct io_uring ring;
   size_t sqe_count;
   static const int BatchSize = 64;
@@ -46,6 +47,18 @@ class IOUring {
   };
 
   enum PollType : size_t { Poll, Suspend, Try };
+
+  void processCQE(struct io_uring_cqe* cqe, size_t& evcnt, size_t& resume) {
+    Block* b = (Block*)io_uring_cqe_get_data(cqe);
+    if (b) {
+      b->retcode = cqe->res;
+      b->fibre->resume();
+      evcnt += 1;
+    } else {
+      RASSERT(resume == 0, resume);
+      resume += 1;
+    }
+  }
 
   template<PollType PT>
   size_t internalPoll() {
@@ -97,36 +110,33 @@ public:
     memset(&p, 0, sizeof(p));
     SYSCALLIO(io_uring_queue_init_params(NumEntries, &ring, &p));
     DBG::outl(DBG::Level::Polling, "SQE: ", p.sq_entries, " CQE: ", p.cq_entries);
+    submit(nullptr, io_uring_prep_read, haltFD, (void*)&count, (unsigned)sizeof(count), (UringOffsetType)0);
   }
+
   ~IOUring() {
     io_uring_queue_exit(&ring);
     SYSCALL(close(haltFD));
   }
 
-  void processCQE(struct io_uring_cqe* cqe, size_t& evcnt, size_t& resume) {
-    Block* b = (Block*)io_uring_cqe_get_data(cqe);
-    if (b) {
-      b->retcode = cqe->res;
-      b->fibre->resume();
-      evcnt += 1;
-    } else {
-      RASSERT(resume == 0, resume);
-      resume += 1;
-    }
-  }
-
   size_t poll(_friend<Cluster>) {
     return internalPoll<Poll>();
   }
+
   size_t trySuspend(_friend<Cluster>) {
-    return internalPoll<Try>();
+    size_t ret = internalPoll<Try>();
+    if (ret) {
+      RASSERT(count == 1, count);
+      submit(nullptr, io_uring_prep_read, haltFD, (void*)&count, (unsigned)sizeof(count), (UringOffsetType)0);
+    }
+    return ret;
   }
+
   void suspend(_friend<Cluster>) {
-    uint64_t count;
-    submit(nullptr, io_uring_prep_read, haltFD, (void*)&count, (unsigned)sizeof(count), (UringOffsetType)0);
     while (internalPoll<Suspend>() == 0) {}
     RASSERT(count == 1, count);
+    submit(nullptr, io_uring_prep_read, haltFD, (void*)&count, (unsigned)sizeof(count), (UringOffsetType)0);
   }
+
   void resume(_friend<Cluster>) {
     uint64_t val = 1;
     SYSCALL_EQ(write(haltFD, &val, sizeof(val)), sizeof(val));
