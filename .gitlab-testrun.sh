@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
 [ $(id -u) -eq 0 ] && exec su -l kos -c "$0 $*"
 
+mkdir -p out
+
 if [ "$(uname -s)" = "FreeBSD" ]; then
 	MAKE=gmake
 	count=$(expr $(sysctl kern.smp.cpus|cut -c16- || echo 1) / 4)
 	[ $count -gt 0 ] || count=1
+	$HT && clcnt=$(expr $count \* 2) || clcnt=$(expr $count \* 3)
 	clbot=0
-	cltop=$(expr $count \* 2 - 1)
-	svmax=$(expr $count \* 4)
-	svlist=$(expr $count \* 2)
-	for ((c=$svlist+2;c<$svmax;c+=2)); do
+	cltop=$(expr $clcnt - 1)
+	svtop=$(expr $count \* 4 - 1)
+	svlist=$clcnt
+	$HT && inc=2 || inc=1
+	for ((c=$svlist+$inc;c<=$svtop;c+=$inc)); do
 		svlist=$svlist,$c
 	done
+	echo client cores: $clbot-$cltop;
 	echo server cores: $svlist
-	echo client cores: $clbot-$cltop
-	TASKSET_SERVER="cpuset -l $svlist time -p"
+	TASKSET_SERVER="cpuset -l $svlist"
 	TASKSET_CLIENT="cpuset -l $clbot-$cltop"
-	# pmc or pmcstat?
-	PERF_SERVER=""
+	PERF_SERVER="pmcstat -P uops_retired.total_cycles -t '^memcached$'"
 else
 	MAKE=make
 	count=$(expr $(nproc) / 4)
@@ -26,32 +29,64 @@ else
 	cltop1=$(expr $count - 1)
 	clbot2=$(expr $count \* 2)
 	cltop2=$(expr $count \* 3 - 1)
-	svbot=$count
-	svtop=$(expr $count \* 2 - 1)
+	svbot=$(expr $count \* 3)
+	svtop=$(expr $count \* 4 - 1)
+	$HT && clcnt=$(expr $count \* 2) || clcnt=$(expr $count \* 3)
+	$HT && cllst="$clbot1-$cltop1,$clbot2-$cltop2" || cllst="$clbot1-$cltop2"
 	echo server cores: $svbot-$svtop
-	echo client cores: $clbot1-$cltop1,$clbot2-$cltop2
+	echo client cores: $cllst
 	TASKSET_SERVER="taskset -c $svbot-$svtop"
-	TASKSET_CLIENT="taskset -c $clbot1-$cltop1,$clbot2-$cltop2"
-	PERF_SERVER="perf stat -p \$(pidof memcached)"
+	TASKSET_CLIENT="taskset -c $cllst"
 fi
 
 [ -f /usr/local/lib/liburing.so ] && LOCALURING=/usr/local/lib
 
+function error() {
+  echo " ERROR " $1
+  exit 1
+}
+
 function pre() {
-	[ "$1" = "skip" ] && return
-	$MAKE clean all || exit 1
-	[ "$1" = "memcached" ] || return
-	FPATH=$PWD
-	cd memcached; ./configure2.sh $FPATH $LOCALURING; cd -
-	$MAKE -C memcached all -j $count || exit 1
+	cp Makefile.config Makefile.config.orig
+	cp src/runtime/testoptions.h src/runtime/testoptions.h.orig
+	cp src/runtime-glue/testoptions.h src/runtime-glue/testoptions.h.orig
+}
+
+function compile() {
+	echo -n "CLEAN"
+  ($MAKE clean > out/clean.$2.out; $MAKE -C memcached-1.6.9 clean distclean; $MAKE -C vanilla clean distclean) > out/clean.$2.out 2>> out/clean.$2.err
+  echo -n " COMPILE"
+  case "$1" in
+  memcached)
+	  $MAKE all > out/make.$2.out || error
+		FPATH=$PWD
+		(cd memcached; ./configure2.sh $FPATH $LOCALURING; cd -) >> out/make.$2.out || error
+		$MAKE -C memcached all -j $count >> out/make.$2.out || error
+		;;
+	vanilla)
+		(cd vanilla; ./configure; cd -) > out/make.$2.out || error
+		$MAKE -C vanilla all -j $count >> out/make.$2.out || error
+		;;
+	skip)
+		;;
+	*)
+	  $MAKE all > out/make.$2.out || error
+	  ;;
+
+	esac
+	echo " DONE"
 }
 
 function post() {
-	[ "$1" = "memcached" ] && $MAKE -C memcached distclean
-	$MAKE clean
-	git checkout Makefile.config
-	git checkout src/runtime/testoptions.h
-	git checkout src/runtime-glue/testoptions.h
+	killall -9 threadtest > /dev/null 2> /dev/null
+	killall -9 stacktest > /dev/null 2> /dev/null
+	killall -9 memcached > /dev/null 2> /dev/null
+	$MAKE -C memcached clean distclean > /dev/null 2> /dev/null
+	$MAKE -C vanilla clean distclean > /dev/null 2> /dev/null
+	$MAKE clean > /dev/null 2> /dev/null
+	mv Makefile.config.orig Makefile.config > /dev/null 2> /dev/null
+	mv src/runtime/testoptions.h.orig src/runtime/testoptions.h > /dev/null 2> /dev/null
+	mv src/runtime-glue/testoptions.h.orig src/runtime-glue/testoptions.h > /dev/null 2> /dev/null
 }
 
 function run_skip() {
@@ -60,113 +95,191 @@ function run_skip() {
 
 function run_threadtest() {
 	c=$(expr $count \* 2)
-	FibrePrintStats=1 ./apps/threadtest -t $c -f $(expr $c \* $c) || exit 1
-	FibrePrintStats=1 ./apps/threadtest -t $c -f $(expr $c \* $c) -o 10000 -r -L T || exit 1
+	FibrePrintStats=1 timeout 30 ./apps/threadtest -t $c -f $(expr $c \* $c) || exit 1
+	FibrePrintStats=1 timeout 30 ./apps/threadtest -t $c -f $(expr $c \* $c) -o 10000 -r -L T || exit 1
 }
 
 function run_stacktest() {
-	[ "$(uname -s)" = "FreeBSD" ] && return
 	echo -n "STACKTEST: "
-	FibrePrintStats=1 apps/stacktest > stacktest.$1.out && echo SUCCESS || echo FAILURE
+	FibrePrintStats=1 timeout 30 apps/stacktest > out/stacktest.$1.out && echo SUCCESS || echo FAILURE
+}
+
+function run_memcached_one() {
+	e=$1
+	shift
+
+	cnt=0
+	while lsof -i :11211 > /dev/null; do
+		[ $cnt -ge 3 ] && error "memcached port not free"
+		cnt=$(expr $cnt + 1)
+		sleep 1
+	done
+
+  FibrePollerCount=4 FibreStatsSignal=0 FibrePrintStats=t $TASKSET_SERVER $prog \
+  -t $count -b 32768 -c 32768 -m 10240 -o hashpower=24 > out/memcached.$e.out & sleep 1
+
+  timeout 10 mutilate -s0 --loadonly -r 100000 -K fb_key -V fb_value || error
+  printf "RUN: %4s %5s %9s" $*
+
+	[ "$(uname -s)" = "FreeBSD" ] && {
+		RUN="$TASKSET_CLIENT"
+	} || {
+		RUN="$TASKSET_CLIENT perf stat -d --no-big-num -p $(pidof memcached) -o out/perf.$e.out"
+	}
+
+  $RUN timeout 30 \
+  mutilate -s0 --noload -r 100000 -K fb_key -V fb_value -i fb_ia -t10 -u0.1 -T$clcnt $* \
+  > out/mutilate.$e.out || error
+
+  (echo stats;sleep 1)|telnet localhost 11211 \
+  2> >(fgrep -v "Connection closed" 1>&2) \
+  |fgrep lru_maintainer_juggles > out/juggles.$e.out || error
+
+  killall memcached && sleep 1
+}
+
+function output_memcached() {
+  e=$1
+  shift
+  lline=$(fgrep read out/mutilate.$e.out)
+  lat=$(echo $lline|awk '{print $2}'|cut -f1 -d.)
+  lvr=$(echo $lline|awk '{print $3}'|cut -f1 -d.)
+  rline=$(fgrep rx out/mutilate.$e.out)
+  rat=$(echo $rline|awk '{print $2}'|cut -f1 -d.)
+  rvr=$(echo $rline|awk '{print $3}'|cut -f1 -d.)
+  qline=$(fgrep "QPS" out/mutilate.$e.out)
+  qps=$(echo $qline|awk '{print $4}'|cut -f1 -d.)
+  req=$(echo $qline|cut -f2 -d'('|awk '{print $1}')
+  jug=$(awk '{print $3}' out/juggles.$e.out)
+
+  printf " QPS: %7d RAT: %7d %7d LAT: %7d %7d" $qps $rat $rvr $lat $lvr
+
+	[ "$(uname -s)" = "FreeBSD" ] || {
+	  cyc=$(fgrep "cycles" out/perf.$e.out|fgrep -v stalled|awk '{print $1}')
+	  ins=$(fgrep "instructions" out/perf.$e.out|awk '{print $1}')
+	  llc=$(fgrep "LLC-load-misses" out/perf.$e.out|awk '{print $1}')
+	  cpu=$(fgrep "CPUs utilized" out/perf.$e.out|awk '{print $5}')
+
+		[ "$llc" = "<not" ] && llc=0
+
+	  printf " LLC: %6d INS: %6d CYC %6d CPU %7.3f" \
+	  $(expr $llc / $req) $(expr $ins / $req) $(expr $cyc / $req) $cpu
+  }
+
+  printf " jug: %6d\n" $jug
+}
+
+function run_memcached_all() {
+	e=$1
+  shift
+	for d in 01 64; do
+		for c in 025 500; do
+			[ $# -gt 0 ] && { q=$1; shift; } || q=0
+			run_memcached_one $e -d$d -c$c -q$q
+			output_memcached $e
+		done
+	done
 }
 
 function run_memcached() {
-	for ((i=0;i<3;i+=1)); do
-		FibrePrintStats=1 $TASKSET_SERVER memcached/memcached -t $count -b 16384 -c 32768 -m 10240 -o hashpower=24 &
-		sleep 3
-		mutilate -s0 -r 100000 -K fb_key -V fb_value --loadonly
-		echo LOADED
-		eval $PERF_SERVER $TASKSET_CLIENT timeout 30 \
-		mutilate -s0 -r 100000 -K fb_key -V fb_value --noload -i fb_ia -u0.5 -c25 -d1 -t10 -T$(expr $count \* 2)
-		result=$?
-		killall memcached
-		wait
-		[ $result -eq 0 ] || exit 1
-	done | tee memcached.$1.out
+	prog=memcached/memcached
+	run_memcached_all $*
+}
+
+function run_vanilla() {
+	prog=vanilla/memcached
+	run_memcached_all $*
 }
 
 function prep_0() {
-	echo threadtest
+	echo vanilla
 }
 
 function prep_1() {
+	echo threadtest
+}
+
+function prep_2() {
 	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
 	[ "$(uname -m)" = "aarch64" ] && echo skip && return
 	sed -i -e 's/DYNSTACK?=.*/DYNSTACK?=1/' Makefile.config
 	echo stacktest
 }
 
-function prep_2() {
-	echo memcached
-}
-
 function prep_3() {
-	sed -i -e 's/.* TESTING_WORKER_POLLER .*/#define TESTING_WORKER_POLLER 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
 function prep_4() {
-	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
 function prep_5() {
-	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FLOAT .*/#undef TESTING_CLUSTER_POLLER_FLOAT/' src/runtime-glue/testoptions.h
-	sed -i -e 's/.* TESTING_ONESHOT_REGISTRATION .*/#undef TESTING_ONESHOT_REGISTRATION/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_CLUSTER_POLLER_FLOAT .*/#undef TESTING_CLUSTER_POLLER_FLOAT/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_EVENTPOLL_ONESHOT .*/#undef TESTING_EVENTPOLL_ONESHOT/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
 function prep_6() {
-	sed -i -e 's/.* TESTING_WORKER_POLLER .*/#define TESTING_WORKER_POLLER 1/' src/runtime-glue/testoptions.h
-	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
-	sed -i -e 's/.* TESTING_ONESHOT_REGISTRATION .*/#define TESTING_ONESHOT_REGISTRATION 1/' src/runtime-glue/testoptions.h
+  [ "$(uname -s)" = "FreeBSD" ] && echo skip && return
+	sed -i -e 's/.*#define TESTING_WORKER_POLLER .*/#define TESTING_WORKER_POLLER 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_CLUSTER_POLLER_FLOAT .*/#undef TESTING_CLUSTER_POLLER_FLOAT/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_EVENTPOLL_ONESHOT .*/#undef TESTING_EVENTPOLL_ONESHOT/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_EVENTPOLL_LEVEL .*/#define TESTING_EVENTPOLL_LEVEL 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
 function prep_7() {
-	sed -i -e 's/.* TESTING_LOADBALANCING .*/#undef TESTING_LOADBALANCING/' src/runtime/testoptions.h
-	sed -i -e 's/.* TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_LOADBALANCING .*/#undef TESTING_LOADBALANCING/' src/runtime/testoptions.h
+	sed -i -e 's/.*#define TESTING_CLUSTER_POLLER_FIBRE .*/#undef TESTING_CLUSTER_POLLER_FIBRE/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
 function prep_8() {
-	sed -i -e 's/.* TESTING_IDLE_MANAGER .*/#undef TESTING_IDLE_MANAGER/' src/runtime/testoptions.h
-	sed -i -e 's/.* TESTING_DEFAULT_AFFINITY .*/#undef TESTING_DEFAULT_AFFINITY/' src/runtime/testoptions.h
+	sed -i -e 's/.*#define TESTING_IDLE_MANAGER .*/#undef TESTING_IDLE_MANAGER/' src/runtime/testoptions.h
+	sed -i -e 's/.*#define TESTING_DEFAULT_AFFINITY .*/#undef TESTING_DEFAULT_AFFINITY/' src/runtime/testoptions.h
 	echo memcached
 }
 
 function prep_9() {
-	sed -i -e 's/.* TESTING_STUB_QUEUE .*/#define TESTING_STUB_QUEUE 1/' src/runtime/testoptions.h
+	sed -i -e 's/.*#define TESTING_STUB_QUEUE .*/#define TESTING_STUB_QUEUE 1/' src/runtime/testoptions.h
 	echo memcached
 }
 
 function prep_10() {
 	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
 	[ ! -f /usr/include/liburing.h ] && [ ! -f /usr/local/include/liburing.h ] && echo skip && return
-	sed -i -e 's/.* TESTING_IO_URING .*/#define TESTING_IO_URING 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_IO_URING .*/#define TESTING_IO_URING 1/' src/runtime-glue/testoptions.h
 	echo memcached
 }
 
 function prep_11() {
 	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
 	[ ! -f /usr/include/liburing.h ] && [ ! -f /usr/local/include/liburing.h ] && echo skip && return
-	sed -i -e 's/.* TESTING_IO_URING .*/#define TESTING_IO_URING 1/' src/runtime-glue/testoptions.h
-	sed -i -e 's/.* TESTING_IO_URING_DEFAULT .*/#define TESTING_IO_URING_DEFAULT 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_IO_URING .*/#define TESTING_IO_URING 1/' src/runtime-glue/testoptions.h
+	sed -i -e 's/.*#define TESTING_IO_URING_DEFAULT .*/#define TESTING_IO_URING_DEFAULT 1/' src/runtime-glue/testoptions.h
 	echo memcached
+}
+
+function runexp() {
+	echo "========== RUNNING EXPERIMENT $1 =========="
+	pre
+  app=$(prep_$1)
+  compile $app $1
+  run_$app $*
+  post
 }
 
 emax=11
 
-if [ $# -gt 0 ] && [ "$1" != "-f" ]; then
+if [ $# -gt 0 ]; then
 	if [ $1 -lt 0 -o $1 -gt $emax ]; then
 		echo argument out of range
 		exit 1
 	fi
-	app=$(prep_$1)
-	pre $app
-	run_$app $1
-	$MAKE -C memcached distclean
-	$MAKE clean
+	trap post EXIT
+	runexp $*
 	exit 0
 fi
 
@@ -175,16 +288,9 @@ if [ "$(uname -s)" = "Linux" ]; then
 	$MAKE CC=clang clean || exit 1
 fi
 
-if [ $(git diff | wc -l) -ne 0 ] && [ "$1" != "-f" ]; then
-	echo "Uncommitted changes in repo; exiting..."
-	exit 1
-fi
-
-for ((e=0;e<=$emax;e+=1)); do
-	echo "========== RUNNING EXPERIMENT $e =========="
-	app=$(prep_$e)
-	pre $app
-	run_$app $e
-	post $app
+for ((e=1;e<=$emax;e+=1)); do
+	trap "killall -9 memcached > /dev/null 2> /dev/null" EXIT
+	runexp $e $*
 done
+
 exit 0
