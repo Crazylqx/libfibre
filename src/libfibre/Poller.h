@@ -17,8 +17,7 @@
 #ifndef _Poller_h_
 #define _Poller_h_ 1
 
-#include "runtime/Debug.h"
-#include "runtime/Stats.h"
+#include "runtime/BlockingSync.h"
 
 class BaseProcessor;
 class Cluster;
@@ -56,6 +55,9 @@ protected:
   static const int MaxPoll = 1024;
   EventType     events[MaxPoll];
   int           pollFD;
+#if __FreeBSD__
+  AtomicSync    userEvent;
+#endif
 
   EventScope&   eventScope;
   volatile bool pollTerminate;
@@ -103,21 +105,37 @@ public:
 
 #if TESTING_WORKER_POLLER
 class WorkerPoller : public BasePoller {
+#if __linux__
   int haltFD;
+#endif
   enum PollType : size_t { Poll, Suspend, Try };
   template<PollType PT> inline size_t internalPoll();
 public:
   WorkerPoller(EventScope& es, cptr_t parent, const char* n = "W-Poller  ") : BasePoller(es, parent, n) {
+#if __linux__
     haltFD = SYSCALLIO(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
     setupFD(haltFD, Poller::Create, Poller::Input, Poller::Level);
+#else
+    struct kevent ev;
+    EV_SET(&ev, 0, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, 0);
+    SYSCALL(kevent(pollFD, &ev, 1, nullptr, 0, nullptr));
+#endif
   }
+#if __linux__
   ~WorkerPoller() { SYSCALL(close(haltFD)); }
+#endif
   size_t poll(_friend<Cluster>);
   size_t trySuspend(_friend<Cluster>);
   void suspend(_friend<Cluster>);
   void resume(_friend<Cluster>) {
+#if __linux__
     uint64_t val = 1;
     SYSCALL_EQ(write(haltFD, &val, sizeof(val)), sizeof(val));
+#else
+    struct kevent ev;
+    EV_SET(&ev, 0, EVFILT_USER, EV_ENABLE, NOTE_TRIGGER, 0, 0);
+    SYSCALL(kevent(pollFD, &ev, 1, nullptr, 0, nullptr));
+#endif
   }
 };
 #endif

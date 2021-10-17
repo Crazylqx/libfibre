@@ -20,7 +20,7 @@ if [ "$(uname -s)" = "FreeBSD" ]; then
 	echo server cores: $svlist
 	TASKSET_SERVER="cpuset -l $svlist"
 	TASKSET_CLIENT="cpuset -l $clbot-$cltop"
-	PERF_SERVER="pmcstat -P uops_retired.total_cycles -t '^memcached$'"
+	TEST_MEMCACHED_PORT="sockstat -46l -p 11211"
 else
 	MAKE=make
 	count=$(expr $(nproc) / 4)
@@ -37,6 +37,7 @@ else
 	echo client cores: $cllst
 	TASKSET_SERVER="taskset -c $svbot-$svtop"
 	TASKSET_CLIENT="taskset -c $cllst"
+	TEST_MEMCACHED_PORT="lsof -i :11211"
 fi
 
 [ -f /usr/local/lib/liburing.so ] && LOCALURING=/usr/local/lib
@@ -61,11 +62,11 @@ function compile() {
 	  $MAKE all > out/make.$2.out || error
 		FPATH=$PWD
 		(cd memcached; ./configure2.sh $FPATH $LOCALURING; cd -) >> out/make.$2.out || error
-		$MAKE -C memcached all -j $count >> out/make.$2.out || error
+		$MAKE -C memcached -j $count all >> out/make.$2.out || error
 		;;
 	vanilla)
 		(cd vanilla; ./configure; cd -) > out/make.$2.out || error
-		$MAKE -C vanilla all -j $count >> out/make.$2.out || error
+		$MAKE -C vanilla -j $count all >> out/make.$2.out || error
 		;;
 	skip)
 		;;
@@ -109,7 +110,7 @@ function run_memcached_one() {
 	shift
 
 	cnt=0
-	while lsof -i :11211 > /dev/null; do
+	while $TEST_MEMCACHED_PORT | fgrep -q 11211 > /dev/null; do
 		[ $cnt -ge 3 ] && error "memcached port not free"
 		cnt=$(expr $cnt + 1)
 		sleep 1
@@ -122,7 +123,7 @@ function run_memcached_one() {
   printf "RUN: %4s %5s %9s" $*
 
 	[ "$(uname -s)" = "FreeBSD" ] && {
-		RUN="$TASKSET_CLIENT"
+		RUN="$TASKSET_CLIENT" # pmcstat -P uops_retired.total_cycles -t '^memcached$'
 	} || {
 		RUN="$TASKSET_CLIENT perf stat -d --no-big-num -p $(pidof memcached) -o out/perf.$e.out"
 	}
@@ -222,7 +223,6 @@ function prep_5() {
 }
 
 function prep_6() {
-  [ "$(uname -s)" = "FreeBSD" ] && echo skip && return
 	sed -i -e 's/.*#define TESTING_WORKER_POLLER .*/#define TESTING_WORKER_POLLER 1/' src/runtime-glue/testoptions.h
 	sed -i -e 's/.*#define TESTING_CLUSTER_POLLER_FLOAT .*/#undef TESTING_CLUSTER_POLLER_FLOAT/' src/runtime-glue/testoptions.h
 	sed -i -e 's/.*#define TESTING_EVENTPOLL_ONESHOT .*/#undef TESTING_EVENTPOLL_ONESHOT/' src/runtime-glue/testoptions.h

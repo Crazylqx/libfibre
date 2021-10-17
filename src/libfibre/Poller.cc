@@ -40,6 +40,8 @@ inline Fred* BasePoller::notifyOne(EventType& ev) {
     return eventScope.template unblock<true,Enqueue>(ev.ident, _friend<BasePoller>());
   } else if (ev.filter == EVFILT_WRITE) {
     return eventScope.template unblock<false,Enqueue>(ev.ident, _friend<BasePoller>());
+  } else if (ev.filter == EVFILT_USER) {
+    userEvent.V();
   }
 #else // __linux__ below
   if (ev.events & (EPOLLIN | EPOLLPRI | EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
@@ -62,10 +64,14 @@ size_t WorkerPoller::internalPoll() {
   int evcnt = (PT == Suspend) ? doPoll<true>() : doPoll<false>();
   notifyAll(evcnt);
   if (PT == Poll) return evcnt;
+#if __linux__
   if (!eventScope.tryblock(haltFD, _friend<WorkerPoller>())) return 0;
   uint64_t count;
   SYSCALLIO(read(haltFD, (void*)&count, (unsigned)sizeof(count)));
   RASSERT(count == 1, count);
+#else // __FreeBSD__ below
+  if (!userEvent.tryP()) return 0;
+#endif
   return 1;
 }
 
