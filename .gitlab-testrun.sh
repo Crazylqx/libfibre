@@ -1,46 +1,44 @@
 #!/usr/bin/env bash
-[ $(id -u) -eq 0 ] && exec su -l kos -c "$0 $*"
 
-mkdir -p out
+function init() {
+	mkdir -p out
+	[ -f /usr/local/lib/liburing.so ] && LOCALURING=/usr/local/lib
+	if [ "$(uname -s)" = "FreeBSD" ]; then
+		MAKE=gmake
+		count=$(expr $(sysctl kern.smp.cpus|cut -c16- || echo 1) / 4)
+		[ $count -gt 0 ] || count=1
+		$HT && clcnt=$(expr $count \* 2) || clcnt=$(expr $count \* 3)
+		clbot=0
+		cltop=$(expr $clcnt - 1)
+		svtop=$(expr $count \* 4 - 1)
+		svlist=$clcnt
+		$HT && inc=2 || inc=1
+		for ((c=$svlist+$inc;c<=$svtop;c+=$inc)); do
+			svlist=$svlist,$c
+		done
+		$quiet || echo cores - client: $clbot-$cltop server: $svlist
+		TASKSET_SERVER="cpuset -l $svlist"
+		TASKSET_CLIENT="cpuset -l $clbot-$cltop"
+		TEST_MEMCACHED_PORT="sockstat -46l -p 11211"
+	else
+		MAKE=make
+		count=$(expr $(nproc) / 4)
+		[ $count -gt 0 ] || count=1
+		clbot1=0
+		cltop1=$(expr $count - 1)
+		clbot2=$(expr $count \* 2)
+		cltop2=$(expr $count \* 3 - 1)
+		svbot=$(expr $count \* 3)
+		svtop=$(expr $count \* 4 - 1)
+		$HT && clcnt=$(expr $count \* 2) || clcnt=$(expr $count \* 3)
+		$HT && cllst="$clbot1-$cltop1,$clbot2-$cltop2" || cllst="$clbot1-$cltop2"
+		$quiet || echo cores - client: $cllst server: $svbot-$svtop
+		TASKSET_SERVER="taskset -c $svbot-$svtop"
+		TASKSET_CLIENT="taskset -c $cllst"
+		TEST_MEMCACHED_PORT="lsof -i :11211"
+	fi
+}
 
-if [ "$(uname -s)" = "FreeBSD" ]; then
-	MAKE=gmake
-	count=$(expr $(sysctl kern.smp.cpus|cut -c16- || echo 1) / 4)
-	[ $count -gt 0 ] || count=1
-	$HT && clcnt=$(expr $count \* 2) || clcnt=$(expr $count \* 3)
-	clbot=0
-	cltop=$(expr $clcnt - 1)
-	svtop=$(expr $count \* 4 - 1)
-	svlist=$clcnt
-	$HT && inc=2 || inc=1
-	for ((c=$svlist+$inc;c<=$svtop;c+=$inc)); do
-		svlist=$svlist,$c
-	done
-	echo client cores: $clbot-$cltop;
-	echo server cores: $svlist
-	TASKSET_SERVER="cpuset -l $svlist"
-	TASKSET_CLIENT="cpuset -l $clbot-$cltop"
-	TEST_MEMCACHED_PORT="sockstat -46l -p 11211"
-else
-	MAKE=make
-	count=$(expr $(nproc) / 4)
-	[ $count -gt 0 ] || count=1
-	clbot1=0
-	cltop1=$(expr $count - 1)
-	clbot2=$(expr $count \* 2)
-	cltop2=$(expr $count \* 3 - 1)
-	svbot=$(expr $count \* 3)
-	svtop=$(expr $count \* 4 - 1)
-	$HT && clcnt=$(expr $count \* 2) || clcnt=$(expr $count \* 3)
-	$HT && cllst="$clbot1-$cltop1,$clbot2-$cltop2" || cllst="$clbot1-$cltop2"
-	echo server cores: $svbot-$svtop
-	echo client cores: $cllst
-	TASKSET_SERVER="taskset -c $svbot-$svtop"
-	TASKSET_CLIENT="taskset -c $cllst"
-	TEST_MEMCACHED_PORT="lsof -i :11211"
-fi
-
-[ -f /usr/local/lib/liburing.so ] && LOCALURING=/usr/local/lib
 
 function error() {
   echo " ERROR " $1
@@ -48,7 +46,6 @@ function error() {
 }
 
 function pre() {
-	cp Makefile.config Makefile.config.orig
 	cp src/runtime/testoptions.h src/runtime/testoptions.h.orig
 	cp src/runtime-glue/testoptions.h src/runtime-glue/testoptions.h.orig
 }
@@ -58,6 +55,9 @@ function compile() {
   ($MAKE clean > out/clean.$2.out; $MAKE -C memcached-1.6.9 clean distclean; $MAKE -C vanilla clean distclean) > out/clean.$2.out 2>> out/clean.$2.err
   echo -n " COMPILE"
   case "$1" in
+  stacktest)
+		$MAKE DYNSTACK=1 all > out/make.$2.out || error
+		;;
   memcached)
 	  $MAKE all > out/make.$2.out || error
 		FPATH=$PWD
@@ -85,7 +85,6 @@ function post() {
 	$MAKE -C memcached clean distclean > /dev/null 2> /dev/null
 	$MAKE -C vanilla clean distclean > /dev/null 2> /dev/null
 	$MAKE clean > /dev/null 2> /dev/null
-	mv Makefile.config.orig Makefile.config > /dev/null 2> /dev/null
 	mv src/runtime/testoptions.h.orig src/runtime/testoptions.h > /dev/null 2> /dev/null
 	mv src/runtime-glue/testoptions.h.orig src/runtime-glue/testoptions.h > /dev/null 2> /dev/null
 }
@@ -153,21 +152,38 @@ function output_memcached() {
   req=$(echo $qline|cut -f2 -d'('|awk '{print $1}')
   jug=$(awk '{print $3}' out/juggles.$e.out)
 
-  printf " QPS: %7d RAT: %7d %7d LAT: %7d %7d" $qps $rat $rvr $lat $lvr
+	$precise && {
+		printf " QPS: %7d RAT: %7d %7d LAT: %7d %7d" \
+		$qps $rat $rvr $lat $lvr
+	} || {
+		printf " QPS: %4dK RAT: %4dK %4dK LAT: %4du %4du" \
+		$(expr $qps / 1000) $(expr $rat / 1000) $(expr $rvr / 1000) $(expr $lat / 1000) $(expr $lvr / 1000)
+	}
 
 	[ "$(uname -s)" = "FreeBSD" ] || {
 	  cyc=$(fgrep "cycles" out/perf.$e.out|fgrep -v stalled|awk '{print $1}')
 	  ins=$(fgrep "instructions" out/perf.$e.out|awk '{print $1}')
+	  l1c=$(fgrep "L1-dcache-load-misses" out/perf.$e.out|awk '{print $1}')
 	  llc=$(fgrep "LLC-load-misses" out/perf.$e.out|awk '{print $1}')
 	  cpu=$(fgrep "CPUs utilized" out/perf.$e.out|awk '{print $5}')
 
+		[ "$l1c" = "<not" ] && l1c=0
 		[ "$llc" = "<not" ] && llc=0
 
-	  printf " LLC: %6d INS: %6d CYC %6d CPU %7.3f" \
-	  $(expr $llc / $req) $(expr $ins / $req) $(expr $cyc / $req) $cpu
+	  $precise && {
+		  printf " L1C: %4d LLC: %4d INS: %6d CYC %6d CPU %7.3f" \
+		  $(expr $l1c / $req) $(expr $llc / $req) $(expr $ins / $req) $(expr $cyc / $req) $cpu
+	  } || {
+		  printf " L1C: %4d LLC: %4d INS: %3dK CYC %3dK CPU %7.3f" \
+		  $(expr $l1c / $req) $(expr $llc / $req) $(expr $ins / $req / 1000) $(expr $cyc / $req / 1000) $cpu
+	  }
   }
 
-  printf " jug: %6d\n" $jug
+  $precise && {
+	  printf " jug: %6d\n" $jug
+  } || {
+	  printf " jug: %3dK\n" $(expr $jug / 1000)
+	}
 }
 
 function run_memcached_all() {
@@ -203,7 +219,6 @@ function prep_1() {
 function prep_2() {
 	[ "$(uname -s)" = "FreeBSD" ] && echo skip && return
 	[ "$(uname -m)" = "aarch64" ] && echo skip && return
-	sed -i -e 's/DYNSTACK?=.*/DYNSTACK?=1/' Makefile.config
 	echo stacktest
 }
 
@@ -263,7 +278,7 @@ function prep_11() {
 }
 
 function runexp() {
-	echo "========== RUNNING EXPERIMENT $1 =========="
+	$quiet || echo "========== RUNNING EXPERIMENT $1 =========="
 	pre
   app=$(prep_$1)
   compile $app $1
@@ -272,6 +287,18 @@ function runexp() {
 }
 
 emax=11
+quiet=false
+precise=false
+
+while getopts "pq" option; do
+  case $option in
+	p) precise=true;;
+	q) quiet=true;;
+	esac
+done
+shift $(($OPTIND - 1))
+
+init
 
 if [ $# -gt 0 ]; then
 	if [ $1 -lt 0 -o $1 -gt $emax ]; then
