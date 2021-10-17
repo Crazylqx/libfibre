@@ -12,32 +12,36 @@ else
 NPROC=$(shell nproc || echo 1)
 endif
 ifeq ($(strip $(MAKEFLAGS)),)
-MAKEFLAGS=-j $(NPROC)
+MAKEFLAGS=-j $(NPROC) --no-print-directory
 endif
 
-.PHONY: all lib apps doc cleandoc clean vclean extra Makefile.local
+.PHONY: all lib apps doc gen diff cleandoc clean vclean extra Makefile.local
 
 all: apps
 
 lib:
-	+nice -10 $(MAKE) -C src all
+	@nice -10 $(MAKE) -C src all
 
 apps: lib
-	+nice -10 $(MAKE) -C apps all
+	@nice -10 $(MAKE) -C apps all
 
 doc:
-	+nice -10 $(MAKE) -C doc doc
+	@nice -10 $(MAKE) -C doc $@
+
+gen diff:
+	@nice -10 $(MAKE) -C src $@
 
 cleandoc:
-	+nice -10 $(MAKE) -C doc clean
+	@nice -10 $(MAKE) -C doc clean
 
 clean:
-	+nice -10 $(MAKE) -C src clean
-	+nice -10 $(MAKE) -C apps clean
+	@nice -10 $(MAKE) -C src $@
+	@nice -10 $(MAKE) -C apps $@
 
 vclean: cleandoc clean
+	@nice -10 $(MAKE) -C src $@
 
 extra: all
-	+nice -10 $(MAKE) -C apps extra
+	@nice -10 $(MAKE) -C apps $@
 
 -include Makefile.local # development/testing targets, not for release

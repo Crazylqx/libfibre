@@ -20,7 +20,7 @@
 #include "runtime/Scheduler.h"
 #include "libfibre/Fibre.h"
 #include "libfibre/Poller.h"
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
 #include "libfibre/IOUring.h"
 #endif
 
@@ -57,7 +57,7 @@ class Cluster : public Scheduler {
 
   struct Worker : public BaseProcessor {
     pthread_t    sysThreadId;
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     IOUring*     iouring;
 #endif
 #if TESTING_WORKER_POLLER
@@ -67,7 +67,7 @@ class Cluster : public Scheduler {
     char         sigStack[SIGSTKSZ];
 #endif
     Worker(Cluster& c) : BaseProcessor(c) {
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
       iouring = nullptr;
 #endif
 #if TESTING_WORKER_POLLER
@@ -129,7 +129,7 @@ public:
   void postFork1(cptr_t parent, _friend<EventScope>);
   void postFork2(_friend<EventScope>);
 
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
   static IOUring& getWorkerUring() {
     return *CurrWorker().iouring;
   }

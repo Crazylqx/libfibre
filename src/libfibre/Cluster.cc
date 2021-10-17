@@ -46,7 +46,7 @@ void installFake(EventScope* es, _friend<BaseThreadPoller>) {
 
 } // namespace Context
 
-#if TESTING_IO_URING || TESTING_WORKER_POLLER
+#if TESTING_WORKER_IO_URING || TESTING_WORKER_POLLER
 bool RuntimeWorkerPoll(BaseProcessor& proc) {
   return Cluster::pollWorker(proc);
 }
@@ -70,7 +70,7 @@ inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
 #endif
   worker->sysThreadId = pthread_self();
   Context::install(fibre, worker, this, &scope, _friend<Cluster>());
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
   worker->iouring = new IOUring(worker, "W-IOUring ");
 #endif
 #if TESTING_WORKER_POLLER
@@ -113,7 +113,7 @@ void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
     oPollVec[p].~PollerType();
     new (&oPollVec[p]) PollerType(scope, stagingProc, this, "O-Poller   ", _friend<Cluster>());
   }
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
   CurrWorker().iouring->~IOUring();
   new (CurrWorker().iouring) IOUring(&CurrWorker(), "W-IOUring ");
 #endif

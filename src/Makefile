@@ -1,6 +1,7 @@
 include ../Makefile.config
 SOURCEDIRS=runtime libfibre
 SOURCES=$(wildcard $(addsuffix /*.cc,$(SOURCEDIRS)))
+GENHEADERS=runtime/testoptions.h runtime-glue/testoptions.h
 OBJECTS=$(subst .cc,.o,$(notdir $(SOURCES)))
 CSOURCES=$(wildcard $(addsuffix /*.c,$(SOURCEDIRS))) errnoname/errnoname.c
 COBJECTS=$(subst .c,.o,$(notdir $(CSOURCES)))
@@ -19,9 +20,20 @@ vpath %.cc $(SOURCEDIRS)
 vpath %.c errnoname
 vpath %.S $(SOURCEDIRS)
 
-.PHONY: all clean
+.PHONY: all gen diff clean vclean
 
 all: $(LIBA) $(LIBSO)
+
+gen:
+	@rm -f $(GENHEADERS)
+	@$(MAKE) $(GENHEADERS)
+
+diff: $(GENHEADERS)
+ifeq ($(shell uname -s),FreeBSD)
+	@for f in $^; do diff $$f.default $$f; done; true
+else
+	@for f in $^; do diff -y -W 80 --suppress-common-lines $$f.default $$f; done; true
+endif
 
 $(LIBA): $(OBJECTS) $(COBJECTS) $(AOBJECTS)
 	$(AR) cr $@ $^
@@ -30,8 +42,11 @@ $(LIBA): $(OBJECTS) $(COBJECTS) $(AOBJECTS)
 $(LIBSO): $(OBJECTS) $(COBJECTS) $(AOBJECTS)
 	$(CXX) -shared -pthread $^ -o $@
 
+$(GENHEADERS): %: %.default
+	@cp $< $@
+
 # also creates dependencies
-$(OBJECTS): %.o: %.cc
+$(OBJECTS): %.o: %.cc $(GENHEADERS)
 	$(CXX) $(CXXFLAGS) -MMD -c $< -o $@
 
 $(COBJECTS): %.o: %.c
@@ -47,5 +62,8 @@ errnoname/errnoname.h:
 
 clean:
 	rm -f $(LIBA) $(LIBSO) $(OBJECTS) $(COBJECTS) $(AOBJECTS) $(DEPENDS)
+
+vclean: clean
+	rm -f $(GENHEADERS)
 
 -include $(DEPENDS)

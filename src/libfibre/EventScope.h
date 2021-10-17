@@ -350,14 +350,14 @@ public:
     return ret;
   }
 
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
   inline bool uring(int fd) { return fdSyncVector[fd].useUring; }
 #endif
 
   int bind(int fd, const sockaddr *addr, socklen_t addrlen) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::bind(fd, addr, addrlen);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) return ::bind(fd, addr, addrlen);
 #endif
     int ret = ::bind(fd, addr, addrlen);
@@ -375,7 +375,7 @@ public:
   int connect(int fd, const sockaddr *addr, socklen_t addrlen) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::connect(fd, addr, addrlen);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_connect, fd, addr, addrlen);
 #endif
     int ret = ::connect(fd, addr, addrlen);
@@ -394,7 +394,7 @@ public:
   int accept4(int fd, sockaddr *addr, socklen_t *addrlen, int flags) {
     RASSERT0(fd >= 0 && fd < fdCount);
     int ret;
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) {
       ret = fdSyncVector[fd].blocking
           ? Cluster::getWorkerUring().syncIO(io_uring_prep_accept, fd, addr, addrlen, flags)
@@ -445,7 +445,7 @@ public:
   int read(int fd, void *buf, size_t nbyte) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::read(fd, buf, nbyte);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_read, fd, buf, (unsigned)nbyte, (UringOffsetType)0);
 #endif
     return blockingInput(::read, fd, buf, nbyte);
@@ -454,7 +454,7 @@ public:
   int pread(int fd, void *buf, size_t nbyte, off_t offset) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::pread(fd, buf, nbyte, offset);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_read, fd, buf, (unsigned)nbyte, (UringOffsetType)offset);
 #endif
     return blockingInput(::pread, fd, buf, nbyte, offset);
@@ -463,7 +463,7 @@ public:
   int readv(int fd, const struct iovec *iovecs, int nr_vecs) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::readv(fd, iovecs, nr_vecs);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_readv, fd, iovecs, (unsigned)nr_vecs, (UringOffsetType)0);
 #endif
     return blockingInput(::readv, fd, iovecs, nr_vecs);
@@ -472,7 +472,7 @@ public:
   int preadv(int fd, const struct iovec *iovecs, int nr_vecs, off_t offset) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::preadv(fd, iovecs, nr_vecs, offset);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_readv, fd, iovecs, (unsigned)nr_vecs, (UringOffsetType)offset);
 #endif
     return blockingInput(::preadv, fd, iovecs, nr_vecs, offset);
@@ -481,7 +481,7 @@ public:
   int write(int fd, const void *buf, size_t nbyte) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::write(fd, buf, nbyte);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_write, fd, buf, (unsigned)nbyte, (UringOffsetType)0);
 #endif
     return blockingOutput(::write, fd, buf, nbyte);
@@ -490,7 +490,7 @@ public:
   int pwrite(int fd, const void *buf, size_t nbyte, off_t offset) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::pwrite(fd, buf, nbyte, offset);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_write, fd, buf, (unsigned)nbyte, (UringOffsetType)offset);
 #endif
     return blockingOutput(::pwrite, fd, buf, nbyte, offset);
@@ -499,7 +499,7 @@ public:
   int writev(int fd, const struct iovec *iovecs, int nr_vecs) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::writev(fd, iovecs, nr_vecs);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_writev, fd, iovecs, (unsigned)nr_vecs, (UringOffsetType)0);
 #endif
     return blockingOutput(::writev, fd, iovecs, nr_vecs);
@@ -508,7 +508,7 @@ public:
   int pwritev(int fd, const struct iovec *iovecs, int nr_vecs, off_t offset) {
     RASSERT0(fd >= 0 && fd < fdCount);
     if (!fdSyncVector[fd].blocking) return ::pwritev(fd, iovecs, nr_vecs, offset);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(fd)) return Cluster::getWorkerUring().syncIO(io_uring_prep_writev, fd, iovecs, (unsigned)nr_vecs, (UringOffsetType)offset);
 #endif
     return blockingOutput(::pwritev, fd, iovecs, nr_vecs, offset);
@@ -517,7 +517,7 @@ public:
   ssize_t sendmsg(int socket, const struct msghdr *message, int flags) {
     RASSERT0(socket >= 0 && socket < fdCount);
     if (!fdSyncVector[socket].blocking) return ::sendmsg(socket, message, flags);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_sendmsg, socket, message, (unsigned)flags);
 #endif
     return blockingOutput(::sendmsg, socket, message, flags);
@@ -526,7 +526,7 @@ public:
   ssize_t sendto(int socket, const void *message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len) {
     RASSERT0(socket >= 0 && socket < fdCount);
     if (!fdSyncVector[socket].blocking) return ::sendto(socket, message, length, flags, dest_addr, dest_len);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(socket)) {
       struct iovec iov = { .iov_base = (void*)message, .iov_len = length };
       const struct msghdr msg = { .msg_name = (struct sockaddr*)dest_addr, .msg_namelen = dest_len,
@@ -540,7 +540,7 @@ public:
   ssize_t send(int socket, const void *buffer, size_t length, int flags) {
     RASSERT0(socket >= 0 && socket < fdCount);
     if (!fdSyncVector[socket].blocking) return ::send(socket, buffer, length, flags);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_send, socket, buffer, length, flags);
 #endif
     return blockingOutput(::send, socket, buffer, length, flags);
@@ -549,7 +549,7 @@ public:
   ssize_t recvmsg(int socket, struct msghdr *message, int flags) {
     RASSERT0(socket >= 0 && socket < fdCount);
     if (!fdSyncVector[socket].blocking) return ::recvmsg(socket, message, flags);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_recvmsg, socket, message, (unsigned)flags);
 #endif
     return blockingInput(::recvmsg, socket, message, flags);
@@ -558,7 +558,7 @@ public:
   ssize_t recvfrom(int socket, void *restrict buffer, size_t length, int flags, struct sockaddr *restrict address, socklen_t *restrict address_len)  {
     RASSERT0(socket >= 0 && socket < fdCount);
     if (!fdSyncVector[socket].blocking) return ::recvfrom(socket, buffer, length, flags, address, address_len);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(socket)) {
       struct iovec iov = { .iov_base = buffer, .iov_len = length };
       struct msghdr msg = { .msg_name = address, .msg_namelen = address_len ? *address_len : 0,
@@ -574,7 +574,7 @@ public:
   ssize_t recv(int socket, void *buffer, size_t length, int flags) {
     RASSERT0(socket >= 0 && socket < fdCount);
     if (!fdSyncVector[socket].blocking) return ::recv(socket, buffer, length, flags);
-#if TESTING_IO_URING
+#if TESTING_WORKER_IO_URING
     if (uring(socket)) return Cluster::getWorkerUring().syncIO(io_uring_prep_recv, socket, buffer, length, flags);
 #endif
     return blockingInput(::recv, socket, buffer, length, flags);
@@ -599,7 +599,7 @@ inline T lfDirectIO( T (*diskfunc)(int, Args...), int fd, Args... a) {
   return Context::CurrEventScope().directIO(diskfunc, fd, a...);
 }
 
-#if TESTING_IO_URING && TESTING_IO_URING_DEFAULT
+#if TESTING_WORKER_IO_URING && TESTING_IO_URING_DEFAULT
 static const bool DefaultUring = true;
 #else
 static const bool DefaultUring = false;
