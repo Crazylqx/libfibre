@@ -1,5 +1,21 @@
 #!/usr/bin/env bash
 
+function error() {
+  echo " ERROR " $1
+  exit 1
+}
+
+function check() {
+	if [ "$(uname -s)" = "FreeBSD" ]; then
+		[ $(sysctl kern.ipc.somaxconn|awk '{print $2}') -lt 4096 ] && error "kern.ipc.somaxconn should be at least 4096"
+		[ $(ulimit -n) -lt 65536 ] && error "ulimit -n should be at least 65536"
+	else
+		[ $(sysctl net.core.somaxconn|awk '{print $3}') -lt 4096 ] && error "net.core.somaxconn should be at least 4096"
+		[ $(ulimit -n) -lt 65536 ] && error "ulimit -n should be at least 65536"
+		[ $(sysctl kernel.perf_event_paranoid|awk '{print $3}') -lt 1 ] || error "kernel.perf_event_paranoid should be less than 1"
+	fi
+}
+
 function init() {
 	mkdir -p out
 	[ -f /usr/local/lib/liburing.so ] && LOCALURING=/usr/local/lib
@@ -37,11 +53,6 @@ function init() {
 		TASKSET_CLIENT="taskset -c $cllst"
 		TEST_MEMCACHED_PORT="lsof -i :11211"
 	fi
-}
-
-function error() {
-  echo " ERROR " $1
-  exit 1
 }
 
 function clean() {
@@ -90,13 +101,16 @@ function run_skip() {
 
 function run_threadtest() {
 	c=$(expr $count \* 2)
-	FibrePrintStats=1 timeout 30 ./apps/threadtest -t $c -f $(expr $c \* $c) || error
-	FibrePrintStats=1 timeout 30 ./apps/threadtest -t $c -f $(expr $c \* $c) -o 10000 -r -L T || error
+	CMD="FibrePrintStats=1 timeout 30 ./apps/threadtest -t $c -f $(expr $c \* $c)"
+	$show && echo $CMD || eval $CMD || error
+	CMD="FibrePrintStats=1 timeout 30 ./apps/threadtest -t $c -f $(expr $c \* $c) -o 10000 -r -L T"
+	$show && echo $CMD || eval $CMD || error
 }
 
 function run_stacktest() {
-	echo -n "STACKTEST: "
-	FibrePrintStats=1 timeout 30 apps/stacktest > out/stacktest.$1.out && echo SUCCESS || echo FAILURE
+	$show || echo -n "STACKTEST: "
+	CMD="FibrePrintStats=1 timeout 30 apps/stacktest > out/stacktest.$1.out"
+	$show && echo $CMD || eval $CMD && echo SUCCESS || echo FAILURE
 }
 
 function run_memcached_one() {
@@ -106,28 +120,32 @@ function run_memcached_one() {
 		sleep 1
 	done
 
-  FibrePollerCount=$pcount FibreStatsSignal=0 FibrePrintStats=t $TASKSET_SERVER $prog \
-  -t $count -b 32768 -c 32768 -m 10240 -o hashpower=24 > out/memcached.$exp.$cnt.out & sleep 1
+  CMD="FibrePollerCount=$pcount FibreStatsSignal=0 FibrePrintStats=t $TASKSET_SERVER $prog \
+  -t $count -b 32768 -c 32768 -m 10240 -o hashpower=24"
+  $show && echo $CMD || (eval $CMD > out/memcached.$exp.$cnt.out & sleep 1)
 
 	q=$1
 	shift
-  timeout 10 mutilate -s0 --loadonly -r 100000 -K fb_key -V fb_value || error
-  printf "RUN: %4s %5s" $*
+  CMD="timeout 10 mutilate -s0 --loadonly -r 100000 -K fb_key -V fb_value"
+  $show && echo $CMD || eval $CMD || error
+  $show || printf "RUN: %4s %5s" $*
 
 	[ "$(uname -s)" = "FreeBSD" ] && {
 		RUN="$TASKSET_CLIENT" # pmcstat -P uops_retired.total_cycles -t '^memcached$'
 	} || {
-		RUN="$TASKSET_CLIENT perf stat -d --no-big-num -p $(pidof memcached) -o out/perf.$exp.$cnt.out"
+		RUN="$TASKSET_CLIENT perf stat -d --no-big-num -p \$(pidof memcached) -o out/perf.$exp.$cnt.out"
 	}
 
-  $RUN timeout 30 \
-  mutilate -s0 --noload -r 100000 -K fb_key -V fb_value -i fb_ia -t10 -u$update -T$clcnt -q$q $* \
-  > out/mutilate.$exp.$cnt.out || error
+  CMD="$RUN timeout 30 \
+  mutilate -s0 --noload -r 100000 -K fb_key -V fb_value -i fb_ia -t10 -u$update -T$clcnt -q$q $*"
+  $show && echo $CMD || (eval $CMD > out/mutilate.$exp.$cnt.out || error)
+
+	$show && return
 
   (echo stats;sleep 1)|telnet localhost 11211 \
   2> >(fgrep -v "Connection closed" 1>&2) > out/stats.$exp.$cnt.out
 
-  killall memcached && sleep 1
+  killall memcached && sleep 1 || error
 }
 
 function output_memcached() {
@@ -194,7 +212,7 @@ function run_memcached_all() {
 		for c in 025 500; do
 			[ $# -gt 0 ] && { q=$1; shift; } || q=0
 			run_memcached_one $q -d$d -c$c
-			output_memcached
+			$show || output_memcached
 			cnt=$(expr $cnt + 1)
 		done
 	done
@@ -295,16 +313,18 @@ function runexp() {
 		$quiet && echo -n " -q"
 		echo " -p$pcount -u$update"
 	)
-	$quiet || echo -n "$header "
+	$quiet || $show || echo -n "$header "
 	echo $header > out/config.$1.out
-	clean $1
+	$show || clean $1
   prep_$1
-  compile $app $1
+  $show || compile $app $1
   run_$app $*
   post
 }
 
 # "main routine" starts here
+
+check
 
 [ -z "$HT" ] && HT=true
 
@@ -313,13 +333,15 @@ emax=10
 exact=false
 pcount=0
 quiet=false
+show=false
 update=0.1
 
-while getopts "ep:qu:" option; do
+while getopts "ep:qsu:" option; do
   case $option in
 	e) exact=true;;
 	p) pcount="${OPTARG}";;
 	q) quiet=true;;
+	s) show=true;;
 	u) update="${OPTARG}";;
 	esac
 done

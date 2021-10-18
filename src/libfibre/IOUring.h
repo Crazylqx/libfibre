@@ -18,6 +18,7 @@
 #define _IOUring_h_ 1
 
 #include "runtime/BlockingSync.h"
+#include "libfibre/Fibre.h"
 
 #include <cstring>
 #include <liburing.h>
@@ -46,8 +47,6 @@ class IOUring {
     Block(Fibre* f) : fibre(f) {}
   };
 
-  enum PollType : size_t { Poll, Suspend, Try };
-
   void processCQE(struct io_uring_cqe* cqe, size_t& evcnt, size_t& resume) {
     Block* b = (Block*)io_uring_cqe_get_data(cqe);
     if (b) {
@@ -60,9 +59,11 @@ class IOUring {
     }
   }
 
+  enum PollType : size_t { Poll, Suspend, Try, Check };
+
   template<PollType PT>
   size_t internalPoll() {
-    if (sqe_count > 0) submitRing();
+    if (PT != Check && sqe_count > 0) submitRing();
     size_t resume = 0;
     size_t evcnt = 0;
     if (PT == Suspend) {
@@ -80,7 +81,7 @@ class IOUring {
 
   bool submitRing() {
     stats->attempts.count(sqe_count);
-    int submitted = TRY_SYSCALL_GE(io_uring_submit(&ring), 1, EBUSY);
+    int submitted = TRY_SYSCALL_GE2(io_uring_submit(&ring), 1, EBUSY, EAGAIN);
     if (submitted < 0) return false;
     stats->submits.count(submitted);
     sqe_count -= submitted;
@@ -93,13 +94,13 @@ class IOUring {
     for (;;) {
       sqe = io_uring_get_sqe(&ring);
       if (sqe) break;
-      if (!submitRing()) internalPoll<Poll>();
+      if (!submitRing()) internalPoll<Check>();
     }
     sqe_count += 1;
     prepfunc(sqe, a...);
     io_uring_sqe_set_data(sqe, b);
     if (sqe_count < BatchSize) return;
-    if (!submitRing()) internalPoll<Poll>();
+    while (!submitRing()) internalPoll<Check>();
   }
 
 public:
@@ -149,7 +150,7 @@ public:
     submit(&b, prepfunc, a...);
     Suspender::suspend<false>(*b.fibre);
     int ret = (volatile int)b.retcode; // uring conveys errno via result code
-    if (ret < 0 && _SysErrno() == 0) _SysErrnoSet() = -ret;
+    if (ret < 0) _SysErrnoSet() = -ret;
     return ret;
   }
 };

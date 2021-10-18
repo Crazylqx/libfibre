@@ -173,6 +173,8 @@ class EventScope {
 #if TESTING_IO_TRYFIRST
     if (Yield) Fibre::yield();
     if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
+#else
+    if (!Input && tryIO<Input>(ret, iofunc, fd, a...)) return ret;
 #endif
     BasePoller*& poller = fdSyncVector[fd].poller[Input];
     if (!poller) {
@@ -247,7 +249,9 @@ public:
   void postFork() {
     new (stats) FredStats::EventScopeStats(this, nullptr);
     timerQueue.reinit(this);
-    delete masterPoller;
+#if __linux__
+    delete masterPoller; // FreeBSD does not copy kqueue across fork()
+#endif
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
     mainCluster->postFork1(this, _friend<EventScope>());
     for (int f = 0; f < fdCount; f += 1) {
