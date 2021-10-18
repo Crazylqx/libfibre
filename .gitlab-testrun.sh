@@ -250,6 +250,7 @@ function prep_4() {
 function prep_5() {
 	prep_value 1 TESTING_WORKER_POLLER\
 	           0 TESTING_CLUSTER_POLLER_FLOAT\
+	           0 TESTING_IO_TRYFIRST\
 	           0 TESTING_EVENTPOLL_ONESHOT\
 	           1 TESTING_EVENTPOLL_LEVEL
 	app=memcached

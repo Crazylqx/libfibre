@@ -5,6 +5,7 @@
 
 #define TESTING_CLUSTER_POLLER_FIBRE  1 // per-cluster poller(s): fibre vs. pthread
 #define TESTING_CLUSTER_POLLER_FLOAT  1 // per-cluster poller fibres(s): float vs. background
+#define TESTING_IO_TRYFIRST           1 // try nonblocking I/O operation first
 #define TESTING_EVENTPOLL_ONESHOT     1 // use oneshot event polling
 //#define TESTING_EVENTPOLL_LEVEL       1 // use level-trigger event polling
 //#define TESTING_POLLER_FIBRE_SPIN 65536 // poller fibre: spin loop of NB polls
@@ -18,6 +19,10 @@
 //#define WORKER_LOCK_TYPE BinaryLock<>
 
 /******************************** sanity checks ********************************/
+
+#if !(TESTING_EVENTPOLL_LEVEL || TESTING_EVENTPOLL_ONESHOT || TESTING_IO_TRYFIRST)
+	#error edge-triggered polling requires TESTING_IO_TRYFIRST
+#endif
 
 #if TESTING_WORKER_IO_URING && !__linux__
   #error TESTING_WORKER_IO_URING is only available on Linux

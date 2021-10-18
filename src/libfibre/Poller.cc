@@ -150,7 +150,7 @@ void BaseThreadPoller::terminate(_friend<EventScope>) {
   pollTerminate = true;
 #if __FreeBSD__
   struct kevent waker;
-  EV_SET(&waker, 0, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, 0);
+  EV_SET(&waker, 0, EVFILT_USER, EV_ADD, 0, 0, 0);
   SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
   EV_SET(&waker, 0, EVFILT_USER, EV_ENABLE, NOTE_TRIGGER, 0, 0);
   SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
@@ -158,7 +158,7 @@ void BaseThreadPoller::terminate(_friend<EventScope>) {
   SYSCALL(pthread_join(pollThread, nullptr));
 #else // __linux__ below
   int waker = SYSCALLIO(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
-  setupFD(waker, Create, Input, Oneshot);
+  setupFD(waker, Create, Input, Level);
   uint64_t val = 1;
   val = SYSCALL_EQ(write(waker, &val, sizeof(val)), sizeof(val));
   DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " woke ", pollFD, " via ", waker);

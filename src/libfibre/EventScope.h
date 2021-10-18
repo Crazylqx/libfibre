@@ -162,40 +162,33 @@ class EventScope {
   template<bool Input, bool Yield, bool Cluster, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
     T ret;
-    AtomicSync& sync = fdSyncVector[fd].sync[Input];
-    BasePoller*& poller = fdSyncVector[fd].poller[Input];
-#if TESTING_EVENTPOLL_LEVEL
-    if (!Yield) if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
-    if (!poller) {
-      poller = &getPoller<Input,Cluster>(fd);
-      poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Yield ? Poller::Level : Poller::Edge);
-    }
-    for (;;) {
-      if (Yield) sync.wait();
-      else sync.P();
-      if (tryIO<Input>( ret, iofunc, fd, a...)) return ret;
-    }
-#else /* TESTING_EVENTPOLL_LEVEL */
+    static const Poller::Direction direction = Input ? Poller::Input : Poller::Output;
+#if TESTING_EVENTPOLL_ONESHOT
+    static const Poller::Variant variant = Input ? Poller::Oneshot : Poller::Oneshot;
+#elif TESTING_EVENTPOLL_LEVEL
+    static const Poller::Variant variant = Input ? Poller::Level : Poller::Oneshot;
+#else
+    static const Poller::Variant variant = Input ? Poller::Edge : Poller::Oneshot;
+#endif
+#if TESTING_IO_TRYFIRST
     if (Yield) Fibre::yield();
     if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
+#endif
+    BasePoller*& poller = fdSyncVector[fd].poller[Input];
     if (!poller) {
       poller = &getPoller<Input,Cluster>(fd);
-#if TESTING_EVENTPOLL_ONESHOT
-      poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
-    } else {
-      poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
-#else
-      poller->setupFD(fd, Poller::Create, Input ? Poller::Input : Poller::Output, Poller::Edge);
-#endif
+      poller->setupFD(fd, Poller::Create, direction, variant);
+    } else if (variant == Poller::Oneshot) {
+      poller->setupFD(fd, Poller::Modify, direction, variant);
     }
+    AtomicSync& sync = fdSyncVector[fd].sync[Input];
     for (;;) {
-      sync.P();
-      if (tryIO<Input>( ret, iofunc, fd, a...)) return ret;
-#if TESTING_EVENTPOLL_ONESHOT
-      poller->setupFD(fd, Poller::Modify, Input ? Poller::Input : Poller::Output, Poller::Oneshot);
-#endif
+      if (variant == Poller::Level) sync.wait(); else sync.P();
+      if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
+      if (variant == Poller::Oneshot) {
+        poller->setupFD(fd, Poller::Modify, direction, variant);
+      }
     }
-#endif /* TESTING_EVENTPOLL_LEVEL */
   }
 
   int checkAsyncCompletion(int fd) {
