@@ -136,19 +136,16 @@ public:
   }
 
   BaseProcessor& placement(_friend<Fred>, bool staging = false) {
-#if TESTING_PLACEMENT_STAGING || TESTING_SHARED_READYQUEUE
-    return stagingProc;
-#else
 #if TESTING_LOADBALANCING
     if (staging) return stagingProc;
+#else
+    (void)staging;
 #endif
     RASSERT0(placeProc);
     // ring insert is traversal-safe, so could use separate 'placeLock' here
     ScopedLock<WorkerLock> sl(ringLock);
     placeProc = ProcessorRingGlobal::next(*placeProc);
     return *placeProc;
-#endif
-    (void)staging;
   }
 
 #if TESTING_LOADBALANCING

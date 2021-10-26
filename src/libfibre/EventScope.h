@@ -319,9 +319,9 @@ public:
   template<typename T, class... Args>
   T directIO(T (*diskfunc)(Args...), Args... a) {
     RASSERT0(diskCluster);
-    BaseProcessor& proc = Fibre::migrateNow(*diskCluster, _friend<EventScope>());
+    BaseProcessor& proc = Fibre::migrate(*diskCluster, _friend<EventScope>());
     int result = diskfunc(a...);
-    Fibre::migrateNow(proc, _friend<EventScope>());
+    Fibre::migrate(proc, _friend<EventScope>());
     return result;
   }
 

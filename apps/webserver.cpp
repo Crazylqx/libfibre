@@ -526,7 +526,7 @@ static void* scopemain(void* arg) {
       fibreList.push_back(f);
     }
 #if defined __LIBFIBRE__
-    Fibre::migrateNow(*cluster[(c+1)%clusterCount]);
+    Fibre::migrate(*cluster[(c+1)%clusterCount]);
 #elif defined __U_CPLUSPLUS__
     uThisTask().migrate(*cluster[(c+1)%clusterCount]);
 #endif

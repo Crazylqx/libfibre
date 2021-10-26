@@ -20,9 +20,6 @@
 
 Fred::Fred(BaseProcessor& proc, Affinity affinity)
 : stackPointer(0), processor(&proc), priority(DefaultPriority), affinity(affinity), runState(Running) {
-#if TESTING_SHARED_READYQUEUE
-  this->affinity = FixedAffinity;
-#endif
   processor->countFredCreated();
 }
 
@@ -153,38 +150,39 @@ void Fred::terminate() {
 }
 
 void Fred::rebalance() {
-  if (affinity != FixedAffinity) processor = &Context::CurrProcessor().getScheduler().placement(_friend<Fred>(), true);
+  if (affinity != FixedAffinity) {
+    affinity = DefaultStagingAffinity;
+    processor = &Context::CurrProcessor().getScheduler().placement(_friend<Fred>(), true);
+  }
 }
 
 // migrate to scheduler; clear affinity
-void Fred::migrateNow(Scheduler& scheduler) {
+void Fred::migrate(Scheduler& scheduler) {
   Fred* f = Context::CurrFred();
   f->affinity = DefaultAffinity;
-  f->processor = &scheduler.placement(_friend<Fred>(), true);
+  f->processor = &scheduler.placement(_friend<Fred>());
   f->yieldForce();
 }
 
-void Fred::migrateLocal(BaseProcessor& proc) {
-#if TESTING_SHARED_READYQUEUE
-  return;
-#endif
+// migrate to specific processor, don't change affinity
+void Fred::migrate(BaseProcessor& proc) {
   Fred* f = Context::CurrFred();
   RASSERT0(&f->processor->getScheduler() == &proc.getScheduler());
   f->processor = &proc;
   if (!f->yieldGlobal()) f->yieldForce();
 }
 
-// migrate to scheduler (for disk I/O), don't change affinity
-BaseProcessor& Fred::migrateNow(Scheduler& scheduler, _friend<EventScope>) {
+// migrate to other scheduler (for disk I/O), don't change affinity
+BaseProcessor& Fred::migrate(Scheduler& scheduler, _friend<EventScope>) {
   Fred* f = Context::CurrFred();
   BaseProcessor* proc = f->processor;
-  f->processor = &scheduler.placement(_friend<Fred>(), true);
+  f->processor = &scheduler.placement(_friend<Fred>());
   f->yieldForce();
   return *proc;
 }
 
 // migrate back to previous processor (after disk I/O), don't change affinity
-void Fred::migrateNow(BaseProcessor& proc, _friend<EventScope>) {
+void Fred::migrate(BaseProcessor& proc, _friend<EventScope>) {
   Fred* f = Context::CurrFred();
   f->processor = &proc;
   f->yieldForce();

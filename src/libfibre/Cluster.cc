@@ -90,7 +90,7 @@ void* Cluster::threadHelper(Argpack* args) {
 }
 
 inline void Cluster::registerIdleWorker(Worker* worker, Fibre* initFibre) {
-  Fibre* idleFibre = new Fibre(*worker, _friend<Cluster>(), 0); // idle fibre on pthread stack
+  Fibre* idleFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>(), 0); // idle fibre on pthread stack
   setupWorker(idleFibre, worker);
   worker->setIdleLoop(idleFibre);
   Worker::yieldDirect(*initFibre);                           // run init fibre right away
@@ -128,9 +128,9 @@ void Cluster::postFork2(_friend<EventScope>) {
 
 Fibre* Cluster::registerWorker(_friend<EventScope>) {
   Worker* worker = new Worker(*this);
-  Fibre* mainFibre = new Fibre(*worker, _friend<Cluster>(), 0); // caller continues on pthread stack
+  Fibre* mainFibre = new Fibre(*worker, Fibre::DefaultAffinity, _friend<Cluster>(), 0); // caller continues on pthread stack
   setupWorker(mainFibre, worker);
-  Fibre* idleFibre = new Fibre(*worker, _friend<Cluster>()); // idle fibre on new stack
+  Fibre* idleFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>()); // idle fibre on new stack
   idleFibre->setup((ptr_t)fibreHelper, worker);              // set up idle fibre for execution
   worker->setIdleLoop(idleFibre);
   return mainFibre;
@@ -138,7 +138,7 @@ Fibre* Cluster::registerWorker(_friend<EventScope>) {
 
 Cluster::Worker& Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
   Worker* worker = new Worker(*this);
-  Fibre* initFibre = new Fibre(*worker, _friend<Cluster>());
+  Fibre* initFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>());
   if (initFunc) {   // run init routine in dedicated fibre, so it can block
     initFibre->setup((ptr_t)initFunc, initArg);
   } else {
@@ -163,7 +163,7 @@ void Cluster::pause() {
   stats->pause.count(ringCount);
   for (BaseProcessor* proc = placeProc;;) {
     if (proc != &Context::CurrProcessor()) {
-      Fibre* f = new Fibre(*proc, _friend<Cluster>());
+      Fibre* f = new Fibre(*proc, Fibre::FixedAffinity, _friend<Cluster>());
       f->setPriority(Fred::TopPriority);
       f->run(pauseOperation, this);
       pauseFibres.push_back(f);

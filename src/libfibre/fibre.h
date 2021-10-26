@@ -286,7 +286,7 @@ inline int fibre_unpark(fibre_t thread) {
 /** @brief Migrate fibre to a different cluster. */
 inline int fibre_migrate(Cluster *cluster) {
   RASSERT0(cluster);
-  Fibre::migrateNow(*cluster);
+  Fibre::migrate(*cluster);
   return 0;
 }
 
