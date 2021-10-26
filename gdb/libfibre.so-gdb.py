@@ -19,12 +19,12 @@ class FibreSupport():
         FibreSupport.saved = True
         # traverse runtime stack list to build internal list of fibres
         _lfFredDebugList = gdb.parse_and_eval("_lfFredDebugList")
-        FredDebugLink = gdb.parse_and_eval("FredDebugLink")
+        _lfFredDebugLink = gdb.parse_and_eval("_lfFredDebugLink")
         first = _lfFredDebugList['anchorLink'].address
-        next = _lfFredDebugList['anchorLink']['link'][FredDebugLink]['next']
+        next = _lfFredDebugList['anchorLink']['link'][_lfFredDebugLink]['next']
         while (next != first):
             FibreSupport.list.append(next)
-            next = next['link'][FredDebugLink]['next']
+            next = next['link'][_lfFredDebugLink]['next']
         orig_thread = gdb.selected_thread()
         for thread in gdb.selected_inferior().threads():
             thread.switch()

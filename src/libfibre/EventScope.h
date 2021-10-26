@@ -84,11 +84,11 @@ class EventScope {
   static void cloneInternal(EventScope* This) {
     This->initSync();
     RASSERT0(This->parentScope);
-#if __linux__
     for (int f = 0; f < This->fdCount; f += 1) {
       This->fdSyncVector[f].blocking = This->parentScope->fdSyncVector[f].blocking;
       This->fdSyncVector[f].useUring = This->parentScope->fdSyncVector[f].useUring;
     }
+#if __linux__
     SYSCALL(unshare(CLONE_FILES));
 #else
     (void)This->parentScope;

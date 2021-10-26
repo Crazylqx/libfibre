@@ -40,6 +40,7 @@ extern "C" void __splitstack_releasecontext(void *context[10]);
 #if TESTING_ENABLE_DEBUGGING
 extern WorkerLock*              _lfFredDebugLock;
 extern FredList<FredDebugLink>* _lfFredDebugList;
+extern size_t                   _lfFredDebugLink;
 #endif
 
 class Cluster;

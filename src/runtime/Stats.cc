@@ -31,6 +31,7 @@ static IOUringStats*     totalIOUringStats     = nullptr;
 static ClusterStats*     totalClusterStats     = nullptr;
 static IdleManagerStats* totalIdleManagerStats = nullptr;
 static ProcessorStats*   totalProcessorStats   = nullptr;
+static ReadyQueueStats*  totalReadyQueueStats  = nullptr;
 
 static IntrusiveQueue<Base> statsList;
 
@@ -91,6 +92,7 @@ void StatsPrint(ostream& os, bool totals) {
     totalClusterStats     = new ClusterStats    (nullptr, nullptr, "Cluster    ");
     totalIdleManagerStats = new IdleManagerStats(nullptr, nullptr, "IdleManager");
     totalProcessorStats   = new ProcessorStats  (nullptr, nullptr, "Processor  ");
+    totalReadyQueueStats  = new ReadyQueueStats (nullptr, nullptr, "ReadyQueue ");
 
     os << "LIBFIBRE STATS BEGIN ==========================================" << std::endl;
     PrintRecursive(nullptr, 0, os, statsMap);
@@ -172,6 +174,7 @@ void ProcessorStats::print(ostream& os) const {
 }
 
 void ReadyQueueStats::print(ostream& os) const {
+  if (totalReadyQueueStats && this != totalReadyQueueStats) totalReadyQueueStats->aggregate(*this);
   Base::print(os);
   os << queue;
 }

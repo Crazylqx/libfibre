@@ -32,6 +32,7 @@ static WorkerLock              _dummy2;
 static FredList<FredDebugLink> _dummy3;
 WorkerLock*                    _lfFredDebugLock = &_dummy2; // Fibre.h
 FredList<FredDebugLink>*       _lfFredDebugList = &_dummy3; // Fibre.h
+size_t                         _lfFredDebugLink = FredDebugLink;
 #endif
 
 // ******************** BOOTSTRAP *************************

@@ -9,10 +9,12 @@ function check() {
 	if [ "$(uname -s)" = "FreeBSD" ]; then
 		[ $(sysctl kern.ipc.somaxconn|awk '{print $2}') -lt 4096 ] && error "kern.ipc.somaxconn should be at least 4096"
 		[ $(ulimit -n) -lt 65536 ] && error "ulimit -n should be at least 65536"
+		maxconn=100 # there's some kind of new limit in FreeBSD 13.0?
 	else
 		[ $(sysctl net.core.somaxconn|awk '{print $3}') -lt 4096 ] && error "net.core.somaxconn should be at least 4096"
 		[ $(ulimit -n) -lt 65536 ] && error "ulimit -n should be at least 65536"
 		[ $(sysctl kernel.perf_event_paranoid|awk '{print $3}') -lt 1 ] || error "kernel.perf_event_paranoid should be less than 1"
+		maxconn=500
 	fi
 }
 
@@ -209,7 +211,7 @@ function run_memcached_all() {
 	shift
 	cnt=1
 	for d in 01 64; do
-		for c in 025 500; do
+		for c in 025 $maxconn; do
 			[ $# -gt 0 ] && { q=$1; shift; } || q=0
 			run_memcached_one $q -d$d -c$c
 			$show || output_memcached
