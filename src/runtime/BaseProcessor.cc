@@ -75,23 +75,14 @@ inline Fred* BaseProcessor::scheduleInternal() {
 }
 
 bool BaseProcessor::addReadyFred(Fred& f) {
-#if TESTING_IDLE_MANAGER
   return scheduler.idleManager.addReadyFred(f);
-#else
-  return false;
-#endif
-  (void)f;
 }
 #endif
 
 void BaseProcessor::idleLoop() {
   for (;;) {
 #if TESTING_LOADBALANCING
-#if TESTING_IDLE_MANAGER
     Fred* nextFred = scheduler.idleManager.getReadyFred(*this);
-#else
-    Fred* nextFred = nullptr;
-#endif
     if (nextFred) {
       DBG::outl(DBG::Level::Scheduling, "handover: ", FmtHex(this), ' ', FmtHex(nextFred));
       nextFred->checkAffinity(*this, _friend<BaseProcessor>());
@@ -99,35 +90,24 @@ void BaseProcessor::idleLoop() {
     } else {
       do nextFred = scheduleInternal(); while (!nextFred);
     }
-    yieldDirect(*nextFred);
 #else /* TESTING_LOADBALANCING */
     if (!readyCount.P()) haltSem.P(*this);
     Fred* nextFred = tryLocal();
     RASSERT0(nextFred);
-    yieldDirect(*nextFred);
 #endif
+    yieldDirect(*nextFred);
   }
 }
 
 Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
-#if TESTING_IDLE_SPIN
-  static const size_t SpinMax = TESTING_IDLE_SPIN;
-#else
-  static const size_t SpinMax = 1;
-#endif
-  for (size_t i = 0; i < SpinMax; i += 1) {
+  for (size_t i = 0; i < IdleSpinMax; i += 1) {
 #if TESTING_LOADBALANCING
-#if TESTING_IDLE_MANAGER
     if (scheduler.idleManager.tryGetReadyFred()) {
       for (;;) {
         Fred* nextFred = scheduleInternal();
         if (nextFred) return *nextFred;
       }
     }
-#else /* TESTING_IDLE_CONTROL */
-    Fred* nextFred = scheduleInternal();
-    if (nextFred) return *nextFred;
-#endif
 #else /* TESTING_LOADBALANCING */
     if (readyCount.tryP()) {
       Fred* nextFred = tryLocal();

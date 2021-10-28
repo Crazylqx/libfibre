@@ -84,6 +84,9 @@ typedef IntrusiveRing<BaseProcessor,2,3> ProcessorRingGlobal;
 class BaseProcessor : public DoubleLink<BaseProcessor,3> {
   ReadyQueue    readyQueue;
 
+  static const size_t HaltSpinMax = 64;
+  static const size_t IdleSpinMax =  1;
+
   inline Fred*  tryLocal();
 #if TESTING_LOADBALANCING
   inline Fred*  tryStage();
@@ -162,13 +165,10 @@ public:
   Fred* schedulePreempt(Fred* currFred, _friend<Fred>);
 
   Fred* suspend(_friend<IdleManager>) {
-#if TESTING_HALT_SPIN
-    static const size_t SpinMax = TESTING_HALT_SPIN;
-    for (size_t i = 0; i < SpinMax; i += 1) {
+    for (size_t i = 0; i < HaltSpinMax; i += 1) {
       if fastpath(haltSem.tryP(*this)) return handoverFred;
       Pause();
     }
-#endif
     stats->idle.count();
     haltSem.P(*this);
     return handoverFred;

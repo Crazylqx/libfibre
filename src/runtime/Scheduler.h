@@ -19,7 +19,7 @@
 
 #include "runtime/BaseProcessor.h"
 
-#if TESTING_LOADBALANCING && TESTING_IDLE_MANAGER
+#if TESTING_LOADBALANCING
 
 class IdleManager {
   volatile ssize_t         fredCounter;

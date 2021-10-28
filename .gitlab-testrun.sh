@@ -283,8 +283,7 @@ function prep_6() {
 }
 
 function prep_7() {
-	prep_value 0 TESTING_IDLE_MANAGER\
-	           0 TESTING_DEFAULT_AFFINITY
+	prep_value 0 TESTING_DEFAULT_AFFINITY
 	app=memcached
 }
 

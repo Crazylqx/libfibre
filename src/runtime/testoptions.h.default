@@ -7,13 +7,10 @@
 // **** general options - alternative design
 
 #define TESTING_LOADBALANCING         1 // enable load balancing using ISRS
-#define TESTING_IDLE_MANAGER          1 // enable idle manager; suspend workers
 #define TESTING_DEFAULT_AFFINITY      1 // enable default affinity (no sticky stealing)
 //#define TESTING_WAKE_FRED_WORKER      1 // idle manager: wake fred's worker vs any worker
 //#define TESTING_LOCKED_READYQUEUE     1 // locked vs. lock-free ready queue
 //#define TESTING_STUB_QUEUE            1 // nemesis vs. stub-based MPSC lock-free queue
-//#define TESTING_IDLE_SPIN         65536 // spin before entering idle loop
-//#define TESTING_HALT_SPIN         65536 // spin before halting worker thread/core
 
 #include "runtime-glue/testoptions.h"
 
