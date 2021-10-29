@@ -79,7 +79,8 @@ bool BaseProcessor::addReadyFred(Fred& f) {
 }
 #endif
 
-void BaseProcessor::idleLoop() {
+void BaseProcessor::idleLoop(Fred* initFred) {
+  if (initFred) Fred::idleYieldTo(*initFred, _friend<BaseProcessor>());
   for (;;) {
 #if TESTING_LOADBALANCING
     Fred* nextFred = scheduler.idleManager.getReadyFred(*this);
@@ -95,7 +96,7 @@ void BaseProcessor::idleLoop() {
     Fred* nextFred = tryLocal();
     RASSERT0(nextFred);
 #endif
-    yieldDirect(*nextFred);
+    Fred::idleYieldTo(*nextFred, _friend<BaseProcessor>());
   }
 }
 

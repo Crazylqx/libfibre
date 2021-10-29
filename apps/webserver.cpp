@@ -90,6 +90,9 @@ typedef void (*UrlHandler)(void* fd, const char* path, int minor_version);
 // define routing table
 static map<const string,UrlHandler> routingTable;
 
+// helper mutex for error output
+static shim_mutex_t errOutMtx;
+
 static Garage& CurrGarage() {
 #if defined __LIBFIBRE__
   return *reinterpret_cast<Garage*>(Context::CurrEventScope().getClientData());
@@ -215,9 +218,9 @@ static inline bool connHandler(void* connFD) {
       if (_SysErrno() == ECONNRESET) {
 //        cerr << "ECONNRESET: FD " << (uintptr_t)connFD << endl;
       } else {
-        static FredMutex lock;
-        ScopedLock<FredMutex> sl(lock);
+        shim_mutex_lock(&errOutMtx);
         cerr << "read error: FD " << (uintptr_t)connFD << ' ' << rret << ' ' << _SysErrno() << endl;
+        shim_mutex_unlock(&errOutMtx);
       }
       goto closeAndOut;
     }
@@ -502,6 +505,7 @@ static void* scopemain(void* arg) {
 
 #else /* __LIBFIBRE__ || __U_CPLUSPLUS__ */
 
+  (void)arg;
   unsigned int clusterCount = 1;
 
 #endif /* __LIBFIBRE__ || __U_CPLUSPLUS__ */
@@ -596,6 +600,8 @@ int main(int argc, char** argv) {
     SYSCALL(pthread_create(&tids[i], nullptr, scopemain, (void*)uintptr_t(threadCount * (i+1))));
   }
 #endif
+
+  shim_mutex_init(&errOutMtx);
 
   scopemain((void*)0);
 

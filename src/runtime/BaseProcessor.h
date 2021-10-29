@@ -113,11 +113,7 @@ protected:
 
   FredStats::ProcessorStats* stats;
 
-  void idleLoop();
-
-  static void yieldDirect(Fred& f) {
-    Fred::idleYieldTo(f, _friend<BaseProcessor>());
-  }
+  void idleLoop(Fred* initFred = nullptr);
 
 public:
   BaseProcessor(Scheduler& c, const char* n = "Processor  ") : readyQueue(*this), haltSem(0), handoverFred(nullptr), scheduler(c), idleFred(nullptr) {

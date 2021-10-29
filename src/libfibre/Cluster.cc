@@ -81,7 +81,7 @@ inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
 void Cluster::initDummy(ptr_t) {}
 
 void Cluster::fibreHelper(Worker* worker) {
-  worker->runIdleLoop();
+  worker->runIdleLoop(nullptr);
 }
 
 void* Cluster::threadHelper(Argpack* args) {
@@ -93,8 +93,7 @@ inline void Cluster::registerIdleWorker(Worker* worker, Fibre* initFibre) {
   Fibre* idleFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>(), 0); // idle fibre on pthread stack
   setupWorker(idleFibre, worker);
   worker->setIdleLoop(idleFibre);
-  Worker::yieldDirect(*initFibre);                           // run init fibre right away
-  worker->runIdleLoop();
+  worker->runIdleLoop(initFibre);
   idleFibre->endDirect(_friend<Cluster>());
 }
 
