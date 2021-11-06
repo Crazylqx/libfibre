@@ -46,10 +46,10 @@ class EventScope {
   // http://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_14
   // A fixed-size array based on 'getrlimit' is somewhat brute-force, but simple and fast.
   struct SyncFD {
-    AtomicSync  sync[2];
-    BasePoller* poller[2];
-    bool        blocking;
-    bool        useUring;
+    Poller::SyncSem sync[2];
+    BasePoller*     poller[2];
+    bool            blocking;
+    bool            useUring;
     SyncFD() : poller{nullptr,nullptr}, blocking(false), useUring(false) {}
   } *fdSyncVector;
 
@@ -183,7 +183,7 @@ class EventScope {
     } else if (variant == Poller::Oneshot) {
       poller->setupFD(fd, Poller::Modify, direction, variant);
     }
-    AtomicSync& sync = fdSyncVector[fd].sync[Input];
+    Poller::SyncSem& sync = fdSyncVector[fd].sync[Input];
     for (;;) {
       if (variant == Poller::Level) sync.wait(); else sync.P();
       if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
@@ -255,8 +255,8 @@ public:
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
     mainCluster->postFork1(this, _friend<EventScope>());
     for (int f = 0; f < fdCount; f += 1) {
-      RASSERT(fdSyncVector[f].sync[false].check(), f);
-      RASSERT(fdSyncVector[f].sync[true].check(), f);
+      RASSERT(fdSyncVector[f].sync[false].getValue() >= 0, f);
+      RASSERT(fdSyncVector[f].sync[true].getValue() >= 0, f);
     }
     mainCluster->postFork2(_friend<EventScope>());
   }

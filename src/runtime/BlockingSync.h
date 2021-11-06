@@ -261,6 +261,16 @@ public:
   template<typename... Args>
   SemaphoreResult unlockP(Args&... args) { lock.acquire(); unlock(args...); return internalP(true); }
 
+  // use condition/signal semantics
+  template<typename... Args>
+  SemaphoreResult wait(const Args&... args) {
+    RASSERT0(Binary);
+    lock.acquire();
+    RASSERT0(counter >= 0);
+    counter = 0;
+    return internalP(args...);
+  }
+
   template<bool Enqueue = true>
   Fred* V() {
     lock.acquire();
@@ -557,47 +567,6 @@ public:
 
 /****************************** (Almost-)Lock-Free Synchronization ******************************/
 
-// state: 0-clear, 1-event, PTR-fibre
-class AtomicSync {
-  Fred* state;
-  static const uintptr_t Clear = 0;
-  static const uintptr_t Event = 1;
-public:
-  AtomicSync() : state((Fred*)Clear) {}
-  bool check() const { return state <= (Fred*)Event; }
-  void reset() { RASSERT(check(), state); state = (Fred*)Clear; }
-
-  void wait(Fred* f = Context::CurrFred()) {
-    state = f;
-    Suspender::suspend(*f);
-  }
-
-  bool tryP() {
-    Fred* exp = (Fred*)Event;
-    return __atomic_compare_exchange_n(&state, &exp, (Fred*)Clear, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
-  }
-
-  void P(Fred* f = Context::CurrFred()) {
-    Fred* exp = (Fred*)Clear;
-    if (__atomic_compare_exchange_n(&state, &exp, f, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
-      Suspender::suspend(*f);
-    } else {
-      RASSERT(state == (Fred*)Event, FmtHex(state));
-      state = (Fred*)Clear;
-    }
-  }
-
-  template<bool Enqueue = true>
-  Fred* V() {
-    Fred* exp = (Fred*)Clear;
-    if (__atomic_compare_exchange_n(&state, &exp, (Fred*)Event, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return nullptr;
-    if (exp == (Fred*)Event) return nullptr;
-    state = (Fred*)Clear;
-    if (Enqueue) exp->resume();
-    return exp;
-  }
-};
-
 template<typename Lock = DummyLock, int SpinStart = 1, int SpinEnd = 128>
 class LimitedSemaphore0 {
   Lock lock;
@@ -730,11 +699,12 @@ class FredBenaphore {
   Semaphore sem;
 
 public:
-  explicit FredBenaphore(ssize_t c) : ben(c), sem(0) {}
-  void reset(ssize_t c) {
+  explicit FredBenaphore(ssize_t c = 0) : ben(c), sem(0) {}
+  void reset(ssize_t c = 0) {
     sem.reset(0);
     ben.reset(c);
-   }
+  }
+  ssize_t getValue() const { return ben.getValue(); }
 
   SemaphoreResult P()          { return ben.P() ? SemaphoreWasOpen : sem.P(); }
   SemaphoreResult tryP()       { return ben.tryP() ? SemaphoreWasOpen : SemaphoreTimeout; }
@@ -745,6 +715,9 @@ public:
     ben.V();
     return SemaphoreTimeout;
   }
+  // use condition/signal semantics
+  SemaphoreResult wait()                    { ben.reset(); return P(); }
+  SemaphoreResult wait(const Time& timeout) { ben.reset(); return P(timeout); }
 
   template<bool Enqueue = true>
   Fred* V() {

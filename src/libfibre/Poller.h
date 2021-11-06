@@ -48,15 +48,16 @@ struct Poller {
   enum Direction : ssize_t { Input = EPOLLIN | EPOLLPRI | EPOLLRDHUP, Output = EPOLLOUT };
   enum Variant   : ssize_t { Level = 0, Edge = EPOLLET, Oneshot = EPOLLONESHOT };
 #endif
+  typedef LockedSemaphore<WorkerLock,true> SyncSem;
 };
 
 class BasePoller : public Poller {
 protected:
   static const int MaxPoll = 1024;
-  EventType     events[MaxPoll];
-  int           pollFD;
+  EventType events[MaxPoll];
+  int       pollFD;
 #if __FreeBSD__
-  AtomicSync    userEvent;
+  SyncSem   userEvent;
 #endif
 
   EventScope&   eventScope;
