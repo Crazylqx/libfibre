@@ -33,6 +33,7 @@
 #include <sys/types.h>    // socket types (FreeBSD)
 #include <sys/socket.h>   // socket interface
 #if __linux__
+#include <sys/epoll.h>    // epoll (Linux)
 #include <sys/sendfile.h> // sendfile (Linux)
 #endif
 #include <sys/uio.h>      // readv, writev
@@ -196,6 +197,9 @@ int cfibre_fastmutex_unlock(cfibre_fastmutex_t *mutex);
 int cfibre_fastcond_wait(cfibre_cond_t *restrict cond, cfibre_fastmutex_t *restrict mutex);
 int cfibre_fastcond_timedwait(cfibre_cond_t *restrict cond, cfibre_fastmutex_t *restrict mutex, const struct timespec *restrict abstime);
 
+#if defined(__linux__)
+int cfibre_epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
+#endif
 /** @brief Create socket. (`socket`). */
 int cfibre_socket(int domain, int type, int protocol);
 /** @brief Bind socket. (`bind`). */

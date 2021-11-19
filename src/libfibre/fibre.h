@@ -47,7 +47,7 @@ struct fibre_attr_t {
   size_t stackSize;
   size_t guardSize;
   size_t priority;
-  bool affinity;
+  size_t affinity;
   bool detached;
   void init() {
     cluster = &Context::CurrCluster();
@@ -55,7 +55,7 @@ struct fibre_attr_t {
     stackSize = Fibre::DefaultStackSize;
     guardSize = Fibre::DefaultStackGuard;
     priority = Fibre::DefaultPriority;
-    affinity = true;
+    affinity = Fibre::DefaultAffinity;
     detached = false;
   }
 };

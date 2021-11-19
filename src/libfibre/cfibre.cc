@@ -435,6 +435,12 @@ extern "C" int cfibre_fastcond_timedwait(cfibre_cond_t *restrict cond, cfibre_fa
   return fibre_fastcond_timedwait(*cond, *mutex, abstime);
 }
 
+#if defined(__linux__)
+extern "C" int cfibre_epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout) {
+  return lfEpollWait(epfd, events, maxevents, timeout);
+}
+#endif
+
 extern "C" int cfibre_socket(int domain, int type, int protocol) {
   return lfSocket(domain, type, protocol);
 }

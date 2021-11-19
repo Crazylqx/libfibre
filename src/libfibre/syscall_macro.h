@@ -77,7 +77,7 @@ static inline void _SYSCALLabortUnlock() {}
   ret ## __COUNTER__;})
 #endif
 #ifndef SYSCALL_CMP2
-#define SYSCALL_CMP2(call,cmp,expected,errcode1) ({\
+#define SYSCALL_CMP2(call,cmp,expected,errcode1,errcode2) ({\
   int ret ## __COUNTER__ = call;\
   ret ## __COUNTER__;})
 #endif

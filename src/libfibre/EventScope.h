@@ -339,6 +339,31 @@ public:
     return blockingOutput(writefunc, fd, a...);
   }
 
+#if defined(__linux__)
+  int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout) {
+    RASSERT0(epfd >= 0 && epfd < fdCount);
+    int ret = ::epoll_wait(epfd, events, maxevents, 0);
+    if (ret != 0 || timeout == 0) return ret;
+    BasePoller*& poller = fdSyncVector[epfd].poller[true];
+    if (!poller) {
+      poller = &getPoller<true,false>(epfd);
+      poller->setupFD(epfd, Poller::Create, Poller::Input, Poller::Oneshot);
+    } else {
+      poller->setupFD(epfd, Poller::Modify, Poller::Input, Poller::Oneshot);
+    }
+    Poller::SyncSem& sync = fdSyncVector[epfd].sync[true];
+    Time absTimeout;
+    if (timeout > 0) absTimeout = Runtime::Timer::now() + Time::fromMS(timeout);
+    for (;;) {
+      if (timeout < 0) { RASSERT0(sync.P()); }
+      else if (!sync.P(absTimeout)) return 0;
+      ret = ::epoll_wait(epfd, events, maxevents, 0);
+      if (ret != 0) return ret;
+      poller->setupFD(epfd, Poller::Modify, Poller::Input, Poller::Oneshot);
+    }
+  }
+#endif
+
   int socket(int domain, int type, int protocol, bool useUring) {
     int ret = ::socket(domain, type | (useUring ? 0 : SOCK_NONBLOCK), protocol);
     if (ret < 0) return ret;
@@ -600,6 +625,12 @@ inline T lfDirectIO( T (*diskfunc)(int, Args...), int fd, Args... a) {
 static const bool DefaultUring = true;
 #else
 static const bool DefaultUring = false;
+#endif
+
+#if defined(__linux__)
+static inline int lfEpollWait(int epfd, struct epoll_event *events, int maxevents, int timeout) {
+  return Context::CurrEventScope().epoll_wait(epfd, events, maxevents, timeout);
+}
 #endif
 
 /** @brief Create new socket. */
