@@ -244,6 +244,12 @@ public:
     RASSERT0(timerQueue.empty());
     RASSERT0(diskCluster == nullptr);
     mainCluster->preFork(_friend<EventScope>());
+    for (int f = 0; f < fdCount; f += 1) {
+      RASSERT(fdSyncVector[f].sync[false].getValue() >= 0, f);
+      RASSERT(fdSyncVector[f].sync[true].getValue() >= 0, f);
+      RASSERT(fdSyncVector[f].poller[false] == 0, f);
+      RASSERT(fdSyncVector[f].poller[true] == 0, f);
+    }
   }
 
   void postFork() {
@@ -253,12 +259,8 @@ public:
     delete masterPoller; // FreeBSD does not copy kqueue across fork()
 #endif
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
-    mainCluster->postFork1(this, _friend<EventScope>());
-    for (int f = 0; f < fdCount; f += 1) {
-      RASSERT(fdSyncVector[f].sync[false].getValue() >= 0, f);
-      RASSERT(fdSyncVector[f].sync[true].getValue() >= 0, f);
-    }
-    mainCluster->postFork2(_friend<EventScope>());
+    mainCluster->postFork(this, _friend<EventScope>());
+    mainCluster->startPolling(_friend<EventScope>());
   }
 
   /** Wait for the main routine of a cloned event scope. */
@@ -355,7 +357,7 @@ public:
     Time absTimeout;
     if (timeout > 0) absTimeout = Runtime::Timer::now() + Time::fromMS(timeout);
     for (;;) {
-      if (timeout < 0) { RASSERT0(sync.P()); }
+      if (timeout < 0) sync.P();
       else if (!sync.P(absTimeout)) return 0;
       ret = ::epoll_wait(epfd, events, maxevents, 0);
       if (ret != 0) return ret;

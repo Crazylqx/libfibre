@@ -102,7 +102,7 @@ void Cluster::preFork(_friend<EventScope>) {
   RASSERT(ringCount == 1, ringCount);
 }
 
-void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
+void Cluster::postFork(cptr_t parent, _friend<EventScope> fes) {
   new (stats) FredStats::ClusterStats(this, parent);
   for (size_t p = 0; p < iPollCount; p += 1) {
     iPollVec[p].~PollerType();
@@ -112,17 +112,20 @@ void Cluster::postFork1(cptr_t parent, _friend<EventScope>) {
     oPollVec[p].~PollerType();
     new (&oPollVec[p]) PollerType(scope, stagingProc, this, "O-Poller   ", _friend<Cluster>());
   }
+  stagingProc.reset(*this, fes, "Staging    ");
+  BaseProcessor* p = placeProc;
+  for (size_t i = 0; i < ringCount; i += 1) {
+    p->reset(*this, fes);
+    p = ProcessorRingGlobal::next(*p);
+  }
 #if TESTING_WORKER_IO_URING
   CurrWorker().iouring->~IOUring();
   new (CurrWorker().iouring) IOUring(&CurrWorker(), "W-IOUring ");
 #endif
 #if TESTING_WORKER_POLLER
+  CurrWorker().workerPoller->~WorkerPoller();
   new (CurrWorker().workerPoller) WorkerPoller(Context::CurrEventScope(), &CurrWorker(), "W-Poller  ");
 #endif
-}
-
-void Cluster::postFork2(_friend<EventScope>) {
-  start();
 }
 
 Fibre* Cluster::registerWorker(_friend<EventScope>) {

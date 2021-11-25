@@ -74,6 +74,10 @@ public:
     queue[f.getPriority()].push(f);
     stats->queue.add();
   }
+
+  void reset(BaseProcessor& bp, _friend<EventScope>) {
+    new (stats) FredStats::ReadyQueueStats(this, &bp);
+  }
 };
 
 class BaseProcessor;
@@ -174,6 +178,11 @@ public:
     stats->wake.count();
     handoverFred = f;
     haltSem.V(*this);
+  }
+
+  void reset(Scheduler& c, _friend<EventScope> token, const char* n = "Processor  ") {
+    new (stats) FredStats::ProcessorStats(this, &c, n);
+    readyQueue.reset(*this, token);
   }
 };
 

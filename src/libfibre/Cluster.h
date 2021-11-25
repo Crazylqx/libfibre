@@ -125,8 +125,7 @@ public:
   }
 
   void preFork(_friend<EventScope>);
-  void postFork1(cptr_t parent, _friend<EventScope>);
-  void postFork2(_friend<EventScope>);
+  void postFork(cptr_t parent, _friend<EventScope>);
 
 #if TESTING_WORKER_IO_URING
   static IOUring& getWorkerUring() {
