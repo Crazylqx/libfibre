@@ -41,6 +41,7 @@ class ReadyQueue {
       Fred* f = queue[p].pop();
       if (f) return f;
     }
+    stats->queue.fail();
     return nullptr;
   }
 

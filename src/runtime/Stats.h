@@ -161,6 +161,7 @@ inline ostream& operator<<(ostream& os, const Distribution& x) {
 
 struct Queue {
   volatile Number qlen;
+  Counter fails;
   Distribution qdist;
 public:
   Queue() : qlen(0) {}
@@ -171,19 +172,24 @@ public:
   void remove(Number n = 1) {
     __atomic_sub_fetch( &qlen, n, __ATOMIC_RELAXED);
   }
+  void fail() {
+    fails.count();
+  }
   void aggregate(const Queue& x) {
     qlen += x.qlen;
+    fails.aggregate(x.fails);
     qdist.aggregate(x.qdist);
   }
   void reset() {
     qlen = 0;
+    fails.reset();
     qdist.reset();
   }
 };
 
 inline ostream& operator<<(ostream& os, const Queue& x) {
-  if (x.qlen != 0) os << " QUEUE";
-  os << x.qdist;
+  if (x.qlen != 0) os << " Q: " << x.qlen;
+  os << " F:" << x.fails << x.qdist;
   return os;
 }
 

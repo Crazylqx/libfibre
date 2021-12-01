@@ -344,8 +344,10 @@ public:
 #if defined(__linux__)
   int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout) {
     RASSERT0(epfd >= 0 && epfd < fdCount);
+    stats->calls.count((int)(timeout != 0));
     int ret = ::epoll_wait(epfd, events, maxevents, 0);
     if (ret != 0 || timeout == 0) return ret;
+    stats->fails.count();
     BasePoller*& poller = fdSyncVector[epfd].poller[true];
     if (!poller) {
       poller = &getPoller<true,false>(epfd);
@@ -359,8 +361,10 @@ public:
     for (;;) {
       if (timeout < 0) sync.P();
       else if (!sync.P(absTimeout)) return 0;
+      stats->calls.count();
       ret = ::epoll_wait(epfd, events, maxevents, 0);
       if (ret != 0) return ret;
+      stats->fails.count();
       poller->setupFD(epfd, Poller::Modify, Poller::Input, Poller::Oneshot);
     }
   }
