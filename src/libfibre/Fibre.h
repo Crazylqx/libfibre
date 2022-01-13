@@ -78,8 +78,7 @@ public:
   void* getspecific(size_t idx) {
     RASSERT(idx < FIBRE_KEYS_MAX, idx);
     RASSERT(bitmap.test(idx), idx);
-    RASSERT(idx < values.size(), idx);
-    return values[idx];
+    return idx < values.size() ? values[idx] : nullptr;
   }
   static size_t key_create(Destructor d = nullptr) {
     ScopedLock<FastMutex> sl(mutex);
