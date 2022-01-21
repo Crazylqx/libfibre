@@ -481,7 +481,6 @@ public:
 /****************************** Special Locked Synchronization ******************************/
 
 // synchronization flag with with external lock
-template<typename Lock>
 class SynchronizedFlag {
 
 public:
@@ -499,6 +498,7 @@ public:
   bool posted()   const { return state == Posted; }
   bool detached() const { return state == Detached; }
 
+  template<typename Lock>
   bool wait(Lock& lock) {             // returns false, if detached
     if (state == Running) {
       waiter = Context::CurrFred();
@@ -528,8 +528,8 @@ public:
 };
 
 // synchronization (with result) with external lock
-template<typename Runner, typename Result, typename Lock>
-class Joinable : public SynchronizedFlag<Lock> {
+template<typename Runner, typename Result>
+class Joinable : public SynchronizedFlag {
   union {
     Runner* runner;
     Result  result;
@@ -538,14 +538,15 @@ class Joinable : public SynchronizedFlag<Lock> {
 public:
   Joinable(Runner* t) : runner(t) {}
 
+  template<typename Lock>
   bool wait(Lock& bl, Result& r) {
-    bool retcode = SynchronizedFlag<Lock>::wait(bl);
+    bool retcode = SynchronizedFlag::wait(bl);
     r = retcode ? result : 0; // result is available after returning from wait
     return retcode;
   }
 
   bool post(Result r) {
-    bool retcode = SynchronizedFlag<Lock>::post();
+    bool retcode = SynchronizedFlag::post();
     if (retcode) result = r;  // still holding lock while setting result
     return retcode;
   }
@@ -555,14 +556,14 @@ public:
 
 // synchronization flag with automatic locking
 template<typename Lock>
-class SyncPoint : public SynchronizedFlag<Lock> {
+class SyncPoint : public SynchronizedFlag {
   Lock lock;
 
 public:
-  SyncPoint(typename SynchronizedFlag<Lock>::State s = SynchronizedFlag<Lock>::Running) : SynchronizedFlag<Lock>(s) {}
-  bool wait()   { ScopedLock<Lock> al(lock); return SynchronizedFlag<Lock>::wait(lock); }
-  bool post()   { ScopedLock<Lock> al(lock); return SynchronizedFlag<Lock>::post(); }
-  void detach() { ScopedLock<Lock> al(lock); SynchronizedFlag<Lock>::detach(); }
+  SyncPoint(typename SynchronizedFlag::State s = SynchronizedFlag::Running) : SynchronizedFlag(s) {}
+  bool wait()   { ScopedLock<Lock> al(lock); return SynchronizedFlag::wait(lock); }
+  bool post()   { ScopedLock<Lock> al(lock); return SynchronizedFlag::post(); }
+  void detach() { ScopedLock<Lock> al(lock); SynchronizedFlag::detach(); }
 };
 
 /****************************** (Almost-)Lock-Free Synchronization ******************************/
