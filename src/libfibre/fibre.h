@@ -216,7 +216,7 @@ inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *(*start
 
 /** @brief Wait for fibre to complete execution and retrieve return value. (`pthread_join`) */
 inline int fibre_join(fibre_t thread, void **retval) {
-  RASSERT0(retval == nullptr);
+  if (retval) *retval = thread->join();
   delete thread;
   return 0;
 }

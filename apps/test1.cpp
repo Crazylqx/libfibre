@@ -22,7 +22,7 @@ static void once_init() {
   SYSCALL(fibre_key_create(&key_test, key_finish));
 }
 
-static void f1main() {
+static void* f1main(void*) {
   fibre_once(&once_test, once_init);
   SYSCALL(fibre_setspecific(key_test, (void*)'A'));
   cout << "F1 1" << endl;
@@ -36,6 +36,7 @@ static void f1main() {
     testmtx1.release();
   }
   cout << "F1 specific " << (char)(uintptr_t)fibre_getspecific(key_test) << endl;
+  return (void*)0xdeadbeef;
 }
 
 static void f2main() {
@@ -87,13 +88,14 @@ int main(int argc, char** argv) {
   SYSCALL(clock_gettime(CLOCK_REALTIME, &ct));
   cout << ct.tv_sec << '.' << ct.tv_nsec << endl;
   Context::CurrCluster().addWorkers(1);
-  Fibre* f1 = (new Fibre)->run(f1main);
+  Fibre* f1 = (new Fibre)->run(f1main, (void*)nullptr);
   Fibre* f2 = (new Fibre)->run(f2main);
   Fibre* f3 = (new Fibre)->run(f3main);
   cout << "M 1" << endl;
   Fibre::yield();
   cout << "M 2" << endl;
-  f1->join();
+  void* jofel = f1->join();
+  cout << FmtHex(jofel) << endl;
   delete f1;
   cout << "f1 gone" << endl;
   delete f2;

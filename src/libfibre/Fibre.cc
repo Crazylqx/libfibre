@@ -24,7 +24,6 @@ std::vector<FibreSpecific::Destructor> FibreSpecific::destructors;
 Fibre::Fibre(size_t group, size_t idx, Cluster& cluster, size_t size, size_t guard)
 : Fred(cluster.getGroupWorker(group, idx)), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
-void Fibre::exit() {
-  ExitException* dummy = nullptr;
-  throw dummy;
+void Fibre::exit(ptr_t p) {
+  throw (ExitException*)p;
 }

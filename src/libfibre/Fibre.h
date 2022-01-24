@@ -122,6 +122,7 @@ private:
   vaddr stackBottom;           // bottom of allocated memory for stack (including guard)
 #endif
   SyncPoint<WorkerLock> done;  // synchronization (join) at destructor
+  ptr_t result;                // result transferred to join
 
   size_t stackAlloc(size_t size, size_t guard) {
 #ifdef SPLIT_STACK
@@ -194,11 +195,11 @@ public:
   /** Destructor with synchronization. */
   ~Fibre() { join(); }
   /** Explicit join. Called automatically by destructor. */
-  void join() { done.wait(); }
+  ptr_t join() { done.wait(); return result; }
   /** Detach fibre (no waiting for join synchronization). */
   void detach() { done.detach(); }
   /** Exit fibre (with join, if not detached). */
-  static void exit() __noreturn;
+  static void exit(ptr_t p = nullptr) __noreturn;
 
   // callback from Fred via Runtime after final context switch
   void destroy(_friend<Fred>) {
@@ -222,15 +223,10 @@ public:
   Fibre* run(void (*func)(T1*, T2*), T1* p1, T2* p2) {
     return runInternal((ptr_t)func, (ptr_t)p1, (ptr_t)p2, nullptr);
   }
-  /** Start fibre. */
-  template<typename T1, typename T2, typename T3>
-  Fibre* run(void (*func)(T1*, T2*, T3*), T1* p1, T2* p2, T3* p3) {
-    return runInternal((ptr_t)func, (ptr_t)p1, (ptr_t)p2, (ptr_t)p3);
-  }
   /** Start fibre with pthread-type run function. */
   template<typename T1>
   Fibre* run(void* (*func)(T1*), T1* p1) {
-    return runInternal((ptr_t)func, (ptr_t)p1, nullptr, nullptr);
+    return runInternal((ptr_t)func, (ptr_t)p1, nullptr, &result);
   }
 
   /** Sleep. */
