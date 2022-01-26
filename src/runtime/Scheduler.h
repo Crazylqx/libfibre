@@ -64,6 +64,10 @@ class IdleManager {
 public:
   IdleManager(cptr_t parent) : fredCounter(0) { stats = new FredStats::IdleManagerStats(this, parent); }
 
+  void reset(cptr_t parent, _friend<EventScope>) {
+    new (stats) FredStats::IdleManagerStats(this, parent);
+  }
+
   bool tryGetReadyFred() {
     ssize_t c = fredCounter;
     return (c > 0) && __atomic_compare_exchange_n(&fredCounter, &c, c-1, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
@@ -92,6 +96,7 @@ public:
 class IdleManager {
 public:
   IdleManager(cptr_t) {}
+  void reset(cptr_t, _friend<EventScope>) {}
 };
 
 #endif

@@ -27,7 +27,9 @@ In addition, the following students (in alphabetical order) have helped with var
 
 - Qin An (FreeBSD/kqueue)
 - Bilal Akhtar (gdb extension)
+- Peter Cai (bug fixes)
 - Peng Chen (split stack)
+- Bryant Curto (bug fixes)
 - Peiran Hong (API/Apache)
 - Matthew May (MCS queue with timeout)
 - Wen Shi (gdb extension)
