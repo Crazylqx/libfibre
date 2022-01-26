@@ -61,7 +61,7 @@ protected:
     if (start >= FIBRE_KEYS_MAX) return;
     size_t idx = start;
     do {
-      if (destructors[idx]) destructors[idx](values[idx]);
+      if (destructors[idx] && idx < values.size() && values[idx]) destructors[idx](values[idx]);
       idx = bitmap.findnext(idx);
     } while (idx > start);
   }

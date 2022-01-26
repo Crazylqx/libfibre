@@ -410,30 +410,30 @@ class LockedRWLock {
 
   template<typename... Args>
   bool internalAR(const Args&... args) {
-    Fred* next;
     lock.acquire();
     if (state >= 0 && bqW.empty()) {
-      next = nullptr;
+      state += 1;
+      lock.release();
     } else {
       if (!bqR.block(lock, args...)) return false;
       lock.acquire();
-      next = bqR.template unblock<false>();  // all waiting readers can barge after writer
+      Fred* next = bqR.template unblock<false>();  // all waiting readers can barge after writer
+      if (next) state += 1;
+      lock.release();
+      if (next) next->resume();
     }
-    state += 1;
-    lock.release();
-    if (next) next->resume();
     return true;
   }
 
   template<typename... Args>
   bool internalAW(const Args&... args) {
     lock.acquire();
-    if (state != 0) {
+    if (state == 0) {
+      state -= 1;
+      lock.release();
+    } else {
       if (!bqW.block(lock, args...)) return false;
-      lock.acquire();
     }
-    state -= 1;
-    lock.release();
     return true;
   }
 
@@ -465,13 +465,21 @@ public:
         next = nullptr;
       } else {
         next = bqW.template unblock<false>();
-        if (!next) next = bqR.template unblock<false>();
+        if (next) state -= 1;
+        else {
+          next = bqR.template unblock<false>();
+          if (next) state += 1;
+        }
       }
     } else {                     // writer leaves -> readers next
-      RASSERT0(state == -1);
+      RASSERT(state == -1, state);
       state += 1;
       next = bqR.template unblock<false>();
-      if (!next) next = bqW.template unblock<false>();
+      if (next) state += 1;
+      else {
+        next = bqW.template unblock<false>();
+        if (next) state -= 1;
+      }
     }
     lock.release();
     if (next) next->resume();
