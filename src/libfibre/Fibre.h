@@ -169,8 +169,12 @@ private:
 #endif
   }
 
-  Fibre* runInternal(ptr_t func, ptr_t p1, ptr_t p2, ptr_t p3) {
+  void start(ptr_t func, ptr_t p1, ptr_t p2, ptr_t p3) { // hide base class start()
     Fred::start(func, p1, p2, p3);
+  }
+
+  Fibre* runInternal(ptr_t func, ptr_t p1, ptr_t p2, Fibre* This) {
+    start(func, p1, p2, This);
     return this;
   }
 
@@ -201,32 +205,36 @@ public:
   /** Exit fibre (with join, if not detached). */
   static void exit(ptr_t p = nullptr) __noreturn;
 
+  // callback after Fred's main routine has finished
+  void finalize(ptr_t e) {
+    result = e;
+    clearSpecific();
+  }
+
   // callback from Fred via Runtime after final context switch
   void destroy(_friend<Fred>) {
-    clearSpecific();
     clearDebug();
     stackFree();
     done.post();
   }
 
+  void setup(ptr_t func, ptr_t p1, ptr_t p2, ptr_t p3, _friend<Cluster>) { // hide base class setup()
+    Fred::setup(func, p1, p2, p3);
+  }
+
   /** Start fibre. */
   Fibre* run(void (*func)()) {
-    return runInternal((ptr_t)func, nullptr, nullptr, nullptr);
+    return runInternal((ptr_t)func, nullptr, nullptr, this);
   }
   /** Start fibre. */
   template<typename T1>
   Fibre* run(void (*func)(T1*), T1* p1) {
-    return runInternal((ptr_t)func, (ptr_t)p1, nullptr, nullptr);
-  }
-  /** Start fibre. */
-  template<typename T1, typename T2>
-  Fibre* run(void (*func)(T1*, T2*), T1* p1, T2* p2) {
-    return runInternal((ptr_t)func, (ptr_t)p1, (ptr_t)p2, nullptr);
+    return runInternal((ptr_t)func, (ptr_t)p1, nullptr, this);
   }
   /** Start fibre with pthread-type run function. */
   template<typename T1>
   Fibre* run(void* (*func)(T1*), T1* p1) {
-    return runInternal((ptr_t)func, (ptr_t)p1, nullptr, &result);
+    return runInternal((ptr_t)func, (ptr_t)p1, nullptr, this);
   }
 
   /** Sleep. */

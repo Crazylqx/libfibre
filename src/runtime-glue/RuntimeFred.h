@@ -21,16 +21,14 @@
 
 inline void RuntimeStartFred(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) {
   Context::CurrProcessor().countFredStarted();
+  ptr_t p;
   try {
-    if (arg3) {
-      funcptr3_t f3 = (funcptr3_t)(ptr_t)(func);
-      *(ptr_t*)arg3 = f3(arg1, arg2, arg3);
-    } else {
-      func(arg1, arg2, arg3);
-    }
+    funcptr3_t f3 = (funcptr3_t)(ptr_t)(func);
+    p = (Fibre::ExitException*)f3(arg1, arg2, arg3);
   } catch (Fibre::ExitException* e) {
-    if (arg3) *(ptr_t*)arg3 = e;
+    p = e;
   }
+  reinterpret_cast<Fibre*>(arg3)->finalize(p);
 }
 
 inline void RuntimePreFredSwitch(Fred& currFred, Fred& nextFred, _friend<Fred> fs) {

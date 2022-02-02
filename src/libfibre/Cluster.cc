@@ -133,8 +133,8 @@ Fibre* Cluster::registerWorker(_friend<EventScope>) {
   Worker* worker = new Worker(*this);
   Fibre* mainFibre = new Fibre(*worker, Fibre::DefaultAffinity, _friend<Cluster>(), 0); // caller continues on pthread stack
   setupWorker(mainFibre, worker);
-  Fibre* idleFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>()); // idle fibre on new stack
-  idleFibre->setup((ptr_t)fibreHelper, worker);              // set up idle fibre for execution
+  Fibre* idleFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>());      // idle fibre on new stack
+  idleFibre->setup((ptr_t)fibreHelper, worker, nullptr, idleFibre, _friend<Cluster>()); // set up idle fibre for execution
   worker->setIdleLoop(idleFibre);
   return mainFibre;
 }
@@ -143,9 +143,9 @@ Cluster::Worker& Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
   Worker* worker = new Worker(*this);
   Fibre* initFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>());
   if (initFunc) {   // run init routine in dedicated fibre, so it can block
-    initFibre->setup((ptr_t)initFunc, initArg);
+    initFibre->setup((ptr_t)initFunc, initArg, nullptr, initFibre, _friend<Cluster>());
   } else {
-    initFibre->setup((ptr_t)initDummy, nullptr);
+    initFibre->setup((ptr_t)initDummy, nullptr, nullptr, initFibre, _friend<Cluster>());
   }
   Argpack args = { this, worker, initFibre };
   pthread_t tid;

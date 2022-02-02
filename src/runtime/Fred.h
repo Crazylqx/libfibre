@@ -119,7 +119,7 @@ public:
     stackDirect(stackPointer, func, nullptr, nullptr, nullptr);
   }
 
-  // set up new fred and resume for concurrent execution
+  // set up fred stack without immediate start
   void setup(ptr_t func, ptr_t p1 = nullptr, ptr_t p2 = nullptr, ptr_t p3 = nullptr) {
     stackPointer = stackInit(stackPointer, func, p1, p2, p3);
   }
