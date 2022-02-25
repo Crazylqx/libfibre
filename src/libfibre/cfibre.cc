@@ -207,7 +207,7 @@ extern "C" int cfibre_key_delete(cfibre_key_t key) {
   return fibre_key_delete(key);
 }
 
-extern "C" int cfibre_setspecific(cfibre_key_t key, void *value) {
+extern "C" int cfibre_setspecific(cfibre_key_t key, const void *value) {
   return fibre_setspecific(key, value);
 }
 

@@ -261,7 +261,7 @@ inline int fibre_key_delete(fibre_key_t key) {
 }
 
 /** @brief Store thread-specific value. (`pthread_setspecific`) */
-inline int fibre_setspecific(fibre_key_t key, void *value) {
+inline int fibre_setspecific(fibre_key_t key, const void *value) {
   CurrFibre()->setspecific(key, value);
   return 0;
 }

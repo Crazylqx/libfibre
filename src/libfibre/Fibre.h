@@ -66,14 +66,14 @@ protected:
     } while (idx > start);
   }
 public:
-  void setspecific(size_t idx, void *value) {
+  void setspecific(size_t idx, const void *value) {
     RASSERT(idx < FIBRE_KEYS_MAX, idx);
     RASSERT(bitmap.test(idx), idx);
     if (idx >= values.size()) {
       if (values.size() == 0) values.resize(1);
       while (idx >= values.size()) values.resize(values.size() * 2);
     }
-    values[idx] = value;
+    values[idx] = (void*)value;
   }
   void* getspecific(size_t idx) {
     RASSERT(idx < FIBRE_KEYS_MAX, idx);

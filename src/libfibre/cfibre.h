@@ -138,7 +138,7 @@ int cfibre_equal(cfibre_t thread1, cfibre_t thread2);
 int cfibre_yield(void);
 int cfibre_key_create(cfibre_key_t *key, void (*destructor)(void*));
 int cfibre_key_delete(cfibre_key_t key);
-int cfibre_setspecific(cfibre_key_t key, void *value);
+int cfibre_setspecific(cfibre_key_t key, const void *value);
 void *cfibre_getspecific(cfibre_key_t key);
 int cfibre_park(void);
 int cfibre_unpark(cfibre_t thread);
