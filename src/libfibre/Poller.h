@@ -43,10 +43,11 @@ struct Poller {
   enum Direction : ssize_t { Input = EVFILT_READ, Output = EVFILT_WRITE };
   enum Variant   : ssize_t { Level = 0, Edge = EV_CLEAR, Oneshot = EV_ONESHOT };
 #else // __linux__ below
+#define EPOLLONDEMAND (1u << 24)
   typedef epoll_event   EventType; // man 2 epoll_ctl: EPOLLERR, EPOLLHUP not needed
   enum Operation : ssize_t { Create = EPOLL_CTL_ADD, Modify = EPOLL_CTL_MOD, Remove = EPOLL_CTL_DEL };
   enum Direction : ssize_t { Input = EPOLLIN | EPOLLPRI | EPOLLRDHUP, Output = EPOLLOUT };
-  enum Variant   : ssize_t { Level = 0, Edge = EPOLLET, Oneshot = EPOLLONESHOT };
+  enum Variant   : ssize_t { Level = 0, Edge = EPOLLET, Oneshot = EPOLLONESHOT, OnDemand = EPOLLONESHOT | EPOLLONDEMAND };
 #endif
   typedef LockedSemaphore<WorkerLock,true> SyncSem;
 };

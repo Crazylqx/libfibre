@@ -163,7 +163,9 @@ class EventScope {
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
     T ret;
     static const Poller::Direction direction = Input ? Poller::Input : Poller::Output;
-#if TESTING_EVENTPOLL_ONESHOT
+#if TESTING_EVENTPOLL_ONDEMAND
+    static const Poller::Variant variant = Input ? Poller::OnDemand : Poller::Oneshot;
+#elif TESTING_EVENTPOLL_ONESHOT
     static const Poller::Variant variant = Input ? Poller::Oneshot : Poller::Oneshot;
 #elif TESTING_EVENTPOLL_LEVEL
     static const Poller::Variant variant = Input ? Poller::Level : Poller::Oneshot;

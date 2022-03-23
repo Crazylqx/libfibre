@@ -28,6 +28,7 @@ In addition, the following students (in alphabetical order) have helped with var
 - Qin An (FreeBSD/kqueue)
 - Bilal Akhtar (gdb extension)
 - Peter Cai (bug fixes)
+- Zhaocheng Che (on-demand oneshot polling)
 - Peng Chen (split stack)
 - Bryant Curto (bug fixes)
 - Peiran Hong (API/Apache)
