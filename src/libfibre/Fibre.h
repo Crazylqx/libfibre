@@ -238,6 +238,11 @@ public:
   }
 
   /** Sleep. */
+  static void nanosleep(const Time& t) {
+    sleepFred(t);
+  }
+
+  /** Sleep. */
   static void usleep(uint64_t usecs) {
     sleepFred(Time::fromUS(usecs));
   }

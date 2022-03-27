@@ -56,15 +56,15 @@ class Cluster : public Scheduler {
   FredStats::ClusterStats* stats;
 
   struct Worker : public BaseProcessor {
-    pthread_t    sysThreadId;
+    pthread_t     sysThreadId;
 #if TESTING_WORKER_IO_URING
-    IOUring*     iouring;
+    IOUring*      iouring;
 #endif
 #if TESTING_WORKER_POLLER
     WorkerPoller* workerPoller;
 #endif
 #ifdef SPLIT_STACK
-    char         sigStack[SIGSTKSZ];
+    char          sigStack[SIGSTKSZ];
 #endif
     Worker(Cluster& c) : BaseProcessor(c) {
 #if TESTING_WORKER_IO_URING

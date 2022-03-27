@@ -28,6 +28,7 @@
  Additionally, all routines in fibre.h are available as corresponding 'cfibre' version.
  */
 
+#include <stdlib.h>       // abort()
 #include <time.h>         // struct timespec
 #include <unistd.h>       // read, write, useconds_t
 #include <sys/types.h>    // socket types (FreeBSD)
@@ -71,6 +72,11 @@ static inline int cfibre_once(cfibre_once_t *once_control, void (*init_routine)(
   return pthread_once(once_control, init_routine);
 }
 
+static inline int cfibre_cancel(cfibre_t x) {
+  (void)x;
+  abort();
+}
+
 static const int CFIBRE_MUTEX_RECURSIVE  = PTHREAD_MUTEX_RECURSIVE;
 static const int CFIBRE_MUTEX_ERRORCHECK = PTHREAD_MUTEX_ERRORCHECK;
 static const int CFIBRE_MUTEX_DEFAULT    = PTHREAD_MUTEX_DEFAULT;
@@ -80,12 +86,12 @@ extern "C" {
 #endif
 
 /** @brief Bootstrap routine should be called early in main(). */
-void cfibre_init();
+void cfibre_init(void);
 /** @brief Alternative bootstrap routine. */
 void cfibre_init_n(size_t pollerCount, size_t workerCount);
 
 /** @brief Fork process (with restrictions) and re-initialize runtime in child process (`fork`). */
-pid_t cfibre_fork();
+pid_t cfibre_fork(void);
 
 /** @brief Create Cluster */
 int cfibre_cluster_create(cfibre_cluster_t* cluster);
@@ -132,7 +138,7 @@ int cfibre_attr_getdetachstate(const cfibre_attr_t *attr, int *detachstate);
 int cfibre_create(cfibre_t *thread, const cfibre_attr_t *attr, void *(*start_routine) (void *), void *arg);
 int cfibre_join(cfibre_t thread, void **retval);
 int cfibre_detach(cfibre_t thread);
-void cfibre_exit() __attribute__((__noreturn__));
+void cfibre_exit(void) __attribute__((__noreturn__));
 cfibre_t cfibre_self(void);
 int cfibre_equal(cfibre_t thread1, cfibre_t thread2);
 int cfibre_yield(void);
@@ -251,6 +257,8 @@ ssize_t cfibre_sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
 /** @brief Set socket flags (`fcntl`). */
 int cfibre_fcntl(int fildes, int cmd, int flags);
 
+/** @brief Sleep fibre. (`nanosleep`). */
+int cfibre_nanosleep(const struct timespec *rqtp, struct timespec *rmtp);
 /** @brief Sleep fibre. (`usleep`). */
 int cfibre_usleep(useconds_t uses);
 /** @brief Sleep fibre. (`sleep`). */

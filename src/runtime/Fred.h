@@ -184,7 +184,7 @@ public:
   Affinity getAffinity() const  { return (Affinity)affinity; }
   Fred* setAffinity(Affinity a) { affinity = a; return this; }
 
-  // check affinity and potentially update processor
+  // check affinity and potentially update processor during work-stealing
   bool checkAffinity(BaseProcessor& newProcessor, _friend<BaseProcessor>) {
     if (affinity == FixedAffinity) return true;
     if (affinity > FixedAffinity) affinity -= 1;

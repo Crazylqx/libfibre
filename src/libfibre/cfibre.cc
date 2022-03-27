@@ -17,6 +17,7 @@
 #include "libfibre/fibre.h"
 #include "libfibre/cfibre.h"
 
+#include <cassert>
 #include <sys/uio.h>      // readv, writev
 #if ! __FreeBSD__
 #include <sys/sendfile.h> // sendfile
@@ -533,6 +534,12 @@ extern "C" ssize_t cfibre_sendfile(int out_fd, int in_fd, off_t *offset, size_t 
 
 extern "C" int cfibre_fcntl(int fildes, int cmd, int flags) {
   return lfFcntl(fildes, cmd, flags);
+}
+
+extern "C" int cfibre_nanosleep(const struct timespec *rqtp, struct timespec*) {
+  assert(rqtp);
+  Fibre::nanosleep(*rqtp);
+  return 0;
 }
 
 extern "C" int cfibre_usleep(useconds_t usec) {
