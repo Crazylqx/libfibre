@@ -75,8 +75,7 @@ class Bitmap {
   static const int N = divup(B,bitsize<mword>());
   mword bits[N];
 public:
-  explicit Bitmap() {}
-  explicit Bitmap( mword b ) { for (size_t i = 0; i < N; i += 1) bits[i] = b; }
+  explicit Bitmap( mword b = 0 ) : bits{b} {}
   static constexpr bool valid( mword idx ) { return idx < N * bitsize<mword>(); }
   static constexpr Bitmap filled() { return Bitmap(~mword(0)); }
   void setB() { for (size_t i = 0; i < N; i++) bits[i] = ~mword(0); }

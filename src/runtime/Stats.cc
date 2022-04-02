@@ -33,14 +33,15 @@ static IdleManagerStats* totalIdleManagerStats = nullptr;
 static ProcessorStats*   totalProcessorStats   = nullptr;
 static ReadyQueueStats*  totalReadyQueueStats  = nullptr;
 
-static IntrusiveQueue<Base> statsList;
+static char statsListMemory[sizeof(IntrusiveQueue<Base>)];
+static IntrusiveQueue<Base>* statsList = (IntrusiveQueue<Base>*)statsListMemory;
 
 void StatsClear(int) {
-  for (Base* o = statsList.front(); o != statsList.edge(); o = statsList.next(*o)) o->reset();
+  for (Base* o = statsList->front(); o != statsList->edge(); o = statsList->next(*o)) o->reset();
 }
 
 void StatsReset() {
-  new (&statsList) IntrusiveQueue<FredStats::Base>;
+  new (statsList) IntrusiveQueue<FredStats::Base>;
 }
 
 struct PrintStatsNode {
@@ -80,8 +81,8 @@ void StatsPrint(ostream& os, bool totals) {
   if (env) {
     PrintStatsMap statsMap;
 
-    while (!statsList.empty()) {
-      const Base* o = statsList.pop();
+    while (!statsList->empty()) {
+      const Base* o = statsList->pop();
       statsMap.insert( {{o->parent, o->sort, o->name}, o} );
     }
 
@@ -98,8 +99,8 @@ void StatsPrint(ostream& os, bool totals) {
     PrintRecursive(nullptr, 0, os, statsMap);
     if (totals) {
       os << "TOTALS:" << std::endl;
-      while (!statsList.empty()) {
-        const Base* o = statsList.pop();
+      while (!statsList->empty()) {
+        const Base* o = statsList->pop();
         o->print(os);
         os << std::endl;
         delete o;
@@ -110,7 +111,7 @@ void StatsPrint(ostream& os, bool totals) {
 }
 
 Base::Base(cptr_t const o, cptr_t const p, const char* const n, const size_t s) 
-: object(o), parent(p), name(n), sort(s) { statsList.push(*this); }
+: object(o), parent(p), name(n), sort(s) { statsList->push(*this); }
 
 Base::~Base() {}
 

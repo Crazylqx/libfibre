@@ -23,16 +23,16 @@
 #include <execinfo.h> // see _lfAbort
 
 // various global objects and pointers
-static WorkerLock     _dummy1;
-WorkerLock*           _lfDebugOutputLock = &_dummy1; // RuntimeDebug.h
-size_t                _lfPagesize = 0;
+static char              _lfDebugOutputLockMemory[sizeof(WorkerLock)];
+WorkerLock*              _lfDebugOutputLock = (WorkerLock*)_lfDebugOutputLockMemory; // RuntimeDebug.h
+size_t                   _lfPagesize = 0;
 
 #if TESTING_ENABLE_DEBUGGING
-static WorkerLock              _dummy2;
-static FredList<FredDebugLink> _dummy3;
-WorkerLock*                    _lfFredDebugLock = &_dummy2; // Fibre.h
-FredList<FredDebugLink>*       _lfFredDebugList = &_dummy3; // Fibre.h
-size_t                         _lfFredDebugLink = FredDebugLink;
+static char              _lfFredDebugLockMemory[sizeof(WorkerLock)];
+WorkerLock*              _lfFredDebugLock = (WorkerLock*)_lfFredDebugLockMemory; // Fibre.h
+static char              _lfFredDebugListMemory[sizeof(FredList<FredDebugLink>)];
+FredList<FredDebugLink>* _lfFredDebugList = (FredList<FredDebugLink>*)_lfFredDebugListMemory; // Fibre.h
+size_t                   _lfFredDebugLink = FredDebugLink;
 #endif
 
 // ******************** BOOTSTRAP *************************
@@ -48,17 +48,26 @@ static const char* DebugOptions[] = {
 
 static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug options mismatch");
 
-static std::ios ioFormatFlags(nullptr);
+static std::ios_base::fmtflags _ioFormatFlags(std::cout.flags());
 
 static void _lfPrintStats() {
-  std::cout.copyfmt(ioFormatFlags);
   char* env = getenv("FibrePrintStats");
-  if (env) FredStats::StatsPrint(std::cout, env[0] == 't' || env[0] == 'T');
+  if (env) {
+    std::ios_base::fmtflags curr(std::cout.flags());
+    std::cout.flags(_ioFormatFlags);
+    FredStats::StatsPrint(std::cout, env[0] == 't' || env[0] == 'T');
+    std::cout.flags(curr);
+  }
 }
 
 EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
   _lfPagesize = sysconf(_SC_PAGESIZE);
-  ioFormatFlags.copyfmt(std::cout);
+  new (_lfDebugOutputLock) WorkerLock;
+#if TESTING_ENABLE_DEBUGGING
+  new (_lfFredDebugLock) WorkerLock;
+  new (_lfFredDebugListMemory) FredList<FredDebugLink>;
+#endif
+  FredStats::StatsReset();
   SYSCALL(atexit(_lfPrintStats));
   char* env = getenv("FibreDebugString");
   if (env) DBG::init(DebugOptions, env, false);
