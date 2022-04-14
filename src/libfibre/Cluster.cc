@@ -63,7 +63,7 @@ void RuntimeWorkerResume(BaseProcessor& proc) {
 
 inline void Cluster::setupWorker(Fibre* fibre, Worker* worker) {
 #ifdef SPLIT_STACK
-  stack_t ss = { .ss_sp = worker->sigStack, .ss_flags = 0, .ss_size = SIGSTKSZ };
+  stack_t ss = { .ss_sp = new char[SIGSTKSZ], .ss_flags = 0, .ss_size = SIGSTKSZ }; // NOTE: stack allocation never deleted
   SYSCALL(sigaltstack(&ss, nullptr));
   int off = 0; // do not block signals (blocking signals is slow!)
   __splitstack_block_signals(&off, nullptr);

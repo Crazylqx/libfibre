@@ -22,7 +22,7 @@
 /******************************** sanity checks ********************************/
 
 #if !(TESTING_EVENTPOLL_LEVEL || TESTING_EVENTPOLL_ONDEMAND || TESTING_EVENTPOLL_ONESHOT || TESTING_IO_TRYFIRST)
-	#error edge-triggered polling requires TESTING_IO_TRYFIRST
+  #error edge-triggered polling requires TESTING_IO_TRYFIRST
 #endif
 
 #if TESTING_WORKER_IO_URING && !__linux__

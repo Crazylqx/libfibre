@@ -63,9 +63,6 @@ class Cluster : public Scheduler {
 #if TESTING_WORKER_POLLER
     WorkerPoller* workerPoller;
 #endif
-#ifdef SPLIT_STACK
-    char          sigStack[SIGSTKSZ];
-#endif
     Worker(Cluster& c) : BaseProcessor(c) {
 #if TESTING_WORKER_IO_URING
       iouring = nullptr;
@@ -75,7 +72,6 @@ class Cluster : public Scheduler {
 #endif
       c.Scheduler::addProcessor(*this);
     }
-    ~Worker();
     void setIdleLoop(Fibre* f) { BaseProcessor::idleFred = f; }
     void runIdleLoop(Fibre* f) { BaseProcessor::idleLoop(f); }
     pthread_t getSysID()       { return sysThreadId; }

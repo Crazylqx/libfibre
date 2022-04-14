@@ -102,6 +102,7 @@ inline void PollerFibre::pollLoop() {
       Fibre::yieldGlobal();
       spin = 1;
     } else if (spin >= SpinMax) {
+      stats->blocks.count();
       eventScope.blockPollFD(pollFD, _friend<PollerFibre>());
       spin = 1;
     } else {
