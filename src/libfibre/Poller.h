@@ -54,7 +54,7 @@ struct Poller {
 
 class BasePoller : public Poller {
 protected:
-  static const int MaxPoll = 1024;
+  static const int MaxPoll = 256;
   EventType events[MaxPoll];
   int       pollFD;
 #if __FreeBSD__
