@@ -29,41 +29,30 @@ index 339453ac8..a400c377a 100644
  	epi->nwait = 0;
  	epi->next = EP_UNACTIVE_PTR;
  	if (epi->event.events & EPOLLWAKEUP) {
-@@ -1696,6 +1700,57 @@ static int ep_modify(struct eventpoll *ep, struct epitem *epi,
+@@ -1696,6 +1700,46 @@ static int ep_modify(struct eventpoll *ep, struct epitem *epi,
  	return 0;
  }
  
 +/*
 + * reactivate oneshot - similar to ep_modify, but without setting event.data
 + */
-+int ep_modify_ondemand(wait_queue_entry_t *p)
++int ep_modify_ondemand(wait_queue_entry_t *p, __poll_t skstate)
 +{
 +	struct epitem * epi = ep_item_from_wait(p);
 +	struct eventpoll * ep = epi->ep;
 +	int pwake = 0;
-+	poll_table pt;
-+
-+	// check if this works with simultaneous deactivate?
 +
 +	// want EPOLLONDEMAND and only EPOLLONDEMAND set
 +	if ((epi->event.events & (~EP_PRIVATE_BITS | EPOLLONDEMAND)) != EPOLLONDEMAND) return 0;
 +
-+	lockdep_assert_irqs_enabled();
-+
-+	init_poll_funcptr(&pt, NULL);
++	lockdep_assert_irqs_disabled();
 +
 +	epi->event.events = epi->ondemand_events;
-+	if (epi->event.events & EPOLLWAKEUP) { // I don't know this quite well yet
-+		if (!ep_has_wakeup_source(epi))
-+			ep_create_wakeup_source(epi);
-+	} else if (ep_has_wakeup_source(epi)) {
-+		ep_destroy_wakeup_source(epi);
-+	}
 +
 +	smp_mb();
 +
-+	if (ep_item_poll(epi, &pt, 1)) {
-+		write_lock_irq(&ep->lock);
++	if (skstate & epi->event.events) {
++		write_lock(&ep->lock); // IRQs already disabled
 +		if (!ep_is_linked(epi)) {
 +			list_add_tail(&epi->rdllink, &ep->rdllist);
 +			ep_pm_stay_awake(epi);
@@ -74,7 +63,7 @@ index 339453ac8..a400c377a 100644
 +			if (waitqueue_active(&ep->poll_wait))
 +				pwake++;
 +		}
-+		write_unlock_irq(&ep->lock);
++		write_unlock(&ep->lock);
 +	}
 +
 +	/* We have to call this outside the lock */
@@ -110,7 +99,7 @@ index 94358566c..87446c248 100644
  INDIRECT_CALLABLE_DECLARE(int inet6_recvmsg(struct socket *, struct msghdr *,
  					    size_t, int));
 +
-+extern int ep_modify_ondemand(wait_queue_entry_t *p);
++extern int ep_modify_ondemand(wait_queue_entry_t *p, __poll_t skstate);
 +
 +static inline int sock_in_ondemand(struct socket *sock) {
 +	struct sock *sk = sock->sk;
@@ -126,7 +115,7 @@ index 94358566c..87446c248 100644
 +		wq_head = &wq->wait;
 +		spin_lock_irqsave(&wq_head->lock, flags); // mutual exclusion with add_wait_queue and remove_wait_queue
 +		list_for_each_entry(curr, &wq_head->head, entry) {
-+			ep_modify_ondemand(curr);
++			ep_modify_ondemand(curr, sock->ops->poll(sock->file, sock, NULL));
 +		}
 +		spin_unlock_irqrestore(&wq_head->lock, flags);
 +	}
