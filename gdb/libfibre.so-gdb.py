@@ -16,12 +16,13 @@ class FibreSupport():
         FibreSupport.list = []
         FibreSupport.active = {}
         FibreSupport.threads = {}
-        FibreSupport.saved = True
         # traverse runtime stack list to build internal list of fibres
         _lfFredDebugList = gdb.parse_and_eval("_lfFredDebugList")
         _lfFredDebugLink = gdb.parse_and_eval("_lfFredDebugLink")
         first = _lfFredDebugList['anchorLink'].address
         next = _lfFredDebugList['anchorLink']['link'][_lfFredDebugLink]['next']
+        if (next == 0):
+            return
         while (next != first):
             FibreSupport.list.append(next)
             next = next['link'][_lfFredDebugLink]['next']
@@ -47,6 +48,7 @@ class FibreSupport():
                     'thread' : thread
             }
         orig_thread.switch()
+        FibreSupport.saved = True
 
     # restore() is hooked to continue events via script hooks to 'fibre reset'
     def restore():
