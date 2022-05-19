@@ -93,8 +93,8 @@ void BaseProcessor::idleLoop(Fred* initFred) {
     }
 #else /* TESTING_LOADBALANCING */
     if (!readyCount.P()) haltSem.P(*this);
-    Fred* nextFred = tryLocal();
-    RASSERT0(nextFred);
+    Fred* nextFred;
+    do { nextFred = tryLocal(); } while (!nextFred);
 #endif
     Fred::idleYieldTo(*nextFred, _friend<BaseProcessor>());
   }
@@ -111,8 +111,8 @@ Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
     }
 #else /* TESTING_LOADBALANCING */
     if (readyCount.tryP()) {
-      Fred* nextFred = tryLocal();
-      RASSERT0(nextFred);
+      Fred* nextFred;
+      do { nextFred = tryLocal(); } while (!nextFred);
       return *nextFred;
     }
 #endif
