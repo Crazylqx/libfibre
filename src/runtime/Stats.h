@@ -229,6 +229,7 @@ struct Distribution {
 struct Queue {
   void add(Number = 1) {}
   void remove(Number = 1) {}
+  void fail() {}
   void aggregate(const Queue&) {}
   void reset() {}
 };
