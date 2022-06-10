@@ -21,6 +21,61 @@
 
 #if TESTING_LOADBALANCING
 
+#if TESTING_GO_IDLEMANAGER
+
+class IdleManager {
+  volatile size_t spinCounter;
+  volatile size_t waitCounter;
+  WorkerLock      procLock;
+  ProcessorList   waitingProcs;
+  bool unblockInternal(Fred* fred) {
+    if (__atomic_load_n(&waitCounter, __ATOMIC_SEQ_CST) == 0) return false;
+    procLock.acquire();
+    if (waitingProcs.empty()) {
+      procLock.release();
+      return false;
+    }
+    BaseProcessor* nextProc;
+    if (fred) {
+      nextProc = fred->getProcessor(_friend<IdleManager>());
+      if (nextProc->isHalting(_friend<IdleManager>())) {
+        waitingProcs.remove(*nextProc);
+      } else {
+        nextProc = waitingProcs.pop_front();
+      }
+    } else {
+      nextProc = waitingProcs.pop_front();
+    }
+    nextProc->setHalting(false, _friend<IdleManager>());
+    __atomic_sub_fetch(&waitCounter, 1, __ATOMIC_SEQ_CST);
+    procLock.release();
+    nextProc->resume(fred, _friend<IdleManager>());
+    return true;
+  }
+public:
+  void incSpinning() { __atomic_add_fetch(&spinCounter, 1, __ATOMIC_SEQ_CST); }
+  void decSpinning() { __atomic_sub_fetch(&spinCounter, 1, __ATOMIC_SEQ_CST); }
+  void decSpinningAndUnblock() {
+    if (__atomic_sub_fetch(&spinCounter, 1, __ATOMIC_SEQ_CST) == 0) unblockInternal(nullptr);
+  }
+  bool addReadyFred(Fred& f) {
+    if (__atomic_load_n(&spinCounter, __ATOMIC_SEQ_CST) == 0) return unblockInternal(&f);
+    return false;
+  }
+  Fred* block(BaseProcessor& proc) {
+    __atomic_add_fetch(&waitCounter, 1, __ATOMIC_SEQ_CST);
+    procLock.acquire();
+    proc.setHalting(true, _friend<IdleManager>());
+    waitingProcs.push_front(proc);
+    procLock.release();
+    return proc.suspend(_friend<IdleManager>());
+  }
+  IdleManager(cptr_t) : spinCounter(0), waitCounter(0) {}
+  void reset(cptr_t, _friend<EventScope>) {}
+};
+
+#else /* TESTING_GO_IDLEMANAGER */
+
 class IdleManager {
   volatile ssize_t         fredCounter;
   WorkerLock               procLock;
@@ -90,6 +145,8 @@ public:
     return true;
   }
 };
+
+#endif /* TESTING_GO_IDLEMANAGER */
 
 #else
 

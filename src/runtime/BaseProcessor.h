@@ -89,8 +89,8 @@ typedef IntrusiveRing<BaseProcessor,2,3> ProcessorRingGlobal;
 class BaseProcessor : public DoubleLink<BaseProcessor,3> {
   ReadyQueue    readyQueue;
 
-  static const size_t HaltSpinMax = 64;
-  static const size_t IdleSpinMax =  1;
+  static const size_t HaltSpinMax =   64;
+  static const size_t IdleSpinMax = 1024;
 
   inline Fred*  tryLocal();
 #if TESTING_LOADBALANCING

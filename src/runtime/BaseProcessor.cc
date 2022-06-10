@@ -78,14 +78,19 @@ inline Fred* BaseProcessor::scheduleInternal() {
 }
 
 inline Fred* BaseProcessor::scheduleNonblocking() {
-  Fred* nextFred;
 #if TESTING_LOADBALANCING
+#if TESTING_GO_IDLEMANAGER
+  return scheduleInternal();
+#else /* TESTING_GO_IDLEMANAGER */
   if (scheduler.idleManager.tryGetReadyFred()) {
+    Fred* nextFred;
     do { nextFred = scheduleInternal(); } while (!nextFred);
     return nextFred;
   }
+#endif
 #else /* TESTING_LOADBALANCING */
   if (readyCount.tryP()) {
+    Fred* nextFred;
     do { nextFred = scheduleInternal(); } while (!nextFred);
     return nextFred;
   }
@@ -95,6 +100,26 @@ inline Fred* BaseProcessor::scheduleNonblocking() {
 
 inline Fred& BaseProcessor::idleLoopSchedule() {
   Fred* nextFred;
+#if TESTING_LOADBALANCING && TESTING_GO_IDLEMANAGER
+  for (;;) {
+    scheduler.idleManager.incSpinning();
+    for (size_t i = 1; i < IdleSpinMax; i += 1) {
+      nextFred = scheduleNonblocking();
+      if (nextFred) {
+        scheduler.idleManager.decSpinningAndUnblock();
+        return *nextFred;
+      }
+    }
+    scheduler.idleManager.decSpinning();
+    nextFred = scheduler.idleManager.block(*this);
+    if (nextFred) {
+      DBG::outl(DBG::Level::Scheduling, "handover: ", FmtHex(this), ' ', FmtHex(nextFred));
+      nextFred->checkAffinity(*this, _friend<BaseProcessor>());
+      stats->handover.count();
+      return *nextFred;
+    }
+  }
+#else
   for (size_t i = 1; i < IdleSpinMax; i += 1) {
     nextFred = scheduleNonblocking();
     if (nextFred) return *nextFred;
@@ -112,6 +137,7 @@ inline Fred& BaseProcessor::idleLoopSchedule() {
 #endif
   do { nextFred = scheduleInternal(); } while (!nextFred);
   return *nextFred;
+#endif
 }
 
 void BaseProcessor::idleLoop(Fred* initFred) {
