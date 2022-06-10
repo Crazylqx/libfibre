@@ -96,25 +96,27 @@ class BaseProcessor : public DoubleLink<BaseProcessor,3> {
 #if TESTING_LOADBALANCING
   inline Fred*  tryStage();
   inline Fred*  trySteal();
-  inline Fred*  scheduleInternal();
-  bool          addReadyFred(Fred& f);
 #else
   Benaphore<>   readyCount;
 #endif
   HaltSemaphore haltSem;
   Fred*         handoverFred;
+#if TESTING_WAKE_FRED_WORKER
+  bool          halting;
+#endif
 
   void enqueueFred(Fred& f) {
     DBG::outl(DBG::Level::Scheduling, "Fred ", FmtHex(&f), " queueing on ", FmtHex(this));
     readyQueue.enqueue(f);
   }
 
+  inline Fred* scheduleInternal();
+  inline Fred* scheduleNonblocking();
+  inline Fred& idleLoopSchedule();
+
 protected:
   Scheduler& scheduler;
   Fred*      idleFred;
-#if TESTING_WAKE_FRED_WORKER
-  bool       halting;
-#endif
 
   FredStats::ProcessorStats* stats;
 
@@ -147,18 +149,8 @@ public:
   }
 #endif
 
-  void enqueueYield(Fred& f, _friend<Fred>) {
-    enqueueFred(f);
-  }
-
-  void enqueueResume(Fred& f, _friend<Fred>) {
-#if TESTING_LOADBALANCING
-    if (!addReadyFred(f)) enqueueFred(f);
-#else
-    enqueueFred(f);
-    if (!readyCount.V()) haltSem.V(*this);
-#endif
-  }
+  void enqueueYield(Fred& f, _friend<Fred>) { enqueueFred(f); }
+  void enqueueResume(Fred& f, _friend<Fred>);
 
   Fred& scheduleFull(_friend<Fred>);
   Fred* scheduleYield(_friend<Fred>);

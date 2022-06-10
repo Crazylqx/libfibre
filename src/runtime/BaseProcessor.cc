@@ -62,61 +62,78 @@ inline Fred* BaseProcessor::trySteal() {
     }
   }
 }
+#endif
 
 inline Fred* BaseProcessor::scheduleInternal() {
   Fred* nextFred;
   if ((nextFred = tryLocal())) return nextFred;
+#if TESTING_LOADBALANCING
   if ((nextFred = tryStage())) return nextFred;
   if (RuntimeWorkerPoll(*this)) {
     if ((nextFred = tryLocal())) return nextFred;
   }
   if ((nextFred = trySteal())) return nextFred;
+#endif
   return nullptr;
 }
 
-bool BaseProcessor::addReadyFred(Fred& f) {
-  return scheduler.idleManager.addReadyFred(f);
-}
+inline Fred* BaseProcessor::scheduleNonblocking() {
+  Fred* nextFred;
+#if TESTING_LOADBALANCING
+  if (scheduler.idleManager.tryGetReadyFred()) {
+    do { nextFred = scheduleInternal(); } while (!nextFred);
+    return nextFred;
+  }
+#else /* TESTING_LOADBALANCING */
+  if (readyCount.tryP()) {
+    do { nextFred = scheduleInternal(); } while (!nextFred);
+    return nextFred;
+  }
 #endif
+  return nullptr;
+}
+
+inline Fred& BaseProcessor::idleLoopSchedule() {
+  Fred* nextFred;
+  for (size_t i = 1; i < IdleSpinMax; i += 1) {
+    nextFred = scheduleNonblocking();
+    if (nextFred) return *nextFred;
+  }
+#if TESTING_LOADBALANCING
+  nextFred = scheduler.idleManager.getReadyFred(*this);
+  if (nextFred) {
+    DBG::outl(DBG::Level::Scheduling, "handover: ", FmtHex(this), ' ', FmtHex(nextFred));
+    nextFred->checkAffinity(*this, _friend<BaseProcessor>());
+    stats->handover.count();
+    return *nextFred;
+  }
+#else /* TESTING_LOADBALANCING */
+  if (!readyCount.P()) haltSem.P(*this);
+#endif
+  do { nextFred = scheduleInternal(); } while (!nextFred);
+  return *nextFred;
+}
 
 void BaseProcessor::idleLoop(Fred* initFred) {
   if (initFred) Fred::idleYieldTo(*initFred, _friend<BaseProcessor>());
   for (;;) {
-#if TESTING_LOADBALANCING
-    Fred* nextFred = scheduler.idleManager.getReadyFred(*this);
-    if (nextFred) {
-      DBG::outl(DBG::Level::Scheduling, "handover: ", FmtHex(this), ' ', FmtHex(nextFred));
-      nextFred->checkAffinity(*this, _friend<BaseProcessor>());
-      stats->handover.count();
-    } else {
-      do nextFred = scheduleInternal(); while (!nextFred);
-    }
-#else /* TESTING_LOADBALANCING */
-    if (!readyCount.P()) haltSem.P(*this);
-    Fred* nextFred;
-    do { nextFred = tryLocal(); } while (!nextFred);
-#endif
-    Fred::idleYieldTo(*nextFred, _friend<BaseProcessor>());
+    Fred& nextFred = idleLoopSchedule();
+    Fred::idleYieldTo(nextFred, _friend<BaseProcessor>());
   }
 }
 
-Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
-  for (size_t i = 0; i < IdleSpinMax; i += 1) {
+void BaseProcessor::enqueueResume(Fred& f, _friend<Fred>) {
 #if TESTING_LOADBALANCING
-    if (scheduler.idleManager.tryGetReadyFred()) {
-      for (;;) {
-        Fred* nextFred = scheduleInternal();
-        if (nextFred) return *nextFred;
-      }
-    }
-#else /* TESTING_LOADBALANCING */
-    if (readyCount.tryP()) {
-      Fred* nextFred;
-      do { nextFred = tryLocal(); } while (!nextFred);
-      return *nextFred;
-    }
+  if (!scheduler.idleManager.addReadyFred(f)) enqueueFred(f);
+#else
+  enqueueFred(f);
+  if (!readyCount.V()) haltSem.V(*this);
 #endif
-  }
+}
+
+Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
+  Fred* nextFred = scheduleNonblocking();
+  if (nextFred) return *nextFred;
   return *idleFred;
 }
 
@@ -125,11 +142,7 @@ Fred* BaseProcessor::scheduleYield(_friend<Fred>) {
 }
 
 Fred* BaseProcessor::scheduleYieldGlobal(_friend<Fred>) {
-#if TESTING_LOADBALANCING
   return scheduleInternal();
-#else
-  return tryLocal();
-#endif
 }
 
 Fred* BaseProcessor::schedulePreempt(Fred* currFred, _friend<Fred> fsc) {
