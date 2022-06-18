@@ -173,7 +173,7 @@ class EventScope {
 #else
     static const Poller::Variant variant = Input ? Poller::Edge : Poller::Oneshot;
 #endif
-#if TESTING_IO_TRYFIRST
+#if TESTING_EVENTPOLL_TRYREAD
     if (Yield)
 #if !TESTING_CLUSTER_POLLER_FLOAT
       if (++fdSyncVector[fd].yieldCounter[Input] < 256)
@@ -183,9 +183,9 @@ class EventScope {
 #if !TESTING_CLUSTER_POLLER_FLOAT
     if (Yield) fdSyncVector[fd].yieldCounter[Input] = 0;
 #endif
-#else
+#else /* TESTING_EVENTPOLL_TRYREAD */
     if (!Input && tryIO<Input>(ret, iofunc, fd, a...)) return ret;
-#endif
+#endif /* TESTING_EVENTPOLL_TRYREAD */
     BasePoller*& poller = fdSyncVector[fd].poller[Input];
     if (!poller) {
       poller = &getPoller<Input,Cluster>(fd);
