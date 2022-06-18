@@ -40,25 +40,32 @@ inline Fred* BaseProcessor::tryStage() {
 }
 
 inline Fred* BaseProcessor::trySteal() {
-  BaseProcessor* victim = this;
+  BaseProcessor* victim = localVictim;
   bool local = true;
   for (;;) {
-    if (local) {
-      victim = ProcessorRingLocal::next(*victim);
-      if (victim == this) { local = false; continue; }
-    } else {
-      victim = ProcessorRingGlobal::next(*victim);
-      if (victim == this) return nullptr;
-    }
+    victim = local ? ProcessorRingLocal::next(*victim) : ProcessorRingGlobal::next(*victim);
     Fred* f = victim->readyQueue.tryDequeue();
     if (f) {
-      DBG::outl(DBG::Level::Scheduling, "trySteal: ", FmtHex(this), ' ', FmtHex(f));
-      if (f->checkAffinity(*this, _friend<BaseProcessor>())) {
-        if (local) stats->borrowLocal.count(); else stats->borrowGlobal.count();
+      DBG::outl(DBG::Level::Scheduling, "trySteal: ", FmtHex(this), "<-", FmtHex(victim), ' ', FmtHex(f));
+      if (victim == this) {
+        stats->deq.count();
       } else {
-        if (local) stats->stealLocal.count(); else stats->stealGlobal.count();
+        if (f->checkAffinity(*this, _friend<BaseProcessor>())) {
+          if (local) stats->borrowLocal.count(); else stats->borrowGlobal.count();
+        } else {
+          if (local) stats->stealLocal.count(); else stats->stealGlobal.count();
+        }
       }
+      if (local) localVictim = victim; else globalVictim = victim;
       return f;
+    }
+    if (local) {
+      if (victim == localVictim) {
+        local = false;
+        victim = globalVictim;
+      }
+    } else {
+      if (victim == globalVictim) return nullptr;
     }
   }
 }

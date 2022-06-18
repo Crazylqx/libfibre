@@ -94,8 +94,10 @@ class BaseProcessor : public DoubleLink<BaseProcessor,3> {
 
   inline Fred*  tryLocal();
 #if TESTING_LOADBALANCING
-  inline Fred*  tryStage();
-  inline Fred*  trySteal();
+  inline Fred*   tryStage();
+  inline Fred*   trySteal();
+  BaseProcessor* localVictim;
+  BaseProcessor* globalVictim;
 #else
   Benaphore<>   readyCount;
 #endif
@@ -124,6 +126,9 @@ protected:
 
 public:
   BaseProcessor(Scheduler& c, const char* n = "Processor  ") : readyQueue(*this), haltSem(0), handoverFred(nullptr), scheduler(c), idleFred(nullptr) {
+#if TESTING_LOADBALANCING
+    localVictim = globalVictim = this;
+#endif
 #if TESTING_WAKE_FRED_WORKER
     halting = false;
 #endif
