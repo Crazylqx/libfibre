@@ -113,10 +113,6 @@ inline void Fred::yieldResume(Fred& nextFred) {
   RuntimeEnablePreemption();
 }
 
-inline void Fred::yieldForce() { // force schedule (even to idle) and yiled
-  yieldResume(Context::CurrProcessor().scheduleFull(_friend<Fred>()));
-}
-
 bool Fred::yield() {
   Fred* nextFred = Context::CurrProcessor().scheduleYield(_friend<Fred>());
   if (nextFred) Context::CurrFred()->yieldTo(*nextFred);
@@ -156,34 +152,15 @@ void Fred::rebalance() {
   }
 }
 
-// migrate to scheduler; clear affinity
-void Fred::migrate(Scheduler& scheduler) {
+BaseProcessor& Fred::migrate(BaseProcessor& proc) {
   Fred* f = Context::CurrFred();
-  f->affinity = DefaultAffinity;
-  f->processor = &scheduler.placement(_friend<Fred>());
-  f->yieldForce();
+  BaseProcessor* cproc = f->processor;
+  if (&cproc->getScheduler() != &proc.getScheduler() || !f->yieldGlobal()) {
+    f->yieldResume(Context::CurrProcessor().scheduleFull(_friend<Fred>()));
+  }
+  return *cproc;
 }
 
-// migrate to specific processor, don't change affinity
-void Fred::migrate(BaseProcessor& proc) {
-  Fred* f = Context::CurrFred();
-  RASSERT0(&f->processor->getScheduler() == &proc.getScheduler());
-  f->processor = &proc;
-  if (!f->yieldGlobal()) f->yieldForce();
-}
-
-// migrate to other scheduler (for disk I/O), don't change affinity
-BaseProcessor& Fred::migrate(Scheduler& scheduler, _friend<EventScope>) {
-  Fred* f = Context::CurrFred();
-  BaseProcessor* proc = f->processor;
-  f->processor = &scheduler.placement(_friend<Fred>());
-  f->yieldForce();
-  return *proc;
-}
-
-// migrate back to previous processor (after disk I/O), don't change affinity
-void Fred::migrate(BaseProcessor& proc, _friend<EventScope>) {
-  Fred* f = Context::CurrFred();
-  f->processor = &proc;
-  f->yieldForce();
+BaseProcessor& Fred::migrate(Scheduler& scheduler) {
+  return migrate(scheduler.placement(_friend<Fred>()));
 }

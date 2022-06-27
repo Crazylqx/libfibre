@@ -101,7 +101,6 @@ private:
   void suspendInternal();
   inline void yieldTo(Fred& nextFred);
   inline void yieldResume(Fred& nextFred);
-  inline void yieldForce();
 
 protected:
   // constructor/destructors can only be called by derived classes
@@ -192,15 +191,13 @@ public:
     return false;
   }
 
-  BaseProcessor& getProcessor(_friend<EventScope>) { RASSERT0(processor); return *processor; }
+  BaseProcessor& getProcessor(_friend<EventScope>)  { RASSERT0(processor); return *processor; }
   BaseProcessor* getProcessor(_friend<IdleManager>) { RASSERT0(processor); return processor; }
 
   // migration
   void rebalance();
-  static void migrate(Scheduler&);
-  static void migrate(BaseProcessor&);
-  static BaseProcessor& migrate(Scheduler&, _friend<EventScope>);
-  static void migrate(BaseProcessor&, _friend<EventScope>);
+  static BaseProcessor& migrate(BaseProcessor&);
+  static BaseProcessor& migrate(Scheduler&);
 };
 
 #endif /* _Fred_h_ */
