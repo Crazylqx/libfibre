@@ -18,7 +18,8 @@ typedef FredMutex shim_mutex_t;
 #endif
 
 static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg, bool bg = false) {
-  Fibre* f = new Fibre(CurrCluster(), bg);
+  Fibre* f = new Fibre(CurrCluster());
+  if (bg) f->setAffinity(Fibre::NoAffinity);
   f->run(start_routine, arg);
   return f;
 }

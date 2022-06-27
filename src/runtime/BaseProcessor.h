@@ -92,19 +92,20 @@ class BaseProcessor : public DoubleLink<BaseProcessor,3> {
   static const size_t HaltSpinMax =   64;
   static const size_t IdleSpinMax = 1024;
 
-  inline Fred*  tryLocal();
+  inline Fred*   tryAll();
+  inline Fred*   tryLocal();
 #if TESTING_LOADBALANCING
   inline Fred*   tryStage();
   inline Fred*   trySteal();
   BaseProcessor* localVictim;
   BaseProcessor* globalVictim;
 #else
-  Benaphore<>   readyCount;
+  Benaphore<>    readyCount;
 #endif
-  HaltSemaphore haltSem;
-  Fred*         handoverFred;
+  HaltSemaphore  haltSem;
+  Fred*          handoverFred;
 #if TESTING_WAKE_FRED_WORKER
-  bool          halting;
+  bool           halting;
 #endif
 
   void enqueueFred(Fred& f) {
@@ -112,9 +113,8 @@ class BaseProcessor : public DoubleLink<BaseProcessor,3> {
     readyQueue.enqueue(f);
   }
 
-  inline Fred* scheduleInternal();
   inline Fred* scheduleNonblocking();
-  inline Fred& idleLoopSchedule();
+  inline Fred& scheduleFromIdle();
 
 protected:
   Scheduler& scheduler;
@@ -148,21 +148,7 @@ public:
   void setHalting(bool, _friend<IdleManager>) {}
 #endif
 
-#if TESTING_LOADBALANCING
-  Fred* tryDequeue(_friend<Scheduler>) {
-    return readyQueue.tryDequeue();
-  }
-#endif
-
-  void enqueueYield(Fred& f, _friend<Fred>) { enqueueFred(f); }
-  void enqueueResume(Fred& f, _friend<Fred>);
-
-  Fred& scheduleFull(_friend<Fred>);
-  Fred* scheduleYield(_friend<Fred>);
-  Fred* scheduleYieldGlobal(_friend<Fred>);
-  Fred* schedulePreempt(Fred* currFred, _friend<Fred>);
-
-  Fred* suspend(_friend<IdleManager>) {
+  Fred* halt(_friend<IdleManager>) {
     for (size_t i = 0; i < HaltSpinMax; i += 1) {
       if fastpath(haltSem.tryP(*this)) return handoverFred;
       Pause();
@@ -172,11 +158,20 @@ public:
     return handoverFred;
   }
 
-  void resume(Fred* f, _friend<IdleManager>) {
+  void wake(Fred* f, _friend<IdleManager>) {
     stats->wake.count();
     handoverFred = f;
     haltSem.V(*this);
   }
+
+  Fred* tryScheduleYield(_friend<Fred>);
+  Fred* tryScheduleYieldGlobal(_friend<Fred>);
+  Fred* trySchedulePreempt(Fred* currFred, _friend<Fred>);
+
+  Fred& scheduleFull(_friend<Fred>);
+
+  void enqueueYield(Fred& f, _friend<Fred>) { enqueueFred(f); }
+  void enqueueResume(Fred& f, _friend<Fred>);
 
   void reset(Scheduler& c, _friend<EventScope> token, const char* n = "Processor  ") {
     new (stats) FredStats::ProcessorStats(this, &c, n);

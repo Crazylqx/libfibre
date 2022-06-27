@@ -186,7 +186,7 @@ public:
   // check affinity and potentially update processor during work-stealing
   bool checkAffinity(BaseProcessor& newProcessor, _friend<BaseProcessor>) {
     if (affinity == FixedAffinity) return true;
-    if (affinity > FixedAffinity) affinity -= 1;
+    if (affinity == TempAffinity) affinity = FixedAffinity;
     processor = &newProcessor;
     return false;
   }

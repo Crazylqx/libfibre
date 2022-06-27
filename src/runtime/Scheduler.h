@@ -49,7 +49,7 @@ class IdleManager {
     nextProc->setHalting(false, _friend<IdleManager>());
     __atomic_sub_fetch(&waitCounter, 1, __ATOMIC_SEQ_CST);
     procLock.release();
-    nextProc->resume(fred, _friend<IdleManager>());
+    nextProc->wake(fred, _friend<IdleManager>());
     return true;
   }
 public:
@@ -68,7 +68,7 @@ public:
     proc.setHalting(true, _friend<IdleManager>());
     waitingProcs.push_front(proc);
     procLock.release();
-    return proc.suspend(_friend<IdleManager>());
+    return proc.halt(_friend<IdleManager>());
   }
   IdleManager(cptr_t) : spinCounter(0), waitCounter(0) {}
   void reset(cptr_t, _friend<EventScope>) {}
@@ -90,7 +90,7 @@ class IdleManager {
       proc.setHalting(true, _friend<IdleManager>());
       waitingProcs.push_front(proc);
       procLock.release();
-      return proc.suspend(_friend<IdleManager>());
+      return proc.halt(_friend<IdleManager>());
     } else {
       Fred* nextFred = waitingFreds.pop();
       procLock.release();
@@ -112,7 +112,7 @@ class IdleManager {
       }
       nextProc->setHalting(false, _friend<IdleManager>());
       procLock.release();
-      nextProc->resume(&fred, _friend<IdleManager>());
+      nextProc->wake(&fred, _friend<IdleManager>());
     }
   }
 
@@ -211,9 +211,7 @@ public:
   }
 
 #if TESTING_LOADBALANCING
-  Fred* stage()  {
-    return stagingProc.tryDequeue(_friend<Scheduler>());
-  }
+  BaseProcessor& getStaging(_friend<BaseProcessor>) { return stagingProc; }
 #endif
 };
 

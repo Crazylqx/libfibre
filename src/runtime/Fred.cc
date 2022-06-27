@@ -114,13 +114,13 @@ inline void Fred::yieldResume(Fred& nextFred) {
 }
 
 bool Fred::yield() {
-  Fred* nextFred = Context::CurrProcessor().scheduleYield(_friend<Fred>());
+  Fred* nextFred = Context::CurrProcessor().tryScheduleYield(_friend<Fred>());
   if (nextFred) Context::CurrFred()->yieldTo(*nextFred);
   return nextFred;
 }
 
 bool Fred::yieldGlobal() {
-  Fred* nextFred = Context::CurrProcessor().scheduleYieldGlobal(_friend<Fred>());
+  Fred* nextFred = Context::CurrProcessor().tryScheduleYieldGlobal(_friend<Fred>());
   if (nextFred) Context::CurrFred()->yieldTo(*nextFred);
   return nextFred;
 }
@@ -135,7 +135,7 @@ void Fred::idleYieldTo(Fred& nextFred, _friend<BaseProcessor>) {
 void Fred::preempt() {
   CHECK_PREEMPTION(0);
   Fred* currFred = Context::CurrFred();
-  Fred* nextFred = Context::CurrProcessor().schedulePreempt(currFred, _friend<Fred>());
+  Fred* nextFred = Context::CurrProcessor().trySchedulePreempt(currFred, _friend<Fred>());
   if (nextFred) currFred->switchFred<Yield>(*nextFred);
 }
 
@@ -155,9 +155,10 @@ void Fred::rebalance() {
 BaseProcessor& Fred::migrate(BaseProcessor& proc) {
   Fred* f = Context::CurrFred();
   BaseProcessor* cproc = f->processor;
-  if (&cproc->getScheduler() != &proc.getScheduler() || !f->yieldGlobal()) {
-    f->yieldResume(Context::CurrProcessor().scheduleFull(_friend<Fred>()));
-  }
+  f->processor = &proc;
+  if (&cproc->getScheduler() == &proc.getScheduler() && f->yieldGlobal()) return *cproc;
+  Fred& nextFred = Context::CurrProcessor().scheduleFull(_friend<Fred>());
+  f->yieldResume(nextFred);
   return *cproc;
 }
 

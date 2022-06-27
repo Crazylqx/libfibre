@@ -406,7 +406,7 @@ static void* scopemain(void* arg) {
   Cluster** cluster = new Cluster*[clusterCount];
   cluster[0] = &CurrCluster();
   for (unsigned int c = 1; c < clusterCount; c += 1) {
-    cluster[c] = new Cluster;
+    cluster[c] = new Cluster(pollerCount);
   }
 
 #if defined __LIBFIBRE__
