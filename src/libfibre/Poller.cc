@@ -18,8 +18,7 @@
 #include "libfibre/EventScope.h"
 
 template<bool Blocking>
-inline int BasePoller::doPoll() {
-  stats->blocks.count(Blocking);
+inline int BasePoller::doPoll(bool CountAsBlocking) {
 #if __FreeBSD__
   static const timespec ts = Time::zero();
   int evcnt = kevent(pollFD, nullptr, 0, events, MaxPoll, Blocking ? nullptr : &ts);
@@ -28,8 +27,7 @@ inline int BasePoller::doPoll() {
 #endif
   if (evcnt < 0) { RASSERT(_SysErrno() == EINTR, _SysErrno()); evcnt = 0; } // gracefully handle EINTR
   DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " got ", evcnt, " events from ", pollFD);
-  if (evcnt == 0) stats->empty.count();
-  else (Blocking ? stats->eventsB : stats->eventsNB).count(evcnt);
+  (CountAsBlocking ? stats->eventsB : stats->eventsNB).count(evcnt);
   return evcnt;
 }
 
@@ -95,19 +93,22 @@ inline void PollerFibre::pollLoop() {
   static const size_t SpinMax = 1;
 #endif
   size_t spin = 1;
+  bool blockingStats = false;
   while (!pollTerminate) {
-    int evcnt = doPoll<false>();
+    int evcnt = doPoll<false>(blockingStats);
     if fastpath(evcnt > 0) {
       notifyAll(evcnt);
-      Fibre::yieldGlobal();
       spin = 1;
+      blockingStats = false;
+      Fibre::yieldGlobal();
     } else if (spin >= SpinMax) {
-      stats->blocks.count();
-      eventScope.blockPollFD(pollFD, _friend<PollerFibre>());
       spin = 1;
+      blockingStats = true;
+      eventScope.blockPollFD(pollFD, _friend<PollerFibre>());
     } else {
-      Fibre::yieldGlobal();
       spin += 1;
+      blockingStats = false;
+      Fibre::yieldGlobal();
     }
   }
 }

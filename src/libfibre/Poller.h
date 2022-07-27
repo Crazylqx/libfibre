@@ -67,7 +67,7 @@ protected:
   FredStats::PollerStats* stats;
 
   template<bool Blocking>
-  inline int doPoll();
+  inline int doPoll(bool CountAsBlocking = Blocking);
 
   template<bool Enqueue = true>
   inline Fred* notifyOne(EventType& ev);

@@ -124,13 +124,13 @@ void Base::print(ostream& os) const {
 void EventScopeStats::print(ostream& os) const {
   if (totalEventScopeStats && this != totalEventScopeStats) totalEventScopeStats->aggregate(*this);
   Base::print(os);
-  os << " srvconn:" << srvconn << " cliconn:" << cliconn << " resets:" << resets << " calls:" << calls << " fails:" << fails;
+  os << " srvconn: " << srvconn << " cliconn: " << cliconn << " resets: " << resets << " calls: " << calls << " fails: " << fails;
 }
 
 void PollerStats::print(ostream& os) const {
   if (totalPollerStats && this != totalPollerStats) totalPollerStats->aggregate(*this);
   Base::print(os);
-  os << " regs:" << regs << " blocks:" << blocks << " empty:" << empty << " eventsB:" << eventsB << " eventsNB:" << eventsNB;
+  os << " regs: " << regs << " eventsB:" << eventsB << " eventsNB:" << eventsNB;
 }
 
 void IOUringStats::print(ostream& os) const {
@@ -148,7 +148,7 @@ void TimerStats::print(ostream& os) const {
 void ClusterStats::print(ostream& os) const {
   if (totalClusterStats && this != totalClusterStats) totalClusterStats->aggregate(*this);
   Base::print(os);
-  os << " pause:" << pause;
+  os << " pause: " << pause;
 }
 
 void IdleManagerStats::print(ostream& os) const {
@@ -160,18 +160,18 @@ void IdleManagerStats::print(ostream& os) const {
 void ProcessorStats::print(ostream& os) const {
   if (totalProcessorStats && this != totalProcessorStats) totalProcessorStats->aggregate(*this);
   Base::print(os);
-  os << " C:"  << create;
-  os << " S:"  << start;
-  os << " D:"  << deq;
-  if (handover)     os << " H:"  << handover;
-  if (borrowLocal)  os << " BL:" << borrowLocal;
-  if (borrowStage)  os << " BS:" << borrowStage;
-  if (borrowGlobal) os << " BG:" << borrowGlobal;
-  if (stealLocal)   os << " SL:" << stealLocal;
-  if (stealStage)   os << " SS:" << stealStage;
-  if (stealGlobal)  os << " SG:" << stealGlobal;
-  os << " I:" << idle;
-  os << " W:" << wake;
+  os << " C: "  << create;
+  os << " S: "  << start;
+  os << " D: "  << deq;
+  if (handover)     os << " H: "  << handover;
+  if (borrowLocal)  os << " BL: " << borrowLocal;
+  if (borrowStage)  os << " BS: " << borrowStage;
+  if (borrowGlobal) os << " BG: " << borrowGlobal;
+  if (stealLocal)   os << " SL: " << stealLocal;
+  if (stealStage)   os << " SS: " << stealStage;
+  if (stealGlobal)  os << " SG: " << stealGlobal;
+  os << " I: " << idle;
+  os << " W: " << wake;
 }
 
 void ReadyQueueStats::print(ostream& os) const {

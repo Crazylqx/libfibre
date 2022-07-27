@@ -203,9 +203,9 @@ public:
 #else
     (void)staging;
 #endif
-    RASSERT0(placeProc);
     // ring insert is traversal-safe, so could use separate 'placeLock' here
     ScopedLock<WorkerLock> sl(ringLock);
+    RASSERT0(placeProc);
     placeProc = ProcessorRingGlobal::next(*placeProc);
     return *placeProc;
   }

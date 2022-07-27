@@ -36,13 +36,22 @@ class ReadyQueue {
   ReadyQueue(const ReadyQueue&) = delete;            // no copy
   ReadyQueue& operator=(const ReadyQueue&) = delete; // no assignment
 
+  template<bool Try = false>
   Fred* dequeueInternal() {
     for (size_t p = 0; p < Fred::NumPriority; p += 1) {
       Fred* f = queue[p].pop();
       if (f) return f;
     }
-    stats->queue.fail();
+    if (Try) stats->queue.tryfail();
+    else stats->queue.fail();
     return nullptr;
+  }
+
+  bool probe() {
+    for (size_t p = 0; p < Fred::NumPriority; p += 1) {
+      if (!queue[p].empty<true>()) return true;
+    }
+    return false;
   }
 
 public:
@@ -59,8 +68,9 @@ public:
 
 #if TESTING_LOADBALANCING
   Fred* tryDequeue() {
+    if (!probe()) return nullptr;
     if (!readyLock.tryAcquire()) return nullptr;
-    Fred* f = dequeueInternal();
+    Fred* f = dequeueInternal<true>();
     stats->queue.remove((int)(bool)f);
     readyLock.release();
     return f;

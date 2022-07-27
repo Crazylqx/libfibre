@@ -29,6 +29,7 @@ class QueueMCS {
 
 public:
   QueueMCS() : tail(nullptr) {}
+  template<bool = false>
   bool empty() const { return !tail; }
 
   bool tryPushEmpty(Node& last) {
@@ -143,6 +144,7 @@ public:
     Next(*stub) = nullptr;                             // invalidate link
     if (Blocking) tail = (Node*)(uintptr_t(tail) | 1); // mark queue empty
   }
+  template<bool = false>
   bool empty() const { return (head == stub && tail == stub); }
 
   bool push(Node& first, Node& last) {

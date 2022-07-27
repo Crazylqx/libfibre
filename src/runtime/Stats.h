@@ -69,7 +69,7 @@ public:
 }; 
 
 inline ostream& operator<<(ostream& os, const Counter& x) {
-  os << ' ' << std::fixed << (Number)x;
+  os << std::fixed << (Number)x;
   return os;
 }
 
@@ -107,7 +107,7 @@ public:
 };
 
 inline ostream& operator<<(ostream& os, const Average& x) {
-  os << (const Counter&)x;
+  os << ' ' << (const Counter&)x;
   os << ' ' << std::fixed << x.average() << '/' << x.variance();
   return os;
 }
@@ -138,30 +138,37 @@ inline ostream& operator<<(ostream& os, const HashTable<N>& x) {
 
 struct Distribution {
   Average average;
+  Counter zero;
   HashTable<bitsize<Number>()> hashTable;
 public:
   void count(size_t n) {
     average.count(n);
-    hashTable.count(floorlog2(n));
+    if (n) hashTable.count(floorlog2(n));
+    else zero.count();
   }
   void aggregate(const Distribution& x) {
     average.aggregate(x.average);
+    zero.aggregate(x.zero);
     hashTable.aggregate(x.hashTable);
   }
   void reset() {
     average.reset();
+    zero.reset();
     hashTable.reset();
   }
 };
 
 inline ostream& operator<<(ostream& os, const Distribution& x) {
-  os << x.average << x.hashTable;
+  os << x.average;
+  if (x.zero) os << " Z:" << x.zero;
+  os << x.hashTable;
   return os;
 }
 
 struct Queue {
   volatile Number qlen;
   Counter fails;
+  Counter tryfails;
   Distribution qdist;
 public:
   Queue() : qlen(0) {}
@@ -175,21 +182,26 @@ public:
   void fail() {
     fails.count();
   }
+  void tryfail() {
+    tryfails.count();
+  }
   void aggregate(const Queue& x) {
     qlen += x.qlen;
     fails.aggregate(x.fails);
+    tryfails.aggregate(x.tryfails);
     qdist.aggregate(x.qdist);
   }
   void reset() {
     qlen = 0;
     fails.reset();
+    tryfails.reset();
     qdist.reset();
   }
 };
 
 inline ostream& operator<<(ostream& os, const Queue& x) {
-  if (x.qlen != 0) os << " Q: " << x.qlen;
-  os << " F:" << x.fails << x.qdist;
+  if (x.qlen != 0) os << " Q:" << x.qlen;
+  os << " F: " << x.fails << " T: " << x.tryfails << " L:" << x.qdist;
   return os;
 }
 
@@ -230,6 +242,7 @@ struct Queue {
   void add(Number = 1) {}
   void remove(Number = 1) {}
   void fail() {}
+  void tryfail() {}
   void aggregate(const Queue&) {}
   void reset() {}
 };
@@ -262,23 +275,17 @@ struct EventScopeStats : public Base {
 
 struct PollerStats : public Base {
   Counter regs;
-  Counter blocks;
-  Counter empty;
   Distribution eventsB;
   Distribution eventsNB;
   PollerStats(cptr_t o, cptr_t p, const char* n = "Poller") : Base(o, p, n, 1) {}
   void print(ostream& os) const;
   void aggregate(const PollerStats& x) {
     regs.aggregate(x.regs);
-    blocks.aggregate(x.blocks);
-    empty.aggregate(x.empty);
     eventsB.aggregate(x.eventsB);
     eventsNB.aggregate(x.eventsNB);
   }
   virtual void reset() {
     regs.reset();
-    blocks.reset();
-    empty.reset();
     eventsB.reset();
     eventsNB.reset();
   }

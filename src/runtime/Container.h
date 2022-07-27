@@ -28,6 +28,7 @@ class Stack {
 
 public:
   Stack() : head(Sentinel) {}
+  template<bool = false>
   bool empty() const { return head == Sentinel; }
 
   Node*              front()       { return head; }
@@ -83,8 +84,9 @@ class Queue {
 
 public:
   Queue() : head(Sentinel), tail(Sentinel) {}
+  template<bool Clean = false>
   bool empty() const {
-    RASSERT((head == Sentinel) == (tail == Sentinel), FmtHex(this));
+    RASSERT(Clean || ((head == Sentinel) == (tail == Sentinel)), FmtHex(this));
     return head == Sentinel;
   }
 
