@@ -50,7 +50,7 @@ class IdleManager {
     __atomic_sub_fetch(&waitCounter, 1, __ATOMIC_SEQ_CST);
     procLock.release();
     nextProc->wake(fred, _friend<IdleManager>());
-    return true;
+    return fred;
   }
 public:
   void incSpinning() { __atomic_add_fetch(&spinCounter, 1, __ATOMIC_SEQ_CST); }

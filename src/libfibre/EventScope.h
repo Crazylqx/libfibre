@@ -48,10 +48,10 @@ class EventScope {
   struct SyncFD {
     Poller::SyncSem sync[2];
     BasePoller*     poller[2];
-    size_t          yieldCounter[2];
+    size_t          yieldCounter;
     bool            blocking;
     bool            useUring;
-    SyncFD() : poller{nullptr,nullptr}, yieldCounter{0,0}, blocking(false), useUring(false) {}
+    SyncFD() : poller{nullptr,nullptr}, yieldCounter(0), blocking(false), useUring(false) {}
   } *fdSyncVector;
 
   int fdCount;
@@ -130,13 +130,11 @@ class EventScope {
 
   template<bool Input, bool Cluster>
   BasePoller& getPoller(int fd) {
-    if (Input) {
+    if (!Input) return Context::CurrCluster().getOutputPoller(fd);
 #if TESTING_WORKER_POLLER
-      if (!Cluster) return Cluster::getWorkerPoller(CurrFibre()->getProcessor(_friend<EventScope>()));
+    if (!Cluster) return Cluster::getWorkerPoller(CurrFibre()->getProcessor(_friend<EventScope>()));
 #endif
-      return Context::CurrCluster().getInputPoller(fd);
-    }
-    return Context::CurrCluster().getOutputPoller(fd);
+    return Context::CurrCluster().getInputPoller(fd);
   }
 
   template<bool Input>
@@ -160,35 +158,38 @@ class EventScope {
     return false;
   }
 
-  template<bool Input, bool Yield, bool Cluster, typename T, class... Args>
+  template<bool Input, bool Accept, typename T, class... Args>
   T syncIO( T (*iofunc)(int, Args...), int fd, Args... a) {
     T ret;
+    static const bool Read = Input && !Accept;
     static const Poller::Direction direction = Input ? Poller::Input : Poller::Output;
-#if TESTING_EVENTPOLL_ONDEMAND
-    static const Poller::Variant variant = Input ? Poller::OnDemand : Poller::Oneshot;
-#elif TESTING_EVENTPOLL_ONESHOT
-    static const Poller::Variant variant = Input ? Poller::Oneshot : Poller::Oneshot;
-#elif TESTING_EVENTPOLL_LEVEL
-    static const Poller::Variant variant = Input ? Poller::Level : Poller::Oneshot;
-#else
+#if TESTING_EVENTPOLL_EDGE
     static const Poller::Variant variant = Input ? Poller::Edge : Poller::Oneshot;
+#elif TESTING_EVENTPOLL_ONESHOT
+    static const Poller::Variant variant = Poller::Oneshot;
+#elif TESTING_EVENTPOLL_ONDEMAND
+    static const Poller::Variant variant = Input ? Poller::OnDemand : Poller::Oneshot;
+#else // level
+    static const Poller::Variant variant = Read ? Poller::Level : Poller::Oneshot;
 #endif
+    if (!Read) {
+      if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
+    }
 #if TESTING_EVENTPOLL_TRYREAD
-    if (Yield)
+    else {
 #if !TESTING_CLUSTER_POLLER_FLOAT
-      if (++fdSyncVector[fd].yieldCounter[Input] < 256)
+      if (++fdSyncVector[fd].yieldCounter < 256)
 #endif
         Fibre::yield();
-    if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
+      if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
 #if !TESTING_CLUSTER_POLLER_FLOAT
-    if (Yield) fdSyncVector[fd].yieldCounter[Input] = 0;
+      fdSyncVector[fd].yieldCounter = 0;
 #endif
-#else /* TESTING_EVENTPOLL_TRYREAD */
-    if (!Input && tryIO<Input>(ret, iofunc, fd, a...)) return ret;
-#endif /* TESTING_EVENTPOLL_TRYREAD */
+    }
+#endif
     BasePoller*& poller = fdSyncVector[fd].poller[Input];
     if (!poller) {
-      poller = &getPoller<Input,Cluster>(fd);
+      poller = &getPoller<Input,Accept>(fd);
       poller->setupFD(fd, Poller::Create, direction, variant);
     } else if (variant == Poller::Oneshot) {
       poller->setupFD(fd, Poller::Modify, direction, variant);
@@ -216,12 +217,12 @@ class EventScope {
 
   template<typename T, class... Args>
   T blockingInput( T (*readfunc)(int, Args...), int fd, Args... a) {
-    return syncIO<true,true,false>(readfunc, fd, a...); // yield before read
+    return syncIO<true,false>(readfunc, fd, a...); // yield before read
   }
 
   template<typename T, class... Args>
   T blockingOutput( T (*writefunc)(int, Args...), int fd, Args... a) {
-    return syncIO<false,false,false>(writefunc, fd, a...); // no yield before write
+    return syncIO<false,false>(writefunc, fd, a...); // no yield before write
   }
 
 public:
@@ -440,7 +441,7 @@ public:
     } else
 #endif
     ret = fdSyncVector[fd].blocking
-        ? syncIO<true,false,true>(::accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK)
+        ? syncIO<true,true>(::accept4, fd, addr, addrlen, flags | SOCK_NONBLOCK)
         : ::accept4(fd, addr, addrlen, flags | SOCK_NONBLOCK);
     if (ret < 0) return ret;
     fdSyncVector[ret].blocking = !(flags & SOCK_NONBLOCK);

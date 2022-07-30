@@ -29,7 +29,7 @@ extern void RuntimeWorkerSuspend(BaseProcessor&);
 extern void RuntimeWorkerResume(BaseProcessor&);
 
 struct HaltSemaphore {
-  HaltSemaphore(size_t c)    { RASSERT(c == 0, c); }
+  HaltSemaphore(size_t c)     { RASSERT(c == 0, c); }
   bool tryP(BaseProcessor& p) { return RuntimeWorkerTrySuspend(p); }
   bool    P(BaseProcessor& p) { RuntimeWorkerSuspend(p); return true; }
   void    V(BaseProcessor& p) { RuntimeWorkerResume(p); }
@@ -40,7 +40,7 @@ struct HaltSemaphore {
 static inline bool RuntimeWorkerPoll(BaseProcessor&) { return false; }
 
 struct HaltSemaphore : public WorkerSemaphore {
-    HaltSemaphore(size_t c) : WorkerSemaphore(c) {}
+  HaltSemaphore(size_t c) : WorkerSemaphore(c) {}
   bool tryP(BaseProcessor&) { return WorkerSemaphore::tryP(); }
   bool    P(BaseProcessor&) { return WorkerSemaphore::P(); }
   void    V(BaseProcessor&) { WorkerSemaphore::V(); }

@@ -115,7 +115,7 @@ class BaseProcessor : public DoubleLink<BaseProcessor,3> {
   HaltSemaphore  haltSem;
   Fred*          handoverFred;
 #if TESTING_WAKE_FRED_WORKER
-  bool           halting;
+  bool           halting = false;
 #endif
 
   void enqueueFred(Fred& f) {
@@ -138,9 +138,6 @@ public:
   BaseProcessor(Scheduler& c, const char* n = "Processor  ") : readyQueue(*this), haltSem(0), handoverFred(nullptr), scheduler(c), idleFred(nullptr) {
 #if TESTING_LOADBALANCING
     localVictim = globalVictim = this;
-#endif
-#if TESTING_WAKE_FRED_WORKER
-    halting = false;
 #endif
     stats = new FredStats::ProcessorStats(this, &c, n);
   }

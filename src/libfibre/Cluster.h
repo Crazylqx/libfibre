@@ -58,18 +58,12 @@ class Cluster : public Scheduler {
   struct Worker : public BaseProcessor {
     pthread_t     sysThreadId;
 #if TESTING_WORKER_IO_URING
-    IOUring*      iouring;
+    IOUring*      iouring = nullptr;
 #endif
 #if TESTING_WORKER_POLLER
-    WorkerPoller* workerPoller;
+    WorkerPoller* workerPoller = nullptr;
 #endif
     Worker(Cluster& c) : BaseProcessor(c) {
-#if TESTING_WORKER_IO_URING
-      iouring = nullptr;
-#endif
-#if TESTING_WORKER_POLLER
-      workerPoller = nullptr;
-#endif
       c.Scheduler::addProcessor(*this);
     }
     void setIdleLoop(Fibre* f) { BaseProcessor::idleFred = f; }

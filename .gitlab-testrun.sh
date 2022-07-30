@@ -263,6 +263,7 @@ function prep_3() {
 
 function prep_4() {
 	prep_value 0 TESTING_CLUSTER_POLLER_FLOAT\
+	           1 TESTING_EVENTPOLL_EDGE\
 	           0 TESTING_EVENTPOLL_ONESHOT
 	app=memcached
 }
@@ -271,8 +272,7 @@ function prep_5() {
 	prep_value 1 TESTING_WORKER_POLLER\
 	           0 TESTING_CLUSTER_POLLER_FLOAT\
 	           0 TESTING_EVENTPOLL_TRYREAD\
-	           0 TESTING_EVENTPOLL_ONESHOT\
-	           1 TESTING_EVENTPOLL_LEVEL
+	           0 TESTING_EVENTPOLL_ONESHOT
 	app=memcached
 }
 
