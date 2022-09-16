@@ -81,7 +81,7 @@
 .set ISRFRAME, 160                    /* stack alignment 16 */
 
 .macro ISR_PUSH                       /* ISRFRAME bytes pushed */
-  stp x0, x1,   [sp, -160]!           /* pre-index: SP - 160 */
+  stp x0, x1,   [sp, -160]!           /* pre-index: SP -= 160 */
   stp x2, x3,   [sp, 16]
   stp x4, x5,   [sp, 32]
   stp x6, x7,   [sp, 48]
@@ -103,11 +103,11 @@
   ldp x6, x7,   [sp, 48]
   ldp x4, x5,   [sp, 32]
   ldp x2, x3,   [sp, 16]
-  ldp x0, x1,   [sp], 160             /* post-index: SP + 160 */
+  ldp x0, x1,   [sp], 160             /* post-index: SP += 160 */
 .endm
 
 .macro STACK_PUSH
-  stp x29, x30, [sp, -160]!           /* pre-index: SP - 160 */
+  stp x29, x30, [sp, -160]!           /* pre-index: SP -= 160 */
   mov x29, sp                         /* produce clean stack for debugging */
   stp x27, x28, [sp, 16]
   stp x25, x26, [sp, 32]
@@ -131,7 +131,7 @@
   ldp x23, x24, [sp, 48]
   ldp x25, x26, [sp, 32]
   ldp x27, x28, [sp, 16]
-  ldp x29, x30, [sp], 160             /* post-index: SP + 160 */
+  ldp x29, x30, [sp], 160             /* post-index: SP += 160 */
 .endm
 
 #else

@@ -71,8 +71,8 @@ for lcnt in $*; do
 				# perf stat -e task-clock --log-fd 1 -x,
 				taskset -c 32-63 perf stat -e task-clock -o perf.out \
 			  ./apps/${PREFIX}threadtest -l$lcnt -t32 -w$w -u$w -f$f | tee run.out
-			  thr=$(cat run.out|fgrep loops/fibre|awk '{print $4}')
-			  cpu=$(cat perf.out|fgrep "CPUs utilized"|awk '{print $5}')
+			  thr=$(cat run.out|grep -F loops/fibre|awk '{print $4}')
+			  cpu=$(cat perf.out|grep -F "CPUs utilized"|awk '{print $5}')
 			  printf "t: %9s f: %4d w: %6d o: %10d u: %6.3f\n" $MUTEXNAME $f $w $thr $cpu >> $filename
 			done
 		done

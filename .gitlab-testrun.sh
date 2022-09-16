@@ -117,7 +117,7 @@ function run_stacktest() {
 
 function run_memcached_one() {
 	for ((p=0;;p++)); do
-		$TEST_MEMCACHED_PORT | fgrep -q 11211 > /dev/null || break
+		$TEST_MEMCACHED_PORT | grep -F -q 11211 > /dev/null || break
 		[ $p -ge 3 ] && error "memcached port not free"
 		sleep 1
 	done
@@ -145,16 +145,16 @@ function run_memcached_one() {
 	$show && return
 
   (echo stats;sleep 1)|telnet localhost 11211 \
-  2> >(fgrep -v "Connection closed" 1>&2) > out/stats.$exp.$cnt.out
+  2> >(grep -F -v "Connection closed" 1>&2) > out/stats.$exp.$cnt.out
 
   killall memcached && sleep 1 || error
 }
 
 function output_memcached() {
-  lline=$(fgrep read out/mutilate.$exp.$cnt.out)
+  lline=$(grep -F read out/mutilate.$exp.$cnt.out)
   lat=$(echo $lline|awk '{print $2}'|cut -f1 -d.)
   lvr=$(echo $lline|awk '{print $3}'|cut -f1 -d.)
-  rline=$(fgrep rx out/mutilate.$exp.$cnt.out)
+  rline=$(grep -F rx out/mutilate.$exp.$cnt.out)
   [ -z "$rline" ] && {
 		rat=0
 		rvr=0
@@ -164,11 +164,11 @@ function output_memcached() {
 		rvr=$(echo $rline|awk '{print $3}'|cut -f1 -d.)
 		cov=$(expr $rvr \* 100 / $rat)
   }
-  qline=$(fgrep "QPS" out/mutilate.$exp.$cnt.out)
+  qline=$(grep -F "QPS" out/mutilate.$exp.$cnt.out)
   qps=$(echo $qline|awk '{print $4}'|cut -f1 -d.)
   req=$(echo $qline|cut -f2 -d'('|awk '{print $1}')
-	buf=$(fgrep read_buf_count out/stats.$exp.$cnt.out|awk '{print $3}')
-	jug=$(fgrep lru_maintainer_juggles out/stats.$exp.$cnt.out|awk '{print $3}')
+	buf=$(grep -F read_buf_count out/stats.$exp.$cnt.out|awk '{print $3}')
+	jug=$(grep -F lru_maintainer_juggles out/stats.$exp.$cnt.out|awk '{print $3}')
 
 	$exact && {
 		printf " QPS: %7d RAT: %7d %7d LAT: %7d %7d" \
@@ -179,11 +179,11 @@ function output_memcached() {
 	}
 
 	[ "$(uname -s)" = "FreeBSD" ] || {
-		cyc=$(fgrep "cycles" out/perf.$exp.$cnt.out|fgrep -v stalled|awk '{print $1}')
-		ins=$(fgrep "instructions" out/perf.$exp.$cnt.out|awk '{print $1}')
-		l1c=$(fgrep "L1-dcache-load-misses" out/perf.$exp.$cnt.out|awk '{print $1}')
-		llc=$(fgrep "LLC-load-misses" out/perf.$exp.$cnt.out|awk '{print $1}')
-		cpu=$(fgrep "CPUs utilized" out/perf.$exp.$cnt.out|awk '{print $5}')
+		cyc=$(grep -F "cycles" out/perf.$exp.$cnt.out|grep -F -v stalled|awk '{print $1}')
+		ins=$(grep -F "instructions" out/perf.$exp.$cnt.out|awk '{print $1}')
+		l1c=$(grep -F "L1-dcache-load-misses" out/perf.$exp.$cnt.out|awk '{print $1}')
+		llc=$(grep -F "LLC-load-misses" out/perf.$exp.$cnt.out|awk '{print $1}')
+		cpu=$(grep -F "CPUs utilized" out/perf.$exp.$cnt.out|awk '{print $5}')
 
 		[ "$l1c" = "<not" ] && l1c=0
 		[ "$llc" = "<not" ] && llc=0
@@ -233,7 +233,7 @@ function run_vanilla() {
 function prep_value() {
 	$MAKE gen
 	while [ $# -gt 0 ]; do
-		file=$(fgrep -l "define $2" src/runtime*/testoptions.h)
+		file=$(grep -F -l "define $2" src/runtime*/testoptions.h)
 		[ -f $file ] || error
 		case $1 in
 			0) sed -i -e "s/.*#define $2 .*/#undef $2/" $file;;
