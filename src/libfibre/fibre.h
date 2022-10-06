@@ -104,6 +104,17 @@ extern EventScope* FibreInit(size_t pollerCount = 1, size_t workerCount = 1);
 /** @brief Fork process (with restrictions) and re-initialize runtime in child process (`fork`). */
 extern pid_t FibreFork();
 
+struct __FibreBootstrap {
+  static int counter;
+  __FibreBootstrap() {
+    if (__atomic_fetch_add(&counter, 1, __ATOMIC_SEQ_CST) == 0) FibreInit();
+  }
+};
+
+#if defined(__FIBRE_BOOTSTRAP__)
+static __FibreBootstrap __fibreBootstrap;
+#endif
+
 /** @brief Initialize attributes for fibre creation (`pthread_attr_init`). */
 inline int fibre_attr_init(fibre_attr_t *attr) {
   attr->init();

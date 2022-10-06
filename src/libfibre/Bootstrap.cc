@@ -50,6 +50,8 @@ static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug
 
 static std::ios_base::fmtflags _ioFormatFlags(std::cout.flags());
 
+int __FibreBootstrap::counter = 0;
+
 static void _lfPrintStats() {
   char* env = getenv("FibrePrintStats");
   if (env) {
