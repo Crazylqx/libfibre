@@ -244,6 +244,7 @@ public:
     EventScope* es = new EventScope(pollerCount, this);
     es->mainCluster->addWorker((funcvoid1_t)cloneInternal, (ptr_t)es); // calls initSync()/start()
     es->mainFibre = new Fibre(*es->mainCluster);
+    es->mainFibre->setName("u:Main");
     es->mainFibre->run(mainFunc, mainArg);
     return es;
   }

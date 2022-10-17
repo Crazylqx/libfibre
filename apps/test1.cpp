@@ -88,21 +88,26 @@ int main(int argc, char** argv) {
   SYSCALL(clock_gettime(CLOCK_REALTIME, &ct));
   cout << ct.tv_sec << '.' << ct.tv_nsec << endl;
   Context::CurrCluster().addWorkers(1);
-  Fibre* f1 = (new Fibre)->run(f1main, (void*)nullptr);
-  Fibre* f2 = (new Fibre)->run(f2main);
-  Fibre* f3 = (new Fibre)->run(f3main);
+  Fibre* f1 = (new Fibre)->setName("Fibre 1")->run(f1main, (void*)nullptr);
+  Fibre* f2 = (new Fibre)->setName("Fibre 2")->run(f2main);
+  Fibre* f3 = (new Fibre)->setName("Fibre 3")->run(f3main);
+
   cout << "M 1" << endl;
   Fibre::yield();
   cout << "M 2" << endl;
   void* jofel = f1->join();
   cout << FmtHex(jofel) << endl;
+  cout << f1->getName() << endl;
   delete f1;
   cout << "f1 gone" << endl;
+  cout << f2->getName() << endl;
   delete f2;
   cout << "f2 gone" << endl;
+  cout << f3->getName() << endl;
   delete f3;
   cout << "f3 gone" << endl;
   cout << counter << endl;
+
   SYSCALL(fibre_key_delete(key_test));
   return 0;
 }

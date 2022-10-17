@@ -122,8 +122,10 @@ PollerFibre::PollerFibre(EventScope& es, BaseProcessor& proc, cptr_t parent, con
 : BasePoller(es, parent, n) {
 #if TESTING_CLUSTER_POLLER_FLOAT
   pollFibre = new Fibre(proc, Fibre::NoAffinity, fc);
+  pollFibre->setName("s:Poller");
 #else
   pollFibre = new Fibre(proc, Fibre::FixedAffinity, fc);
+  pollFibre->setName("s:Poller");
 #endif
 }
 

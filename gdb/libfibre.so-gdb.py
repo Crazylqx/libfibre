@@ -3,6 +3,7 @@
 # or load via 'source DIRECTORY/libfibre.so-gdb.py'
 
 import gdb
+import re
 from contextlib import contextmanager
 
 class FibreSupport():
@@ -164,7 +165,7 @@ class FibreSupport():
 
 class InfoFibres(gdb.Command):
     """Print list of fibres"""
-    header = " Idx \tTarget\tPtr \t\t Frame"
+    header = " Idx\tName\t\tPtr \t\t Frame"
 
     def __init__(self):
         super(InfoFibres, self).__init__("info fibres", gdb.COMMAND_USER)
@@ -172,11 +173,19 @@ class InfoFibres(gdb.Command):
     def get_frame_string(self, frame):
         # Print instruction pointer
         result = str(frame.read_register('rip')).split(None, 1)[0]
-        result += " in " + frame.name()
+        result += " in "
+        if frame.name() is not None:
+            result += frame.name()
         sal = frame.find_sal()
         if sal is not None and sal.symtab is not None:
             result += " at " + sal.symtab.filename + ":" + str(sal.line)
         return result
+
+    def get_fibre_name(self, idx):
+        ftype = gdb.lookup_type('Fibre').pointer()              # Get Fibre ptr type
+        ptr = gdb.Value(FibreSupport.list[idx]).cast(ftype)     # Get ptr to Fibre at given index
+        fibre = ptr.dereference()                               # derefrence fibre ptr to get fibre structure
+        return fibre['name'].format_string()[1:-1]              # get name field
 
     def get_row_for(self, idx, curr, frame, print_frame_info=True):
         result = ""
@@ -184,28 +193,32 @@ class InfoFibres(gdb.Command):
             result += "* "
         else:
             result += "  "
-        result += str(idx) + "\tFibre\t" + str(FibreSupport.list[idx])
+        result += str(idx) + "\t" +  self.get_fibre_name(idx).ljust(15)  + str(FibreSupport.list[idx])
 
         if frame is not None and print_frame_info == True:
-            result += '\t' + self.get_frame_string(frame)
+            result +=  '\t' + self.get_frame_string(frame)
+
         return result
 
-    def print_all_fibres(self, curr):
+    def print_all_fibres(self, curr, reg):
         print(self.header)
         for i in range(len(FibreSupport.list)):
             with FibreSupport.get_frame(FibreSupport.list[i]) as frame:
-                print(self.get_row_for(i, curr, frame))
+                if re.match(reg, self.get_fibre_name(i)):
+                    print(self.get_row_for(i, curr, frame))
 
-    def print_grouped_fibres(self, curr, n):
+    def print_grouped_fibres(self, curr, n, reg):
         all_fibres = FibreSupport.list
         groups = {}
         all_output = []
         for i in range(len(FibreSupport.list)):
             with FibreSupport.get_frame(FibreSupport.list[i]) as frame:
-                all_output.append((
-                    self.get_row_for(i, curr, frame, False),
-                    self.get_frame_string(frame),
-                ))
+                if re.match(reg, self.get_fibre_name(i)):
+                    all_output.append((
+                        self.get_row_for(i, curr, frame, False),
+                        self.get_frame_string(frame),
+                    ))
+
                 if frame is None:
                     continue
 
@@ -262,17 +275,34 @@ class InfoFibres(gdb.Command):
                 fibre_info, frame_info = all_output[i]
                 print(fibre_info, '\t', frame_info)
 
-    def invoke(self, arg, from_tty):
+    def invoke(self, args, from_tty):
         if (not FibreSupport.saved):
             return
         curr = str(gdb.parse_and_eval("Context::currFred"))
-        try:
-            if (arg != None and int(arg) >= 0):
-                self.print_grouped_fibres(curr, int(arg))
+
+        argv = gdb.string_to_argv(args)
+        n = -1
+        reg = ".*"
+
+        if len(argv) >= 1:
+            if argv[0].isdigit():
+                n = int(argv[0])
             else:
-                self.print_all_fibres(curr)
+                reg = argv[0]
+
+        if len(argv) >= 2:
+            if  n <= 0 and argv[1].isdigit():
+                n = int(argv[1])
+            else:
+                reg = str(argv[1])
+
+        try:
+            if n >= 0:
+                self.print_grouped_fibres(curr, n, reg)
+            else:
+                self.print_all_fibres(curr, reg)
         except ValueError:
-            self.print_all_fibres(curr)
+            self.print_all_fibres(curr, reg)
 
 class Fibre(gdb.Command):
     def __init__(self):

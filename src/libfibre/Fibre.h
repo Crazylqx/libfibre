@@ -24,6 +24,7 @@
 #include "runtime-glue/RuntimeContext.h"
 
 #include <vector>
+#include <string>
 #include <sys/mman.h> // mmap, munmap, mprotect
 
 extern size_t _lfPagesize; // Bootstrap.cc
@@ -103,7 +104,6 @@ public:
 
 /** A Fibre object represents an independent execution context backed by a stack. */
 class Fibre : public Fred, public FibreSpecific {
-
 public:
 #ifdef SPLIT_STACK
   static const size_t DefaultStackSize  = 4096;
@@ -123,6 +123,9 @@ private:
 #endif
   SyncPoint<WorkerLock> done;  // synchronization (join) at destructor
   ptr_t result;                // result transferred to join
+#if TESTING_ENABLE_DEBUGGING
+  std::string name;
+#endif
 
   size_t stackAlloc(size_t size, size_t guard) {
 #ifdef SPLIT_STACK
@@ -221,6 +224,17 @@ public:
   void setup(ptr_t func, ptr_t p1, ptr_t p2, ptr_t p3, _friend<Cluster>) { // hide base class setup()
     Fred::setup(func, p1, p2, p3);
   }
+
+#if TESTING_ENABLE_DEBUGGING
+  Fibre* setName(const std::string& n) {
+    name = n.size() >= 2 && n[1] == ':' ? n : "u:" + n;
+    return this;
+  }
+  const std::string& getName() const { return name; }
+#else
+  Fibre* setName(const std::string&) { return this; }
+  const std::string getName() const { return std::string(); }
+#endif
 
   /** Start fibre. */
   Fibre* run(void (*func)()) {
