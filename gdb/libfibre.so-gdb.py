@@ -369,6 +369,115 @@ before continuing the target with 'step', 'next', 'cont', etc..."""
             return
         FibreSupport.restore()
 
+
+class FibreBreakPoint(gdb.Breakpoint):
+    def __init__(self, fibre, condition,  **kwargs):
+        super().__init__(**kwargs)
+        self.fibre = fibre
+        self.condition = condition
+
+    def stop(self):
+        if self.fibre != gdb.parse_and_eval("Context::currFred"):
+            return False
+
+        if self.condition is not None:
+            if not gdb.parse_and_eval(self.condition):
+                return False
+
+        return True
+
+class FibreWatchPoint(gdb.Breakpoint):
+    def __init__(self, fibre, wp_class,**kwargs):
+        super().__init__(type=gdb.BP_WATCHPOINT ,wp_class=wp_class,  **kwargs)
+        self.fibre = fibre
+
+    def stop(self):
+        if self.fibre != gdb.parse_and_eval("Context::currFred"):
+
+            return False
+
+        return True
+
+class FibreBreak(gdb.Command):
+    """
+    Set a breakpoint at given fibre index
+    Usage: fibre break <linespec> <fibre_index> [condition]
+    <fibre_index> : use 'info fibres' to get index of fibres
+    More about linespec: https://sourceware.org/gdb/onlinedocs/gdb/Linespec-Locations.html
+
+    Break points created by this command behaves similar to normal gdb breakpoints
+    They can be deleted in a same way, we delete normal breakpoints
+    """
+    def __init__(self):
+        super(FibreBreak, self).__init__("fibre break", gdb.COMMAND_USER)
+
+    def invoke(self, args, from_tty):
+        if (not FibreSupport.saved):
+            return
+
+        argv = gdb.string_to_argv(args)
+
+        if not 2 <= len(argv) <= 3:
+            print("Usage: fibre break <linespec> <fibre_index> [condition]")
+            return
+
+        fibre_index = int(argv[1])
+
+        if fibre_index < 0 or fibre_index >= len(FibreSupport.list):
+            print("Invalid fibre index")
+            return
+
+        spec = argv[0]
+        condition = argv[2] if len(argv) == 3 else None
+        FibreBreakPoint(FibreSupport.list[fibre_index], spec=spec, condition=condition)
+
+class FibreWatch(gdb.Command):
+    """
+    Set a breakpoint at given fibre index
+    Usage: fibre watch <expr> <fibre_index> [type]
+    fibre_index : use 'info fibres' to get index of fibres
+    expr: Set a watchpoint for the given expression. GDB will break when the data location is read,
+    access or being written
+    type: 0 or unspecified -> write, 1 -> read, 2 -> access
+    """
+    def __init__(self):
+        super(FibreWatch, self).__init__("fibre watch", gdb.COMMAND_USER)
+
+    def invoke(self, args, from_tty):
+        if (not FibreSupport.saved):
+            return
+
+        argv = gdb.string_to_argv(args)
+
+        if not 2 <= len(argv) <= 3:
+            print("Usage: fibre watch <expr> <fibre_index> [type]")
+            return
+
+        type = int(argv[2]) if len(argv) == 3 else 0
+
+        if not 0 <= type <= 2:
+            print("type must be 0(write), 1(read), or 2(access)")
+            return
+
+        if type == 0:
+            wp_class = gdb.WP_WRITE
+        elif type == 1:
+            wp_class = gdb.WP_READ
+        else:
+            wp_class = gdb.WP_ACCESS
+
+
+        fibre_index = int(argv[1])
+
+        if fibre_index < 0 or fibre_index >= len(FibreSupport.list):
+            print("Invalid fibre index")
+            return
+
+        spec = argv[0]
+
+        FibreWatchPoint(FibreSupport.list[fibre_index], spec=spec, wp_class=wp_class)
+
+
 FibreSupport()
 InfoFibres()
 Fibre()
@@ -376,5 +485,7 @@ FibrePtr()
 FibreIdx()
 FibreSetPtr()
 FibreSetIdx()
+FibreBreak()
+FibreWatch()
 FibreReset()
 gdb.events.stop.connect(FibreSupport.stop_handler)

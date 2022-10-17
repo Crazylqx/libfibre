@@ -33,6 +33,7 @@ In addition, the following students (in alphabetical order) have helped with var
 - Bryant Curto (bug fixes)
 - Peiran Hong (API/Apache)
 - Matthew May (MCS queue with timeout)
+- Vrajang Parikh (gdb names & watchpoints)
 - Wen Shi (gdb extension)
 - Kai Sun (ARM64, mutex locks)
 - Shuangyi Tong (event scopes)
