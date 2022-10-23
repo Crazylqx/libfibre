@@ -28,48 +28,46 @@ class IdleManager {
   volatile size_t waitCounter;
   WorkerLock      procLock;
   ProcessorList   waitingProcs;
-  bool unblockInternal(Fred* fred) {
-    if (__atomic_load_n(&waitCounter, __ATOMIC_SEQ_CST) == 0) return false;
-    procLock.acquire();
-    if (waitingProcs.empty()) {
-      procLock.release();
-      return false;
-    }
-    BaseProcessor* nextProc;
-    if (fred) {
-      nextProc = fred->getProcessor(_friend<IdleManager>());
-      if (nextProc->isHalting(_friend<IdleManager>())) {
-        waitingProcs.remove(*nextProc);
-      } else {
-        nextProc = waitingProcs.pop_front();
-      }
-    } else {
-      nextProc = waitingProcs.pop_front();
-    }
-    nextProc->setHalting(false, _friend<IdleManager>());
-    __atomic_sub_fetch(&waitCounter, 1, __ATOMIC_SEQ_CST);
-    procLock.release();
-    nextProc->wake(fred, _friend<IdleManager>());
-    return fred;
-  }
+
 public:
   void incSpinning() { __atomic_add_fetch(&spinCounter, 1, __ATOMIC_SEQ_CST); }
   void decSpinning() { __atomic_sub_fetch(&spinCounter, 1, __ATOMIC_SEQ_CST); }
-  void decSpinningAndUnblock() {
-    if (__atomic_sub_fetch(&spinCounter, 1, __ATOMIC_SEQ_CST) == 0) unblockInternal(nullptr);
+  void incWaiting()  { __atomic_add_fetch(&waitCounter, 1, __ATOMIC_SEQ_CST); }
+  void decWaiting()  { __atomic_sub_fetch(&waitCounter, 1, __ATOMIC_SEQ_CST); }
+  void unblockSpin() {
+    if (__atomic_sub_fetch(&spinCounter, 1, __ATOMIC_SEQ_CST) == 0) unblock();
   }
-  bool addReadyFred(Fred& f) {
-    if (__atomic_load_n(&spinCounter, __ATOMIC_SEQ_CST) == 0) return unblockInternal(&f);
-    return false;
-  }
-  Fred* block(BaseProcessor& proc) {
-    __atomic_add_fetch(&waitCounter, 1, __ATOMIC_SEQ_CST);
+
+  void block(BaseProcessor& proc) {
     procLock.acquire();
     proc.setHalting(true, _friend<IdleManager>());
     waitingProcs.push_front(proc);
     procLock.release();
-    return proc.halt(_friend<IdleManager>());
+    proc.halt(_friend<IdleManager>());
   }
+
+  void unblock(BaseProcessor* nextProc = nullptr) {
+    while (waitCounter > 0) {
+      if (!procLock.tryAcquire()) {
+        Pause();
+      } else if (waitingProcs.empty()) {
+        procLock.release();
+        Pause();
+      } else {
+        if (nextProc && nextProc->isHalting(_friend<IdleManager>())) {
+          waitingProcs.remove(*nextProc);
+        } else {
+          nextProc = waitingProcs.pop_front();
+        }
+        nextProc->setHalting(false, _friend<IdleManager>());
+        procLock.release();
+        decWaiting();
+        nextProc->wake(nullptr, _friend<IdleManager>());
+        return;
+      }
+    }
+  }
+
   IdleManager(cptr_t) : spinCounter(0), waitCounter(0) {}
   void reset(cptr_t, _friend<EventScope>) {}
 };
@@ -98,13 +96,12 @@ class IdleManager {
     }
   }
 
-  void unblock(Fred& fred) {
+  void unblock(Fred& fred, BaseProcessor* nextProc) {
     procLock.acquire();
     if (waitingProcs.empty()) {
       waitingFreds.push(fred);
       procLock.release();
     } else {
-      BaseProcessor* nextProc = fred.getProcessor(_friend<IdleManager>());
       if (nextProc->isHalting(_friend<IdleManager>())) {
         waitingProcs.remove(*nextProc);
       } else {
@@ -139,9 +136,9 @@ public:
     }
   }
 
-  bool addReadyFred(Fred& f) {
+  bool addReadyFred(Fred& f, BaseProcessor& proc) {
     if (__atomic_add_fetch(&fredCounter, 1, __ATOMIC_RELAXED) > 0) return false;
-    unblock(f);
+    unblock(f, &proc);
     return true;
   }
 };

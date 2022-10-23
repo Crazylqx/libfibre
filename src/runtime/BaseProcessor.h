@@ -102,11 +102,11 @@ class BaseProcessor : public DoubleLink<BaseProcessor,3> {
   static const size_t HaltSpinMax =   64;
   static const size_t IdleSpinMax = 1024;
 
-  inline Fred*   tryAll();
-  inline Fred*   tryLocal();
+  inline Fred*   searchAll();
+  inline Fred*   searchLocal();
 #if TESTING_LOADBALANCING
-  inline Fred*   tryStage();
-  inline Fred*   trySteal();
+  inline Fred*   searchStage();
+  inline Fred*   searchSteal();
   BaseProcessor* localVictim;
   BaseProcessor* globalVictim;
 #else
@@ -124,26 +124,23 @@ class BaseProcessor : public DoubleLink<BaseProcessor,3> {
   }
 
   inline Fred* scheduleNonblocking();
-  inline Fred& scheduleFromIdle();
+  inline Fred& idleSearch();
 
 protected:
   Scheduler& scheduler;
   Fred*      idleFred;
 
-  FredStats::ProcessorStats* stats;
-
   void idleLoop(Fred* initFred = nullptr);
 
 public:
+  FredStats::ProcessorStats* stats;
+
   BaseProcessor(Scheduler& c, const char* n = "Processor  ") : readyQueue(*this), haltSem(0), handoverFred(nullptr), scheduler(c), idleFred(nullptr) {
 #if TESTING_LOADBALANCING
     localVictim = globalVictim = this;
 #endif
     stats = new FredStats::ProcessorStats(this, &c, n);
   }
-
-  void countFredCreated() { stats->create.count(); }
-  void countFredStarted() { stats->start.count(); }
 
   Scheduler& getScheduler() { return scheduler; }
 
@@ -171,14 +168,12 @@ public:
     haltSem.V(*this);
   }
 
-  Fred* tryScheduleYield(_friend<Fred>);
-  Fred* tryScheduleYieldGlobal(_friend<Fred>);
-  Fred* trySchedulePreempt(Fred* currFred, _friend<Fred>);
-
+  Fred* tryScheduleLocal(_friend<Fred>);
+  Fred* tryScheduleGlobal(_friend<Fred>);
   Fred& scheduleFull(_friend<Fred>);
 
   void enqueueYield(Fred& f, _friend<Fred>) { enqueueFred(f); }
-  void enqueueResume(Fred& f, _friend<Fred>);
+  void enqueueResume(Fred& f, BaseProcessor&proc, _friend<Fred>);
 
   void reset(Scheduler& c, _friend<EventScope> token, const char* n = "Processor  ") {
     new (stats) FredStats::ProcessorStats(this, &c, n);

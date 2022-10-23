@@ -20,3 +20,9 @@
 //#define FAST_MUTEX_TYPE SimpleMutex0<false>
 
 //#define FRED_MUTEX_TYPE FastMutex
+
+/******************************** sanity checks ********************************/
+
+#if TESTING_WAKE_FRED_WORKER && !TESTING_LOADBALANCING
+  #error TESTING_WAKE_FRED_WORKER requires TESTING_LOADBALANCING
+#endif

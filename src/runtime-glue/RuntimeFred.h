@@ -20,7 +20,7 @@
 #include "libfibre/Fibre.h"
 
 inline void RuntimeStartFred(funcvoid3_t func, ptr_t arg1, ptr_t arg2, ptr_t arg3) {
-  Context::CurrProcessor().countFredStarted();
+  Context::CurrProcessor().stats->start.count();
   ptr_t p;
   try {
     funcptr3_t f3 = (funcptr3_t)(ptr_t)(func);

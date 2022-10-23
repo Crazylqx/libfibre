@@ -21,22 +21,23 @@
 
 /******************************** sanity checks ********************************/
 
+#if TESTING_CLUSTER_POLLER_FIBRE && !TESTING_LOADBALANCING
+  #error TESTING_CLUSTER_POLLER_FIBRE requires TESTING_LOADBALANCING
+#endif
+
 #if TESTING_EVENTPOLL_EDGE && !TESTING_EVENTPOLL_TRYREAD
   #error edge-triggered polling requires TESTING_EVENTPOLL_TRYREAD
 #endif
 
-#if TESTING_WORKER_IO_URING && !__linux__
+#if TESTING_WORKER_IO_URING
+ #if !__linux__
   #error TESTING_WORKER_IO_URING is only available on Linux
-#endif
-
-#if TESTING_WORKER_IO_URING && TESTING_WORKER_POLLER
+ #endif
+ #if TESTING_WORKER_POLLER
   #error TESTING_WORKER_IO_URING and TESTING_WORKER_POLLER cannot be combined
-#endif
-
-#if !TESTING_WORKER_IO_URING && TESTING_IO_URING_DEFAULT
+ #endif
+#else
+ #if TESTING_IO_URING_DEFAULT
   #error TESTING_IO_URING_DEFAULT requires TESTING_WORKER_IO_URING
-#endif
-
-#if !TESTING_LOADBALANCING && TESTING_CLUSTER_POLLER_FIBRE
-  #error TESTING_CLUSTER_POLLER_FIBRE requires TESTING_LOADBALANCING
+ #endif
 #endif

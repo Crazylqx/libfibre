@@ -20,7 +20,7 @@
 
 Fred::Fred(BaseProcessor& proc, Affinity affinity)
 : stackPointer(0), processor(&proc), priority(DefaultPriority), affinity(affinity), runState(Running) {
-  processor->countFredCreated();
+  processor->stats->create.count();
 }
 
 Fred::Fred(Scheduler& scheduler, bool backgroundQueue)
@@ -92,7 +92,7 @@ void Fred::resumeDirect() {
 }
 
 void Fred::resumeInternal() {
-  processor->enqueueResume(*this, _friend<Fred>());
+  processor->enqueueResume(*this, *processor, _friend<Fred>());
 }
 
 void Fred::suspendInternal() {
@@ -114,13 +114,13 @@ inline void Fred::yieldResume(Fred& nextFred) {
 }
 
 bool Fred::yield() {
-  Fred* nextFred = Context::CurrProcessor().tryScheduleYield(_friend<Fred>());
+  Fred* nextFred = Context::CurrProcessor().tryScheduleLocal(_friend<Fred>());
   if (nextFred) Context::CurrFred()->yieldTo(*nextFred);
   return nextFred;
 }
 
 bool Fred::yieldGlobal() {
-  Fred* nextFred = Context::CurrProcessor().tryScheduleYieldGlobal(_friend<Fred>());
+  Fred* nextFred = Context::CurrProcessor().tryScheduleGlobal(_friend<Fred>());
   if (nextFred) Context::CurrFred()->yieldTo(*nextFred);
   return nextFred;
 }
@@ -135,8 +135,8 @@ void Fred::idleYieldTo(Fred& nextFred, _friend<BaseProcessor>) {
 void Fred::preempt() {
   CHECK_PREEMPTION(0);
   Fred* currFred = Context::CurrFred();
-  Fred* nextFred = Context::CurrProcessor().trySchedulePreempt(currFred, _friend<Fred>());
-  if (nextFred) currFred->switchFred<Yield>(*nextFred);
+  Fred* nextFred = Context::CurrProcessor().tryScheduleGlobal(_friend<Fred>());
+  if (currFred != nextFred) currFred->switchFred<Yield>(*nextFred);
 }
 
 void Fred::terminate() {

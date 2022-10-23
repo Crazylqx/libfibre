@@ -16,33 +16,33 @@
 ******************************************************************************/
 #include "runtime/Scheduler.h"
 
-inline Fred* BaseProcessor::tryAll() {
+inline Fred* BaseProcessor::searchAll() {
   Fred* nextFred;
-  if ((nextFred = tryLocal())) return nextFred;
+  if ((nextFred = searchLocal())) return nextFred;
 #if TESTING_LOADBALANCING
-  if ((nextFred = tryStage())) return nextFred;
+  if ((nextFred = searchStage())) return nextFred;
   if (RuntimeWorkerPoll(*this)) {
-    if ((nextFred = tryLocal())) return nextFred;
+    if ((nextFred = searchLocal())) return nextFred;
   }
-  if ((nextFred = trySteal())) return nextFred;
+  if ((nextFred = searchSteal())) return nextFred;
 #endif
   return nullptr;
 }
 
-inline Fred* BaseProcessor::tryLocal() {
+inline Fred* BaseProcessor::searchLocal() {
   Fred* f = readyQueue.dequeue();
   if (f) {
-    DBG::outl(DBG::Level::Scheduling, "tryLocal: ", FmtHex(this), ' ', FmtHex(f));
+    DBG::outl(DBG::Level::Scheduling, "searchLocal: ", FmtHex(this), ' ', FmtHex(f));
     stats->deq.count();
   }
   return f;
 }
 
 #if TESTING_LOADBALANCING
-inline Fred* BaseProcessor::tryStage() {
+inline Fred* BaseProcessor::searchStage() {
   Fred* f = scheduler.getStaging(_friend<BaseProcessor>()).readyQueue.tryDequeue();
   if (f) {
-    DBG::outl(DBG::Level::Scheduling, "tryStage: ", FmtHex(this), ' ', FmtHex(f));
+    DBG::outl(DBG::Level::Scheduling, "searchStage: ", FmtHex(this), ' ', FmtHex(f));
     if (f->checkAffinity(*this, _friend<BaseProcessor>())) {
       stats->borrowStage.count();
     } else {
@@ -52,14 +52,14 @@ inline Fred* BaseProcessor::tryStage() {
   return f;
 }
 
-inline Fred* BaseProcessor::trySteal() {
+inline Fred* BaseProcessor::searchSteal() {
   BaseProcessor* victim = localVictim;
   bool local = true;
   for (;;) {
     victim = local ? ProcessorRingLocal::next(*victim) : ProcessorRingGlobal::next(*victim);
     Fred* f = victim->readyQueue.tryDequeue();
     if (f) {
-      DBG::outl(DBG::Level::Scheduling, "trySteal: ", FmtHex(this), "<-", FmtHex(victim), ' ', FmtHex(f));
+      DBG::outl(DBG::Level::Scheduling, "searchSteal: ", FmtHex(this), "<-", FmtHex(victim), ' ', FmtHex(f));
       if (victim == this) {
         stats->deq.count();
       } else {
@@ -85,53 +85,54 @@ inline Fred* BaseProcessor::trySteal() {
 #endif
 
 inline Fred* BaseProcessor::scheduleNonblocking() {
-#if TESTING_LOADBALANCING
-#if TESTING_GO_IDLEMANAGER
-  return tryAll();
-#else /* TESTING_GO_IDLEMANAGER */
-  if (scheduler.idleManager.tryGetReadyFred()) {
-    Fred* nextFred;
-    do { nextFred = tryAll(); } while (!nextFred);
-    return nextFred;
-  }
-#endif
-#else /* TESTING_LOADBALANCING */
-  if (readyCount.tryP()) {
-    Fred* nextFred;
-    do { nextFred = tryAll(); } while (!nextFred);
-    return nextFred;
-  }
-#endif
-  return nullptr;
-}
-
-inline Fred& BaseProcessor::scheduleFromIdle() {
   Fred* nextFred;
 #if TESTING_LOADBALANCING
 #if TESTING_GO_IDLEMANAGER
+  nextFred = searchAll();
+  return nextFred ? nextFred : idleFred;
+#else
+  if (!scheduler.idleManager.tryGetReadyFred()) return idleFred;
+#endif
+#else /* TESTING_LOADBALANCING */
+  if (!readyCount.tryP()) return idleFred;
+#endif
+  do { nextFred = searchAll(); } while (!nextFred);
+  return nextFred;
+}
+
+#if TESTING_LOADBALANCING && TESTING_GO_IDLEMANAGER
+
+inline Fred& BaseProcessor::idleSearch() {
+  Fred* nextFred;
   for (;;) {
     scheduler.idleManager.incSpinning();
     for (size_t i = 1; i < IdleSpinMax; i += 1) {
-      nextFred = scheduleNonblocking();
+      nextFred = searchAll();
       if (nextFred) {
-        scheduler.idleManager.decSpinningAndUnblock();
+        scheduler.idleManager.unblockSpin();
         return *nextFred;
       }
     }
     scheduler.idleManager.decSpinning();
-    nextFred = scheduler.idleManager.block(*this);
+    scheduler.idleManager.incWaiting();
+    nextFred = searchAll();
     if (nextFred) {
-      DBG::outl(DBG::Level::Scheduling, "handover: ", FmtHex(this), ' ', FmtHex(nextFred));
-      nextFred->checkAffinity(*this, _friend<BaseProcessor>());
-      stats->handover.count();
+      scheduler.idleManager.decWaiting();
       return *nextFred;
     }
+    scheduler.idleManager.block(*this);
   }
-#else  /* TESTING_GO_IDLEMANAGER */
+}
+
+#else /* TESTING_LOADBALANCING && TESTING_GO_IDLEMANAGER */
+
+inline Fred& BaseProcessor::idleSearch() {
+  Fred* nextFred;
   for (size_t i = 1; i < IdleSpinMax; i += 1) {
     nextFred = scheduleNonblocking();
-    if (nextFred) return *nextFred;
+    if (nextFred != idleFred) return *nextFred;
   }
+#if TESTING_LOADBALANCING
   nextFred = scheduler.idleManager.getReadyFred(*this);
   if (nextFred) {
     DBG::outl(DBG::Level::Scheduling, "handover: ", FmtHex(this), ' ', FmtHex(nextFred));
@@ -139,49 +140,45 @@ inline Fred& BaseProcessor::scheduleFromIdle() {
     stats->handover.count();
     return *nextFred;
   }
-#endif /* TESTING_GO_IDLEMANAGER */
 #else  /* TESTING_LOADBALANCING */
-  for (size_t i = 1; i < IdleSpinMax; i += 1) {
-    nextFred = scheduleNonblocking();
-    if (nextFred) return *nextFred;
-  }
   if (!readyCount.P()) haltSem.P(*this);
 #endif /* TESTING_LOADBALANCING */
-  do { nextFred = tryAll(); } while (!nextFred);
+  do { nextFred = searchAll(); } while (!nextFred);
   return *nextFred;
 }
+
+#endif /* TESTING_LOADBALANCING && TESTING_GO_IDLEMANAGER */
 
 void BaseProcessor::idleLoop(Fred* initFred) {
   if (initFred) Fred::idleYieldTo(*initFred, _friend<BaseProcessor>());
   for (;;) {
-    Fred& nextFred = scheduleFromIdle();
+    Fred& nextFred = idleSearch();
     Fred::idleYieldTo(nextFred, _friend<BaseProcessor>());
   }
 }
 
-Fred* BaseProcessor::tryScheduleYield(_friend<Fred>) {
-  return tryLocal();
+Fred* BaseProcessor::tryScheduleLocal(_friend<Fred>) {
+  return searchLocal();
 }
 
-Fred* BaseProcessor::tryScheduleYieldGlobal(_friend<Fred>) {
-  return tryAll();
-}
-
-Fred* BaseProcessor::trySchedulePreempt(Fred* currFred, _friend<Fred> fsc) {
-  if (currFred == idleFred) return nullptr;
-  return tryScheduleYieldGlobal(fsc);
+Fred* BaseProcessor::tryScheduleGlobal(_friend<Fred>) {
+  return searchAll();
 }
 
 Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
-  Fred* nextFred = scheduleNonblocking();
-  if (nextFred) return *nextFred;
-  return *idleFred;
+  return *scheduleNonblocking();
 }
 
-void BaseProcessor::enqueueResume(Fred& f, _friend<Fred>) {
+void BaseProcessor::enqueueResume(Fred& f, BaseProcessor&proc, _friend<Fred>) {
 #if TESTING_LOADBALANCING
-  if (!scheduler.idleManager.addReadyFred(f)) enqueueFred(f);
+#if TESTING_GO_IDLEMANAGER
+  enqueueFred(f);
+  scheduler.idleManager.unblock(&proc);
 #else
+  if (!scheduler.idleManager.addReadyFred(f, proc)) enqueueFred(f);
+#endif
+#else
+  (void)proc;
   enqueueFred(f);
   if (!readyCount.V()) haltSem.V(*this);
 #endif
