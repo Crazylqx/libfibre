@@ -1,23 +1,24 @@
 LIBFIBRE=$HOME/work/fibre
 GCCDEST=$HOME/tmp/gcc
+GCCVER=12.2.0
 
-tar xaf gcc-11.2.0.tar.xz
-patch -d gcc-11.2.0 -p1 < $LIBFIBRE/gcc/gcc.patch
-cp $LIBFIBRE/gcc/gthr-fibre.h gcc-11.2.0/libgcc
-cp $LIBFIBRE/src/libfibre/cfibre.h gcc-11.2.0/libgcc
-cp $LIBFIBRE/src/libfibre/cfibre.h gcc-11.2.0/libstdc++-v3/libsupc++
+tar xaf gcc-$GCCVER.tar.xz
+patch -d gcc-$GCCVER -p1 < $LIBFIBRE/gcc/gcc-$GCCVER.patch
+cp $LIBFIBRE/gcc/gthr-fibre.h gcc-$GCCVER/libgcc
+cp $LIBFIBRE/src/libfibre/cfibre.h gcc-$GCCVER/libgcc
+cp $LIBFIBRE/src/libfibre/cfibre.h gcc-$GCCVER/libstdc++-v3/libsupc++
 
 mkdir build; cd build
-../gcc-11.2.0/configure --prefix=$GCCDEST --enable-languages=c,c++\
+../gcc-$GCCVER/configure --prefix=$GCCDEST --enable-languages=c,c++\
  --with-linker-hash-style=gnu --with-target-system-zlib=auto\
  --enable-__cxa_atexit --enable-checking=release --enable-clocale=gnu\
  --enable-default-pie --enable-default-ssp --enable-gnu-indirect-function\
  --enable-install-libiberty --enable-linker-build-id --enable-threads=fibre\
- --disable-libssp --disable-multilib --disable-linux-futex
+ --disable-libssp --disable-multilib --disable-linux-futex --disable-bootstrap
 
-# remove mount_attr & fsconfig_command from gcc/include-fixed/sys/mount.h ?
+# bootstrap: tools like 'genpreds' are built with bootstrap compiler missing libfibre
 
-# complete gcc bootstrap build
+# non-boostrap gcc build
 
 glibcxx_cv_PTHREADS_NUM_PROCESSORS_NP=no \
 glibcxx_cv_PTHREAD_COND_CLOCKWAIT=no \
