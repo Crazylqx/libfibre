@@ -34,7 +34,7 @@ static inline void shim_thread_destroy(shim_thread_t* tid) {
   free(tid);
 }
 
-static inline void shim_yield() { pthread_yield(); }
+static inline void shim_yield() { sched_yield(); }
 
 static inline void shim_mutex_init(shim_mutex_t* mtx)    { SYSCALL(pthread_mutex_init(mtx, nullptr)); }
 static inline void shim_mutex_destroy(shim_mutex_t* mtx) { SYSCALL(pthread_mutex_destroy(mtx)); }

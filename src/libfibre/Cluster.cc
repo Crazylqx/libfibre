@@ -91,10 +91,10 @@ void* Cluster::threadHelper(Argpack* args) {
 
 inline void Cluster::registerIdleWorker(Worker* worker, Fibre* initFibre) {
   Fibre* idleFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>(), 0); // idle fibre on pthread stack
+  idleFibre->setName("s:Idle");
   setupWorker(idleFibre, worker);
   worker->setIdleLoop(idleFibre);
   worker->runIdleLoop(initFibre);
-  idleFibre->setName("s:Idle");
   idleFibre->endDirect(_friend<Cluster>());
 }
 
