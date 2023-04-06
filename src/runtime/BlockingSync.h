@@ -82,9 +82,9 @@ public:
     lock.acquire();
     for (auto iter = queue.begin(); iter != queue.end(); iter = queue.erase(iter)) {
       if (iter->first > now) {
+        Runtime::Timer::newTimeout(iter->first); // timeouts remaining after this run
         lock.release();
         stats->events.count(cnt);
-        Runtime::Timer::newTimeout(iter->first); // timeouts remaining after this run
     return;
       }
       Node* node = iter->second;
