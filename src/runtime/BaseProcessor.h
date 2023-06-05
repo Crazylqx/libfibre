@@ -123,8 +123,9 @@ class BaseProcessor : public DoubleLink<BaseProcessor,3> {
     readyQueue.enqueue(f);
   }
 
+  inline Fred* scheduleBlocking();
   inline Fred* scheduleNonblocking();
-  inline Fred& idleSearch();
+  inline Fred& scheduleIdle();
 
 protected:
   Scheduler& scheduler;

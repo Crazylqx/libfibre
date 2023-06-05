@@ -84,25 +84,29 @@ inline Fred* BaseProcessor::searchSteal() {
 }
 #endif
 
+inline Fred* BaseProcessor::scheduleBlocking() {
+  for (;;) {
+    Fred* nextFred = searchAll();
+    if (nextFred) return nextFred;
+  }
+}
+
 inline Fred* BaseProcessor::scheduleNonblocking() {
-  Fred* nextFred;
 #if TESTING_LOADBALANCING
 #if TESTING_GO_IDLEMANAGER
-  nextFred = searchAll();
-  return nextFred ? nextFred : idleFred;
+  return searchAll();
 #else
-  if (!scheduler.idleManager.tryGetReadyFred()) return idleFred;
+  if (!scheduler.idleManager.tryGetReadyFred()) return nullptr;
 #endif
 #else /* TESTING_LOADBALANCING */
-  if (!readyCount.tryP()) return idleFred;
+  if (!readyCount.tryP()) return nullptr;
 #endif
-  do { nextFred = searchAll(); } while (!nextFred);
-  return nextFred;
+  return scheduleBlocking();
 }
 
 #if TESTING_LOADBALANCING && TESTING_GO_IDLEMANAGER
 
-inline Fred& BaseProcessor::idleSearch() {
+inline Fred& BaseProcessor::scheduleIdle() {
   Fred* nextFred;
   for (;;) {
     scheduler.idleManager.incSpinning();
@@ -126,11 +130,11 @@ inline Fred& BaseProcessor::idleSearch() {
 
 #else /* TESTING_LOADBALANCING && TESTING_GO_IDLEMANAGER */
 
-inline Fred& BaseProcessor::idleSearch() {
+inline Fred& BaseProcessor::scheduleIdle() {
   Fred* nextFred;
   for (size_t i = 1; i < IdleSpinMax; i += 1) {
     nextFred = scheduleNonblocking();
-    if (nextFred != idleFred) return *nextFred;
+    if (nextFred) return *nextFred;
   }
 #if TESTING_LOADBALANCING
   nextFred = scheduler.idleManager.getReadyFred(*this);
@@ -143,8 +147,7 @@ inline Fred& BaseProcessor::idleSearch() {
 #else  /* TESTING_LOADBALANCING */
   if (!readyCount.P()) haltSem.P(*this);
 #endif /* TESTING_LOADBALANCING */
-  do { nextFred = searchAll(); } while (!nextFred);
-  return *nextFred;
+  return scheduleBlocking();
 }
 
 #endif /* TESTING_LOADBALANCING && TESTING_GO_IDLEMANAGER */
@@ -152,7 +155,7 @@ inline Fred& BaseProcessor::idleSearch() {
 void BaseProcessor::idleLoop(Fred* initFred) {
   if (initFred) Fred::idleYieldTo(*initFred, _friend<BaseProcessor>());
   for (;;) {
-    Fred& nextFred = idleSearch();
+    Fred& nextFred = scheduleIdle();
     Fred::idleYieldTo(nextFred, _friend<BaseProcessor>());
   }
 }
@@ -166,7 +169,8 @@ Fred* BaseProcessor::tryScheduleGlobal(_friend<Fred>) {
 }
 
 Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
-  return *scheduleNonblocking();
+  Fred* nextFred = scheduleNonblocking();
+  return nextFred ? *nextFred : *idleFred;
 }
 
 void BaseProcessor::enqueueResume(Fred& f, BaseProcessor&proc, _friend<Fred>) {

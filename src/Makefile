@@ -17,8 +17,8 @@ LIBSO=libfibre.so
 CFLAGS+=-I. -D__LIBFIBRE__
 
 vpath %.cc $(SOURCEDIRS)
-vpath %.c errnoname
-vpath %.S $(SOURCEDIRS)
+vpath %.c  $(SOURCEDIRS) errnoname
+vpath %.S  $(SOURCEDIRS)
 
 .PHONY: all gen diff clean vclean
 
