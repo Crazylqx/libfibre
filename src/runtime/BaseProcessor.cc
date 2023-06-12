@@ -53,33 +53,17 @@ inline Fred* BaseProcessor::searchStage() {
 }
 
 inline Fred* BaseProcessor::searchSteal() {
-  BaseProcessor* victim = localVictim;
-  bool local = true;
+  BaseProcessor* victim = ProcessorRing::next(*this);
   for (;;) {
-    victim = local ? ProcessorRingLocal::next(*victim) : ProcessorRingGlobal::next(*victim);
+    if (victim == this) return nullptr;
     Fred* f = victim->readyQueue.tryDequeue();
     if (f) {
       DBG::outl(DBG::Level::Scheduling, "searchSteal: ", FmtHex(this), "<-", FmtHex(victim), ' ', FmtHex(f));
-      if (victim == this) {
-        stats->deq.count();
-      } else {
-        if (f->checkAffinity(*this, _friend<BaseProcessor>())) {
-          if (local) stats->borrowLocal.count(); else stats->borrowGlobal.count();
-        } else {
-          if (local) stats->stealLocal.count(); else stats->stealGlobal.count();
-        }
-      }
-      if (local) localVictim = victim; else globalVictim = victim;
+      if (f->checkAffinity(*this, _friend<BaseProcessor>())) stats->borrow.count();
+      else stats->steal.count();
       return f;
     }
-    if (local) {
-      if (victim == localVictim) {
-        local = false;
-        victim = globalVictim;
-      }
-    } else {
-      if (victim == globalVictim) return nullptr;
-    }
+    victim = ProcessorRing::next(*victim);
   }
 }
 #endif

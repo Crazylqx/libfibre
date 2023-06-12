@@ -168,7 +168,7 @@ public:
     BaseProcessor* p = placeProc;
     for (size_t i = 0; i < cnt && i < ringCount; i += 1) {
       tid[i] = reinterpret_cast<Worker*>(p)->sysThreadId;
-      p = ProcessorRingGlobal::next(*p);
+      p = ProcessorRing::next(*p);
     }
     return ringCount;
   }

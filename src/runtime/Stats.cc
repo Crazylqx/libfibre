@@ -164,12 +164,10 @@ void ProcessorStats::print(ostream& os) const {
   os << " S: "  << start;
   os << " D: "  << deq;
   if (handover)     os << " H: "  << handover;
-  if (borrowLocal)  os << " BL: " << borrowLocal;
+  if (borrow)       os << " B: "  << borrow;
   if (borrowStage)  os << " BS: " << borrowStage;
-  if (borrowGlobal) os << " BG: " << borrowGlobal;
-  if (stealLocal)   os << " SL: " << stealLocal;
+  if (steal)        os << " S: "  << steal;
   if (stealStage)   os << " SS: " << stealStage;
-  if (stealGlobal)  os << " SG: " << stealGlobal;
   os << " I: " << idle;
   os << " W: " << wake;
 }

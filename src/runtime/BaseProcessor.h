@@ -92,11 +92,10 @@ public:
 };
 
 class BaseProcessor;
-typedef IntrusiveList<BaseProcessor,0,3> ProcessorList;
-typedef IntrusiveRing<BaseProcessor,1,3> ProcessorRingLocal;
-typedef IntrusiveRing<BaseProcessor,2,3> ProcessorRingGlobal;
+typedef IntrusiveList<BaseProcessor,0,2> ProcessorList;
+typedef IntrusiveRing<BaseProcessor,1,2> ProcessorRing;
 
-class BaseProcessor : public DoubleLink<BaseProcessor,3> {
+class BaseProcessor : public DoubleLink<BaseProcessor,2> {
   ReadyQueue    readyQueue;
 
   static const size_t HaltSpinMax =   64;
@@ -107,8 +106,6 @@ class BaseProcessor : public DoubleLink<BaseProcessor,3> {
 #if TESTING_LOADBALANCING
   inline Fred*   searchStage();
   inline Fred*   searchSteal();
-  BaseProcessor* localVictim;
-  BaseProcessor* globalVictim;
 #else
   Benaphore<>    readyCount;
 #endif
@@ -137,9 +134,6 @@ public:
   FredStats::ProcessorStats* stats;
 
   BaseProcessor(Scheduler& c, const char* n = "Processor  ") : readyQueue(*this), haltSem(0), handoverFred(nullptr), scheduler(c), idleFred(nullptr) {
-#if TESTING_LOADBALANCING
-    localVictim = globalVictim = this;
-#endif
     stats = new FredStats::ProcessorStats(this, &c, n);
   }
 

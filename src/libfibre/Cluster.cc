@@ -118,7 +118,7 @@ void Cluster::postFork(cptr_t parent, _friend<EventScope> fes) {
   BaseProcessor* p = placeProc;
   for (size_t i = 0; i < ringCount; i += 1) {
     p->reset(*this, fes);
-    p = ProcessorRingGlobal::next(*p);
+    p = ProcessorRing::next(*p);
   }
 #if TESTING_WORKER_IO_URING
   CurrWorker().iouring->~IOUring();
@@ -176,7 +176,7 @@ void Cluster::pause() {
       f->run(pauseOperation, this);
       pauseFibres.push_back(f);
     }
-    proc = ProcessorRingGlobal::next(*proc);
+    proc = ProcessorRing::next(*proc);
     if (proc == placeProc) break;
   }
   RASSERT(pauseFibres.size() == ringCount-1, pauseFibres.size(), ringCount-1);
