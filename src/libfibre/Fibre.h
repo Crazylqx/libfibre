@@ -188,9 +188,6 @@ public:
   Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), bool background = false, size_t size = DefaultStackSize, size_t guard = DefaultStackGuard)
   : Fred(sched, background), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
-  /** Constructor with group index placement */
-  Fibre(size_t group, size_t idx, Cluster& cluster, size_t size = DefaultStackSize, size_t guard = DefaultStackGuard);
-
   // system constructor for idle/main loop (bootstrap) on existing pthread stack (size = 0)
   // system constructor with setting affinity to processor (size != 0)
   Fibre(BaseProcessor &p, Affinity affinity, _friend<Cluster>, size_t size = DefaultStackSize, size_t guard = DefaultStackGuard)

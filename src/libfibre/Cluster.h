@@ -71,8 +71,6 @@ class Cluster : public Scheduler {
     pthread_t getSysID()       { return sysThreadId; }
   };
 
-  std::vector<std::vector<Worker*>> workerGroups;
-
   static Worker& CurrWorker() { return reinterpret_cast<Worker&>(Context::CurrProcessor()); }
 
   Cluster(EventScope& es, size_t ipcnt, size_t opcnt = 1) : scope(es), iPollCount(ipcnt), oPollCount(opcnt) {
@@ -164,23 +162,6 @@ public:
   /** Create new workers (pthreads) and add to cluster. */
   void addWorkers(size_t cnt = 1) { for (size_t i = 0; i < cnt; i += 1) addWorker(); }
 
-  size_t addGroup(size_t cnt) {
-    std::vector<Worker*> group(cnt);
-    for (size_t w = 0; w < cnt; w += 1) group[w] = &addWorker();
-    workerGroups.push_back(group);
-    return workerGroups.size() - 1;
-  }
-
-  Worker& addGroupWorker(size_t gidx, funcvoid1_t initFunc = nullptr, ptr_t initArg = nullptr) {
-    Worker& w = addWorker(initFunc, initArg);
-    workerGroups[gidx].push_back(&w);
-    return w;
-  }
-
-  void addGroupWorkers(size_t gidx, size_t cnt = 1) {
-    for (size_t i = 0; i < cnt; i += 1) addGroupWorker(gidx);
-  }
-
   /** Obtain system-level ids for workers (pthread_t). */
   size_t getWorkerSysIDs(pthread_t* tid = nullptr, size_t cnt = 0) {
     ScopedLock<WorkerLock> sl(ringLock);
@@ -190,35 +171,6 @@ public:
       p = ProcessorRingGlobal::next(*p);
     }
     return ringCount;
-  }
-
-  void formWorkerGroups(const std::vector<size_t>& groupSizes) {
-    ScopedLock<WorkerLock> sl(ringLock);
-    size_t cnt = ringCount;
-    BaseProcessor* procGroupStart = placeProc;
-    workerGroups.resize(groupSizes.size());
-    for (size_t g = 0; g < groupSizes.size(); g += 1) {
-      RASSERT(cnt >= groupSizes[g], cnt, groupSizes[g]);
-      BaseProcessor* proc = procGroupStart;
-      workerGroups[g].resize(groupSizes[g]);
-      for (size_t w = 0;;) {
-        workerGroups[g][w] = reinterpret_cast<Worker*>(proc);
-        if (++w >= groupSizes[g]) break;
-        BaseProcessor* prev = proc;
-        proc = ProcessorRingGlobal::next(*proc);
-        ProcessorRingLocal::insert_after<true>(*prev, *proc);
-      }
-      procGroupStart = ProcessorRingGlobal::next(*proc);
-      cnt -= groupSizes[g];
-    }
-    RASSERT(cnt == 0, cnt);
-  }
-
-  Worker& getGroupWorker(size_t g, size_t idx) {
-    RASSERT(g < workerGroups.size(), g, workerGroups.size());
-    Worker* w = workerGroups[g][idx % workerGroups[g].size()];
-    RASSERT0(w);
-    return *w;
   }
 
   /** Get individual access to pollers. */
