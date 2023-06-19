@@ -43,7 +43,6 @@ typedef FastMutex fibre_fastmutex_t;
 
 struct fibre_attr_t {
   Cluster* cluster;
-  bool background;
   size_t stackSize;
   size_t guardSize;
   size_t priority;
@@ -51,7 +50,6 @@ struct fibre_attr_t {
   bool detached;
   void init() {
     cluster = &Context::CurrCluster();
-    background = false;
     stackSize = Fibre::DefaultStackSize;
     guardSize = Fibre::DefaultStackGuard;
     priority = Fibre::DefaultPriority;
@@ -138,18 +136,6 @@ inline int fibre_attr_getcluster(const fibre_attr_t *attr, Cluster **cluster) {
   return 0;
 }
 
-/** @brief Set background attribute for fibre creation. */
-inline int fibre_attr_setbackground(fibre_attr_t *attr, int background) {
-  attr->background = background;
-  return 0;
-}
-
-/** @brief Get background attribute for fibre creation. */
-inline int fibre_attr_getbackground(const fibre_attr_t *attr, int *background) {
-  *background = attr->background;
-  return 0;
-}
-
 /** @brief Set stack size for fibre creation. (`pthread_attr_setstacksize`). */
 inline int fibre_attr_setstacksize(fibre_attr_t *attr, size_t stacksize) {
   attr->stackSize = stacksize;
@@ -216,7 +202,7 @@ inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *(*start
   if (!attr) {
     f = new Fibre;
   } else {
-    f = new Fibre(*attr->cluster, attr->background, attr->stackSize, attr->guardSize);
+    f = new Fibre(*attr->cluster, attr->stackSize, attr->guardSize);
     f->setPriority(Fibre::Priority(attr->priority));
     if (!attr->affinity) f->setAffinity(Fibre::NoAffinity);
     if (attr->detached) f->detach();

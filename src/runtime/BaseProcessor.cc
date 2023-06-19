@@ -20,7 +20,6 @@ inline Fred* BaseProcessor::searchAll() {
   Fred* nextFred;
   if ((nextFred = searchLocal())) return nextFred;
 #if TESTING_LOADBALANCING
-  if ((nextFred = searchStage())) return nextFred;
   if (RuntimeWorkerPoll(*this)) {
     if ((nextFred = searchLocal())) return nextFred;
   }
@@ -39,19 +38,6 @@ inline Fred* BaseProcessor::searchLocal() {
 }
 
 #if TESTING_LOADBALANCING
-inline Fred* BaseProcessor::searchStage() {
-  Fred* f = scheduler.getStaging(_friend<BaseProcessor>()).readyQueue.tryDequeue();
-  if (f) {
-    DBG::outl(DBG::Level::Scheduling, "searchStage: ", FmtHex(this), ' ', FmtHex(f));
-    if (f->checkAffinity(*this, _friend<BaseProcessor>())) {
-      stats->borrowStage.count();
-    } else {
-      stats->stealStage.count();
-    }
-  }
-  return f;
-}
-
 inline Fred* BaseProcessor::searchSteal() {
   BaseProcessor* victim = ProcessorRing::next(*this);
   for (;;) {

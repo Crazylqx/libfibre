@@ -17,9 +17,8 @@ typedef FredMutex shim_mutex_t;
 #define HASTIMEDLOCK 1
 #endif
 
-static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg, bool bg = false) {
+static inline shim_thread_t* shim_thread_create(void (*start_routine)(void *), void* arg) {
   Fibre* f = new Fibre(CurrCluster());
-  if (bg) f->setAffinity(Fibre::NoAffinity);
   f->run(start_routine, arg);
   return f;
 }

@@ -4,7 +4,6 @@
 //#define TESTING_WORKER_IO_URING       1 // process io_uring events during idle loop (Linux only)
 
 #define TESTING_CLUSTER_POLLER_FIBRE  1 // per-cluster poller(s): fibre vs. pthread
-#define TESTING_CLUSTER_POLLER_FLOAT  1 // per-cluster poller fibres(s): float vs. background
 #define TESTING_EVENTPOLL_TRYREAD     1 // try nonblocking input operation first
 //#define TESTING_EVENTPOLL_EDGE        1 // use edge-trigger event polling
 #define TESTING_EVENTPOLL_ONESHOT     1 // use oneshot event polling

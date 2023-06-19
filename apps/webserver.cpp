@@ -375,7 +375,7 @@ static void acceptor_loop(void* arg) {
 #endif
     if (!CurrGarage().run((void*)arg)) {
       __atomic_add_fetch(&connectionFibres, 1, __ATOMIC_RELAXED);
-      shim_thread_create(acceptor_loop, (void*)arg, true);
+      shim_thread_create(acceptor_loop, (void*)arg);
     }
     while (connHandler((void*)connFD));
     CurrGarage().park();
@@ -522,11 +522,11 @@ static void* scopemain(void* arg) {
   for (unsigned int c = 0; c < clusterCount; c += 1) {
     if (listenerCount) {
       for (unsigned int i = 0; i < listenerCount; i += 1) {
-        shim_thread_t* f = shim_thread_create(acceptor, (void*)servFD, true);
+        shim_thread_t* f = shim_thread_create(acceptor, (void*)servFD);
         fibreList.push_back(f);
       }
     } else {
-      shim_thread_t* f = shim_thread_create(acceptor_loop, (void*)servFD, true);
+      shim_thread_t* f = shim_thread_create(acceptor_loop, (void*)servFD);
       fibreList.push_back(f);
     }
 #if defined __LIBFIBRE__

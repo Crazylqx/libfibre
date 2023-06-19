@@ -108,13 +108,12 @@ void Cluster::postFork(cptr_t parent, _friend<EventScope> fes) {
   idleManager.reset(this, fes);
   for (size_t p = 0; p < iPollCount; p += 1) {
     iPollVec[p].~PollerType();
-    new (&iPollVec[p]) PollerType(scope, stagingProc, this, "I-Poller   ", _friend<Cluster>());
+    new (&iPollVec[p]) PollerType(scope, this, "I-Poller   ", _friend<Cluster>());
   }
   for (size_t p = 0; p < oPollCount; p += 1) {
     oPollVec[p].~PollerType();
-    new (&oPollVec[p]) PollerType(scope, stagingProc, this, "O-Poller   ", _friend<Cluster>());
+    new (&oPollVec[p]) PollerType(scope, this, "O-Poller   ", _friend<Cluster>());
   }
-  stagingProc.reset(*this, fes, "Staging    ");
   BaseProcessor* p = placeProc;
   for (size_t i = 0; i < ringCount; i += 1) {
     p->reset(*this, fes);

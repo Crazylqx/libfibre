@@ -120,14 +120,6 @@ extern "C" int cfibre_attr_getcluster(const cfibre_attr_t *attr, cfibre_cluster_
   return fibre_attr_getcluster(*attr, (Cluster**)cluster);
 }
 
-extern "C" int cfibre_attr_setbackground(cfibre_attr_t *attr, int background) {
-  return fibre_attr_setbackground(*attr, background);
-}
-
-extern "C" int cfibre_attr_getbackground(const cfibre_attr_t *attr, int *background) {
-  return fibre_attr_getbackground(*attr, background);
-}
-
 extern "C" int cfibre_attr_setstacksize(cfibre_attr_t *attr, size_t stacksize) {
   return fibre_attr_setstacksize(*attr, stacksize);
 }

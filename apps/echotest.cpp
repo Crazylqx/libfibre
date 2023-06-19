@@ -187,7 +187,7 @@ void servmain(sockaddr_in& addr) {
 
   {
     Context::CurrCluster().addWorkers(2);
-    Fibre a1(Context::CurrCluster(), true);
+    Fibre a1(Context::CurrCluster());
     a1.run(servaccept);
     if (numaccept == 2) {
       EventScope* es2 = Context::CurrEventScope().clone(servaccept2, nullptr);

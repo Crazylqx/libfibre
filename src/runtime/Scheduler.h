@@ -160,11 +160,10 @@ protected:
   WorkerLock     ringLock;
   size_t         ringCount;
   BaseProcessor* placeProc;
-  BaseProcessor  stagingProc;
 
 public:
   IdleManager idleManager;
-  Scheduler() : ringCount(0), placeProc(nullptr), stagingProc(*this, "Staging    "), idleManager(this) {}
+  Scheduler() : ringCount(0), placeProc(nullptr), idleManager(this) {}
   ~Scheduler() {
     ScopedLock<WorkerLock> sl(ringLock);
     RASSERT(!ringCount, ringCount);
@@ -192,22 +191,13 @@ public:
     ringCount -= 1;
   }
 
-  BaseProcessor& placement(_friend<Fred>, bool staging = false) {
-#if TESTING_LOADBALANCING
-    if (staging) return stagingProc;
-#else
-    (void)staging;
-#endif
+  BaseProcessor& placement(_friend<Fred>) {
     // ring insert is traversal-safe, so could use separate 'placeLock' here
     ScopedLock<WorkerLock> sl(ringLock);
     RASSERT0(placeProc);
     placeProc = ProcessorRing::next(*placeProc);
     return *placeProc;
   }
-
-#if TESTING_LOADBALANCING
-  BaseProcessor& getStaging(_friend<BaseProcessor>) { return stagingProc; }
-#endif
 };
 
 #endif /* _Scheduler_h_ */

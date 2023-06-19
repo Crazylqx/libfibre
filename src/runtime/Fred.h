@@ -60,14 +60,12 @@ typedef FredMPSC<FredReadyLink,false> FredReadyQueue;
 class Fred : public DoubleLink<Fred,FredLinkCount> {
 public:
   enum Priority : size_t { TopPriority = 0, DefaultPriority = 1, LowPriority = 2, NumPriority = 3 };
-  enum Affinity : size_t { NoAffinity = 0, FixedAffinity = 1, TempAffinity = 2 };
+  enum Affinity : size_t { NoAffinity = 0, FixedAffinity = 1 };
 
 #if TESTING_DEFAULT_AFFINITY
   static const Affinity DefaultAffinity = FixedAffinity;
-  static const Affinity DefaultStagingAffinity = TempAffinity;
 #else
   static const Affinity DefaultAffinity = NoAffinity;
-  static const Affinity DefaultStagingAffinity = NoAffinity;
 #endif
 
 private:
@@ -105,7 +103,7 @@ private:
 protected:
   // constructor/destructors can only be called by derived classes
   Fred(BaseProcessor& proc, Affinity affinity = DefaultAffinity); // main constructor
-  Fred(Scheduler&, bool backgroundQueue = false);                 // uses delegation
+  Fred(Scheduler&);                                               // uses delegation
   ~Fred() { RASSERT(runState == Running, FmtHex(this), runState); }
 
   void initStackPointer(vaddr sp) {
@@ -186,7 +184,6 @@ public:
   // check affinity and potentially update processor during work-stealing
   bool checkAffinity(BaseProcessor& newProcessor, _friend<BaseProcessor>) {
     if (affinity == FixedAffinity) return true;
-    if (affinity == TempAffinity) affinity = FixedAffinity;
     processor = &newProcessor;
     return false;
   }

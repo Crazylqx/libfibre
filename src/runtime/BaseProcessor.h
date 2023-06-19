@@ -104,7 +104,6 @@ class BaseProcessor : public DoubleLink<BaseProcessor,2> {
   inline Fred*   searchAll();
   inline Fred*   searchLocal();
 #if TESTING_LOADBALANCING
-  inline Fred*   searchStage();
   inline Fred*   searchSteal();
 #else
   Benaphore<>    readyCount;

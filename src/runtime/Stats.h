@@ -357,9 +357,7 @@ struct ProcessorStats : public Base {
   Counter deq;
   Counter handover;
   Counter borrow;
-  Counter borrowStage;
   Counter steal;
-  Counter stealStage;
   Counter idle;
   Counter wake;
   ProcessorStats(cptr_t o, cptr_t p, const char* n = "Processor  ") : Base(o, p, n, 2) {}
@@ -370,9 +368,7 @@ struct ProcessorStats : public Base {
     deq.aggregate(x.deq);
     handover.aggregate(x.handover);
     borrow.aggregate(x.borrow);
-    borrowStage.aggregate(x.borrowStage);
     steal.aggregate(x.steal);
-    stealStage.aggregate(x.stealStage);
     idle.aggregate(x.idle);
     wake.aggregate(x.wake);
   }
@@ -382,9 +378,7 @@ struct ProcessorStats : public Base {
     deq.reset();
     handover.reset();
     borrow.reset();
-    borrowStage.reset();
     steal.reset();
-    stealStage.reset();
     idle.reset();
     wake.reset();
   }

@@ -23,8 +23,7 @@ Fred::Fred(BaseProcessor& proc, Affinity affinity)
   processor->stats->create.count();
 }
 
-Fred::Fred(Scheduler& scheduler, bool backgroundQueue)
-: Fred(scheduler.placement(_friend<Fred>(), backgroundQueue), backgroundQueue ? FixedAffinity : DefaultAffinity) {}
+Fred::Fred(Scheduler& scheduler) : Fred(scheduler.placement(_friend<Fred>()), DefaultAffinity) {}
 
 template<Fred::SwitchCode Code>
 inline void Fred::switchFred(Fred& nextFred) {
@@ -146,10 +145,7 @@ void Fred::terminate() {
 }
 
 void Fred::rebalance() {
-  if (affinity != FixedAffinity) {
-    affinity = DefaultStagingAffinity;
-    processor = &Context::CurrProcessor().getScheduler().placement(_friend<Fred>(), true);
-  }
+  if (affinity != FixedAffinity) processor = &Context::CurrProcessor().getScheduler().placement(_friend<Fred>());
 }
 
 BaseProcessor& Fred::migrate(BaseProcessor& proc) {

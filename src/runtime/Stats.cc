@@ -165,9 +165,7 @@ void ProcessorStats::print(ostream& os) const {
   os << " D: "  << deq;
   if (handover)     os << " H: "  << handover;
   if (borrow)       os << " B: "  << borrow;
-  if (borrowStage)  os << " BS: " << borrowStage;
   if (steal)        os << " S: "  << steal;
-  if (stealStage)   os << " SS: " << stealStage;
   os << " I: " << idle;
   os << " W: " << wake;
 }

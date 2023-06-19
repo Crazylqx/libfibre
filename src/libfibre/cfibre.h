@@ -122,8 +122,6 @@ int cfibre_attr_init(cfibre_attr_t *attr);
 int cfibre_attr_destroy(cfibre_attr_t *attr);
 int cfibre_attr_setcluster(cfibre_attr_t *attr, cfibre_cluster_t cluster);
 int cfibre_attr_getcluster(const cfibre_attr_t *attr, cfibre_cluster_t *cluster);
-int cfibre_attr_setbackground(cfibre_attr_t *attr, int background);
-int cfibre_attr_getbackground(const cfibre_attr_t *attr, int *background);
 int cfibre_attr_setstacksize(cfibre_attr_t *attr, size_t stacksize);
 int cfibre_attr_getstacksize(const cfibre_attr_t *attr, size_t *stacksize);
 int cfibre_attr_setguardsize(cfibre_attr_t *attr, size_t guardsize);

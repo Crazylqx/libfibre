@@ -48,10 +48,9 @@ class EventScope {
   struct SyncFD {
     Poller::SyncSem sync[2];
     BasePoller*     poller[2];
-    size_t          yieldCounter;
     bool            blocking;
     bool            useUring;
-    SyncFD() : poller{nullptr,nullptr}, yieldCounter(0), blocking(false), useUring(false) {}
+    SyncFD() : poller{nullptr,nullptr}, blocking(false), useUring(false) {}
   } *fdSyncVector;
 
   int fdCount;
@@ -172,21 +171,14 @@ class EventScope {
 #else // level
     static const Poller::Variant variant = Read ? Poller::Level : Poller::Oneshot;
 #endif
-    if (!Read) {
-      if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
-    }
+    if (Read) {
 #if TESTING_EVENTPOLL_TRYREAD
-    else {
-#if !TESTING_CLUSTER_POLLER_FLOAT
-      if (++fdSyncVector[fd].yieldCounter < 256)
-#endif
-        Fibre::yield();
+      Fibre::yield();
       if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
-#if !TESTING_CLUSTER_POLLER_FLOAT
-      fdSyncVector[fd].yieldCounter = 0;
 #endif
+    } else {
+      if (tryIO<Input>(ret, iofunc, fd, a...)) return ret;
     }
-#endif
     BasePoller*& poller = fdSyncVector[fd].poller[Input];
     if (!poller) {
       poller = &getPoller<Input,Accept>(fd);

@@ -185,8 +185,8 @@ public:
   struct ExitException {};
 
   /** Constructor. */
-  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), bool background = false, size_t size = DefaultStackSize, size_t guard = DefaultStackGuard)
-  : Fred(sched, background), stackSize(stackAlloc(size, guard)) { initDebug(); }
+  Fibre(Scheduler& sched = Context::CurrProcessor().getScheduler(), size_t size = DefaultStackSize, size_t guard = DefaultStackGuard)
+  : Fred(sched), stackSize(stackAlloc(size, guard)) { initDebug(); }
 
   // system constructor for idle/main loop (bootstrap) on existing pthread stack (size = 0)
   // system constructor with setting affinity to processor (size != 0)
