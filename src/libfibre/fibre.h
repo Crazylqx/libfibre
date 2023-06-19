@@ -204,7 +204,7 @@ inline int fibre_create(fibre_t *thread, const fibre_attr_t *attr, void *(*start
   } else {
     f = new Fibre(*attr->cluster, attr->stackSize, attr->guardSize);
     f->setPriority(Fibre::Priority(attr->priority));
-    if (!attr->affinity) f->setAffinity(Fibre::NoAffinity);
+    f->setAffinity(attr->affinity);
     if (attr->detached) f->detach();
   }
   *thread = f->run(start_routine, arg);

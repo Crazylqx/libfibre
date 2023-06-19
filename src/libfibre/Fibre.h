@@ -190,8 +190,8 @@ public:
 
   // system constructor for idle/main loop (bootstrap) on existing pthread stack (size = 0)
   // system constructor with setting affinity to processor (size != 0)
-  Fibre(BaseProcessor &p, Affinity affinity, _friend<Cluster>, size_t size = DefaultStackSize, size_t guard = DefaultStackGuard)
-  : Fred(p, affinity), stackSize(size ? stackAlloc(size, guard) : 0) { initDebug(); }
+  Fibre(BaseProcessor &p, _friend<Cluster>, size_t size = DefaultStackSize, size_t guard = DefaultStackGuard)
+  : Fred(p), stackSize(size ? stackAlloc(size, guard) : 0) { initDebug(); }
 
   //  explicit final notification for idle loop or main loop (bootstrap) on pthread stack
   void endDirect(_friend<Cluster>) { done.post(); }

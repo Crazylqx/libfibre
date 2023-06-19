@@ -120,7 +120,7 @@ void PollerFibre::pollLoopSetup(PollerFibre* This) {
 
 PollerFibre::PollerFibre(EventScope& es, cptr_t parent, const char* n, _friend<Cluster> fc)
 : BasePoller(es, parent, n) {
-  pollFibre = new Fibre(Context::CurrProcessor(), Fibre::NoAffinity, fc);
+  pollFibre = new Fibre(Context::CurrProcessor(), fc);
   pollFibre->setName("s:Poller");
 }
 

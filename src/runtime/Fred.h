@@ -60,12 +60,11 @@ typedef FredMPSC<FredReadyLink,false> FredReadyQueue;
 class Fred : public DoubleLink<Fred,FredLinkCount> {
 public:
   enum Priority : size_t { TopPriority = 0, DefaultPriority = 1, LowPriority = 2, NumPriority = 3 };
-  enum Affinity : size_t { NoAffinity = 0, FixedAffinity = 1 };
 
 #if TESTING_DEFAULT_AFFINITY
-  static const Affinity DefaultAffinity = FixedAffinity;
+  static const bool DefaultAffinity = true;
 #else
-  static const Affinity DefaultAffinity = NoAffinity;
+  static const bool DefaultAffinity = false;
 #endif
 
 private:
@@ -102,8 +101,8 @@ private:
 
 protected:
   // constructor/destructors can only be called by derived classes
-  Fred(BaseProcessor& proc, Affinity affinity = DefaultAffinity); // main constructor
-  Fred(Scheduler&);                                               // uses delegation
+  Fred(BaseProcessor& proc); // main constructor
+  Fred(Scheduler&);          // uses delegation
   ~Fred() { RASSERT(runState == Running, FmtHex(this), runState); }
 
   void initStackPointer(vaddr sp) {
@@ -178,12 +177,12 @@ public:
   Priority getPriority() const  { return priority; }
   Fred* setPriority(Priority p) { priority = p; return this; }
 
-  Affinity getAffinity() const  { return (Affinity)affinity; }
-  Fred* setAffinity(Affinity a) { affinity = a; return this; }
+  bool  getAffinity() const { return affinity; }
+  Fred* setAffinity(bool a) { affinity = a; return this; }
 
   // check affinity and potentially update processor during work-stealing
   bool checkAffinity(BaseProcessor& newProcessor, _friend<BaseProcessor>) {
-    if (affinity == FixedAffinity) return true;
+    if (affinity) return true;
     processor = &newProcessor;
     return false;
   }
@@ -194,7 +193,6 @@ public:
   }
 
   // migration
-  void rebalance();
   static BaseProcessor& migrate(BaseProcessor&);
   static BaseProcessor& migrate(Scheduler&);
 };

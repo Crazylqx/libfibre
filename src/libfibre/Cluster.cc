@@ -90,7 +90,8 @@ void* Cluster::threadHelper(Argpack* args) {
 }
 
 inline void Cluster::registerIdleWorker(Worker* worker, Fibre* initFibre) {
-  Fibre* idleFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>(), 0); // idle fibre on pthread stack
+  Fibre* idleFibre = new Fibre(*worker, _friend<Cluster>(), 0); // idle fibre on pthread stack
+  idleFibre->setAffinity(true);
   idleFibre->setName("s:Idle");
   setupWorker(idleFibre, worker);
   worker->setIdleLoop(idleFibre);
@@ -131,10 +132,11 @@ void Cluster::postFork(cptr_t parent, _friend<EventScope> fes) {
 
 Fibre* Cluster::registerWorker(_friend<EventScope>) {
   Worker* worker = new Worker(*this);
-  Fibre* mainFibre = new Fibre(*worker, Fibre::DefaultAffinity, _friend<Cluster>(), 0); // caller continues on pthread stack
+  Fibre* mainFibre = new Fibre(*worker, _friend<Cluster>(), 0); // caller continues on pthread stack
   mainFibre->setName("u:Main");
   setupWorker(mainFibre, worker);
-  Fibre* idleFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>());      // idle fibre on new stack
+  Fibre* idleFibre = new Fibre(*worker, _friend<Cluster>());      // idle fibre on new stack
+  idleFibre->setAffinity(true);
   idleFibre->setName("s:Idle");
   idleFibre->setup((ptr_t)fibreHelper, worker, nullptr, idleFibre, _friend<Cluster>()); // set up idle fibre for execution
   worker->setIdleLoop(idleFibre);
@@ -143,7 +145,8 @@ Fibre* Cluster::registerWorker(_friend<EventScope>) {
 
 Cluster::Worker& Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
   Worker* worker = new Worker(*this);
-  Fibre* initFibre = new Fibre(*worker, Fibre::FixedAffinity, _friend<Cluster>());
+  Fibre* initFibre = new Fibre(*worker, _friend<Cluster>());
+  initFibre->setAffinity(true);
   initFibre->setName("s:Init");
   if (initFunc) {   // run init routine in dedicated fibre, so it can block
     initFibre->setup((ptr_t)initFunc, initArg, nullptr, initFibre, _friend<Cluster>());
@@ -169,7 +172,8 @@ void Cluster::pause() {
   stats->pause.count(ringCount);
   for (BaseProcessor* proc = placeProc;;) {
     if (proc != &Context::CurrProcessor()) {
-      Fibre* f = new Fibre(*proc, Fibre::FixedAffinity, _friend<Cluster>());
+      Fibre* f = new Fibre(*proc, _friend<Cluster>());
+      f->setAffinity(true);
       f->setName("s:Pause");
       f->setPriority(Fred::TopPriority);
       f->run(pauseOperation, this);

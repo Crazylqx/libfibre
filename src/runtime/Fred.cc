@@ -18,12 +18,12 @@
 #include "runtime/Fred.h"
 #include "runtime-glue/RuntimeFred.h"
 
-Fred::Fred(BaseProcessor& proc, Affinity affinity)
-: stackPointer(0), processor(&proc), priority(DefaultPriority), affinity(affinity), runState(Running) {
+Fred::Fred(BaseProcessor& proc)
+: stackPointer(0), processor(&proc), priority(DefaultPriority), affinity(DefaultAffinity), runState(Running) {
   processor->stats->create.count();
 }
 
-Fred::Fred(Scheduler& scheduler) : Fred(scheduler.placement(_friend<Fred>()), DefaultAffinity) {}
+Fred::Fred(Scheduler& scheduler) : Fred(scheduler.placement(_friend<Fred>())) {}
 
 template<Fred::SwitchCode Code>
 inline void Fred::switchFred(Fred& nextFred) {
@@ -142,10 +142,6 @@ void Fred::terminate() {
   CHECK_PREEMPTION(0);
   Context::CurrFred()->switchFred<Terminate>(Context::CurrProcessor().scheduleFull(_friend<Fred>()));
   RABORT0();
-}
-
-void Fred::rebalance() {
-  if (affinity != FixedAffinity) processor = &Context::CurrProcessor().getScheduler().placement(_friend<Fred>());
 }
 
 BaseProcessor& Fred::migrate(BaseProcessor& proc) {
