@@ -117,7 +117,7 @@ inline Fred& BaseProcessor::scheduleIdle() {
 #else  /* TESTING_LOADBALANCING */
   if (!readyCount.P()) haltSem.P(*this);
 #endif /* TESTING_LOADBALANCING */
-  return scheduleBlocking();
+  return *scheduleBlocking();
 }
 
 #endif /* TESTING_LOADBALANCING && TESTING_GO_IDLEMANAGER */
