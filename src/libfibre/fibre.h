@@ -383,6 +383,14 @@ inline int fibre_mutex_unlock(fibre_mutex_t *mutex) {
   return 0;
 }
 
+inline int fibre_condattr_init(fibre_condattr_t*) {
+  return 0;
+}
+
+inline int fibre_condattr_destroy(fibre_condattr_t*) {
+  return 0;
+}
+
 /** @brief Initialize condition variable. (`pthread_cond_init`) */
 inline int fibre_cond_init(fibre_cond_t *restrict cond, const fibre_condattr_t *restrict attr) {
   RASSERT0(attr == nullptr);

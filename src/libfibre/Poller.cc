@@ -19,7 +19,7 @@
 
 template<bool Blocking>
 inline int BasePoller::doPoll(bool CountAsBlocking) {
-#if __FreeBSD__
+#if defined(__FreeBSD__)
   static const timespec ts = Time::zero();
   int evcnt = kevent(pollFD, nullptr, 0, events, MaxPoll, Blocking ? nullptr : &ts);
 #else // __linux__ below
@@ -33,7 +33,7 @@ inline int BasePoller::doPoll(bool CountAsBlocking) {
 
 template<bool Enqueue>
 inline Fred* BasePoller::notifyOne(EventType& ev) {
-#if __FreeBSD__
+#if defined(__FreeBSD__)
   if (ev.filter == EVFILT_READ || ev.filter == EVFILT_TIMER) {
     return eventScope.template unblock<true,Enqueue>(ev.ident, _friend<BasePoller>());
   } else if (ev.filter == EVFILT_WRITE) {
@@ -62,7 +62,7 @@ size_t WorkerPoller::internalPoll() {
   int evcnt = (PT == Suspend) ? doPoll<true>() : doPoll<false>();
   notifyAll(evcnt);
   if (PT == Poll) return evcnt;
-#if __linux__
+#if defined(__linux__)
   if (!eventScope.tryblock(haltFD, _friend<WorkerPoller>())) return 0;
   uint64_t count;
   SYSCALLIO(read(haltFD, (void*)&count, (unsigned)sizeof(count)));
@@ -146,7 +146,7 @@ inline void BaseThreadPoller::pollLoop(T& This) {
 
 void BaseThreadPoller::terminate(_friend<EventScope>) {
   pollTerminate = true;
-#if __FreeBSD__
+#if defined(__FreeBSD__)
   struct kevent waker;
   EV_SET(&waker, 0, EVFILT_USER, EV_ADD, 0, 0, 0);
   SYSCALL(kevent(pollFD, &waker, 1, nullptr, 0, nullptr));
@@ -177,7 +177,7 @@ void* MasterPoller::pollLoopSetup(void* This) {
 
 inline void MasterPoller::prePoll(_friend<BaseThreadPoller>) {
   if (eventScope.tryblock(timerFD, _friend<MasterPoller>())) {
-#if __linux__
+#if defined(__linux__)
     uint64_t count; // read timerFD
     if (read(timerFD, (void*)&count, sizeof(count)) != sizeof(count)) return;
 #endif

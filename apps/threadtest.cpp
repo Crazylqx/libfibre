@@ -44,7 +44,7 @@ using namespace std;
 
 #endif
 
-#if __FreeBSD__
+#if defined(__FreeBSD__)
 #include <sys/cpuset.h>
 #include <pthread_np.h>
 typedef cpuset_t cpu_set_t;

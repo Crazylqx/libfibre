@@ -55,7 +55,7 @@ public:
   }
   void acquire() {
     for (int cnt = 0; cnt < SpinCount; cnt += 1) {
-      for (int spin = SpinStart; spin <= SpinEnd; spin += spin) {
+      for (int spin = SpinStart; spin < SpinEnd; spin += spin) {
         if fastpath(tryAcquire()) return;
         for (int i = 0; i < spin; i += 1) Pause();
       }

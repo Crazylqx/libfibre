@@ -33,7 +33,7 @@
 #include <unistd.h>       // read, write, useconds_t
 #include <sys/types.h>    // socket types (FreeBSD)
 #include <sys/socket.h>   // socket interface
-#if __linux__
+#if defined(__linux__)
 #include <sys/epoll.h>    // epoll (Linux)
 #include <sys/sendfile.h> // sendfile (Linux)
 #endif
@@ -167,6 +167,9 @@ int cfibre_mutex_trylock(cfibre_mutex_t *mutex);
 int cfibre_mutex_timedlock(cfibre_mutex_t *restrict mutex, const struct timespec *restrict abstime);
 int cfibre_mutex_unlock(cfibre_mutex_t *mutex);
 
+int cfibre_condattr_init(cfibre_condattr_t *attr);
+int cfibre_condattr_destroy(cfibre_condattr_t *attr);
+
 int cfibre_cond_init(cfibre_cond_t *restrict cond, const cfibre_condattr_t *restrict attr);
 int cfibre_cond_destroy(cfibre_cond_t *cond);
 int cfibre_cond_wait(cfibre_cond_t *restrict cond, cfibre_mutex_t *restrict mutex);
@@ -246,7 +249,7 @@ ssize_t cfibre_read(int fildes, void *buf, size_t nbyte);
 ssize_t cfibre_readv(int fildes, const struct iovec *iov, int iovcnt);
 
 /** @brief Transmit file via socket. (`sendfile`). */
-#if __FreeBSD__
+#if defined(__FreeBSD__)
 int cfibre_sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *hdtr, off_t *sbytes, int flags);
 #else
 ssize_t cfibre_sendfile(int out_fd, int in_fd, off_t *offset, size_t count);

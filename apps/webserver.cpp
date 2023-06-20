@@ -32,7 +32,7 @@
 
 using namespace std;
 
-#if __FreeBSD__
+#if defined(__FreeBSD__)
 #include <sys/cpuset.h>
 #include <pthread_np.h>
 typedef cpuset_t cpu_set_t;
@@ -299,7 +299,7 @@ static int create_socket(bool singleAccept = false) {
   int on = 1;
   SYSCALL(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const void*)&on, sizeof(on)));
   SYSCALL(setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (const void*)&on, sizeof(on)));
-#if __FreeBSD__
+#if defined(__FreeBSD__)
   sockaddr_in addr = { sizeof(sockaddr_in), AF_INET, htons(portNum), { INADDR_ANY }, { 0 } };
 #else
   int qlen = 5;
@@ -311,7 +311,7 @@ static int create_socket(bool singleAccept = false) {
   SYSCALL(lfBind(fd, (sockaddr*)&addr, sizeof(addr)));
   if (singleAccept) SYSCALL(lfListen(fd, 0));
   else SYSCALL(lfListen(fd, maxBacklog));
-#if __FreeBSD__
+#if defined(__FreeBSD__)
   struct accept_filter_arg afa; // see 'man 9 accf_data - set after 'listen'
   bzero(&afa, sizeof(afa));
   strcpy(afa.af_name, "dataready");
@@ -340,7 +340,7 @@ static void acceptor(void* arg) {
     uSocketAccept* connFD = new uSocketAccept(*servFD);
 #else
     uintptr_t connFD = lfAccept(servFD, nullptr, nullptr);
-#if __FreeBSD__
+#if defined(__FreeBSD__)
     int on = 1;
     SYSCALL(setsockopt(connFD, IPPROTO_TCP, TCP_NODELAY, (const void*)&on, sizeof(on)));
 #endif
@@ -368,7 +368,7 @@ static void acceptor_loop(void* arg) {
     uSocketAccept* connFD = new uSocketAccept(*servFD);
 #else
     uintptr_t connFD = lfAccept(servFD, nullptr, nullptr);
-#if __FreeBSD__
+#if defined(__FreeBSD__)
     int on = 1;
     SYSCALL(setsockopt(connFD, IPPROTO_TCP, TCP_NODELAY, (const void*)&on, sizeof(on)));
 #endif
@@ -390,7 +390,7 @@ static void acceptor_loop(void* arg) {
 static void* scopemain(void* arg) {
 #if defined __LIBFIBRE__
   if (arg != 0) {
-#if __linux__
+#if defined(__linux__)
     SYSCALL(unshare(CLONE_FILES));
 #endif
     EventScope::bootstrap(pollerCount);
@@ -587,7 +587,7 @@ int main(int argc, char** argv) {
   // add routing entry
   routingTable.emplace("/plaintext", HelloWorld);
 
-#if __linux__
+#if defined(__linux__)
   // read max backlog setting
   ifstream f("/proc/sys/net/ipv4/tcp_max_syn_backlog");
   f >> maxBacklog;

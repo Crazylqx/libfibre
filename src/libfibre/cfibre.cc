@@ -19,7 +19,7 @@
 
 #include <cassert>
 #include <sys/uio.h>      // readv, writev
-#if ! __FreeBSD__
+#if !defined(__FreeBSD__)
 #include <sys/sendfile.h> // sendfile
 #endif
 
@@ -296,6 +296,14 @@ extern "C" int cfibre_mutex_unlock(cfibre_mutex_t *mutex) {
   return fibre_mutex_unlock(*mutex);
 }
 
+extern "C" int cfibre_condattr_init(cfibre_condattr_t *attr) {
+  return fibre_condattr_init(*attr);
+}
+
+extern "C" int cfibre_condattr_destroy(cfibre_condattr_t *attr) {
+  return fibre_condattr_destroy(*attr);
+}
+
 extern "C" int cfibre_cond_init(cfibre_cond_t *restrict cond, const cfibre_condattr_t *restrict attr) {
   *cond = (cfibre_cond_t)new fibre_cond_t;
   return fibre_cond_init(*cond, (fibre_condattr_t*)attr);
@@ -514,7 +522,7 @@ extern "C" ssize_t cfibre_readv(int fildes, const struct iovec *iov, int iovcnt)
   return lfReadv(fildes, iov, iovcnt);
 }
 
-#if __FreeBSD__
+#if defined(__FreeBSD__)
 extern "C" int cfibre_sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *hdtr, off_t *sbytes, int flags) {
   return lfOutput(sendfile, fd, s, offset, nbytes, hdtr, sbytes, flags);
 }

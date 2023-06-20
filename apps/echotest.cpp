@@ -23,7 +23,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-#if __FreeBSD__
+#if defined(__FreeBSD__)
 #include <netinet/in.h>
 #endif
 
@@ -251,7 +251,7 @@ void clientmain(sockaddr_in& addr) {
 }
 
 int main(int argc, char** argv) {
-#if __FreeBSD__
+#if defined(__FreeBSD__)
   sockaddr_in addr = { sizeof(sockaddr_in), AF_INET, htons(8888), { INADDR_ANY }, { 0 } };
 #else // __linux__ below
   sockaddr_in addr = { AF_INET, htons(8888), { INADDR_ANY }, { 0 } };

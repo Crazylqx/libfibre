@@ -158,7 +158,7 @@ Cluster::Worker& Cluster::addWorker(funcvoid1_t initFunc, ptr_t initArg) {
   pthread_attr_t attr;
   SYSCALL(pthread_attr_init(&attr));
   SYSCALL(pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED));
-#if __linux__       // FreeBSD jemalloc segfaults when trying to use minimum stack
+#if defined(__linux__)       // FreeBSD jemalloc segfaults when trying to use minimum stack
   SYSCALL(pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN));
 #endif
   SYSCALL(pthread_create(&tid, &attr, (funcptr1_t)threadHelper, &args));

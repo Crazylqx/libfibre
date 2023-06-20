@@ -20,7 +20,7 @@
 #include "runtime/ScopedLocks.h"
 #include "runtime-glue/RuntimeLock.h"
 
-#if __FreeBSD__
+#if defined(__FreeBSD__)
 #include <sys/thr.h>     // thr_self
 #else // __linux__ below
 #include <unistd.h>      // syscall
@@ -50,7 +50,7 @@ static inline void dprintl() {
 }
 
 static inline void dprinttid() {
-#if __FreeBSD__
+#if defined(__FreeBSD__)
   long tid;
   thr_self(&tid);
   dprint(tid, ' ');

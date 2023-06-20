@@ -24,7 +24,7 @@ class Cluster;
 
 #include <pthread.h>
 #include <unistd.h>      // close
-#if __FreeBSD__
+#if defined(__FreeBSD__)
 #include <sys/event.h>
 #else // __linux__ below
 #include <sys/epoll.h>
@@ -37,7 +37,7 @@ class Fibre;
 class Fred;
 
 struct Poller {
-#if __FreeBSD__
+#if defined(__FreeBSD__)
   typedef struct kevent EventType;
   enum Operation : ssize_t { Create = EV_ADD, Modify = EV_ADD, Remove = EV_DELETE };
   enum Direction : ssize_t { Input = EVFILT_READ, Output = EVFILT_WRITE };
@@ -57,7 +57,7 @@ protected:
   static const int MaxPoll = 256;
   EventType events[MaxPoll];
   int       pollFD;
-#if __FreeBSD__
+#if defined(__FreeBSD__)
   SyncSem   userEvent;
 #endif
 
@@ -77,7 +77,7 @@ protected:
 public:
   BasePoller(EventScope& es, cptr_t parent, const char* n = "BasePoller") : eventScope(es), pollTerminate(false) {
     stats = new FredStats::PollerStats(this, parent, n);
-#if __FreeBSD__
+#if defined(__FreeBSD__)
     pollFD = SYSCALLIO(kqueue());
 #else // __linux__ below
     pollFD = SYSCALLIO(epoll_create1(EPOLL_CLOEXEC));
@@ -92,7 +92,7 @@ public:
   void setupFD(int fd, Operation op, Direction dir, Variant var) {
     DBG::outl(DBG::Level::Polling, "Poller ", FmtHex(this), " setup ", fd, " at ", pollFD, " with ", op, '/', dir, '/', var);
     stats->regs.count(op != Remove);
-#if __FreeBSD__
+#if defined(__FreeBSD__)
     struct kevent ev;
     EV_SET(&ev, fd, dir, op | (op == Remove ? 0 : var), 0, 0, 0);
     SYSCALL(kevent(pollFD, &ev, 1, nullptr, 0, nullptr));
@@ -107,14 +107,14 @@ public:
 
 #if TESTING_WORKER_POLLER
 class WorkerPoller : public BasePoller {
-#if __linux__
+#if defined(__linux__)
   int haltFD;
 #endif
   enum PollType : size_t { Poll, Suspend, Try };
   template<PollType PT> inline size_t internalPoll();
 public:
   WorkerPoller(EventScope& es, cptr_t parent, const char* n = "W-Poller  ") : BasePoller(es, parent, n) {
-#if __linux__
+#if defined(__linux__)
     haltFD = SYSCALLIO(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
     setupFD(haltFD, Poller::Create, Poller::Input, Poller::Level);
 #else
@@ -123,14 +123,14 @@ public:
     SYSCALL(kevent(pollFD, &ev, 1, nullptr, 0, nullptr));
 #endif
   }
-#if __linux__
+#if defined(__linux__)
   ~WorkerPoller() { SYSCALL(close(haltFD)); }
 #endif
   size_t poll(_friend<Cluster>);
   size_t trySuspend(_friend<Cluster>);
   void suspend(_friend<Cluster>);
   void resume(_friend<Cluster>) {
-#if __linux__
+#if defined(__linux__)
     uint64_t val = 1;
     SYSCALL_EQ(write(haltFD, &val, sizeof(val)), sizeof(val));
 #else
@@ -184,7 +184,7 @@ class MasterPoller : public BaseThreadPoller {
   static void* pollLoopSetup(void*);
 
 public:
-#if __FreeBSD__
+#if defined(__FreeBSD__)
   static const int extraTimerFD = 1;
 #else
   static const int extraTimerFD = 0;
@@ -192,7 +192,7 @@ public:
 
   MasterPoller(EventScope& es, unsigned long fdCount, _friend<EventScope>) : BaseThreadPoller(es, &es, "MasterPoller") {
     BaseThreadPoller::start(pollLoopSetup);
-#if __FreeBSD__
+#if defined(__FreeBSD__)
     timerFD = fdCount - 1;
 #else
     (void)fdCount;
@@ -201,14 +201,14 @@ public:
 #endif
   }
 
-#if __linux__
+#if defined(__linux__)
   ~MasterPoller() { SYSCALL(close(timerFD)); }
 #endif
 
   inline void prePoll(_friend<BaseThreadPoller>);
 
   void setTimer(const Time& timeout) {
-#if __FreeBSD__
+#if defined(__FreeBSD__)
     struct kevent ev;
     EV_SET(&ev, timerFD, EVFILT_TIMER, EV_ADD | EV_ONESHOT, NOTE_USECONDS | NOTE_ABSTIME, timeout.toUS(), 0);
     SYSCALL(kevent(pollFD, &ev, 1, nullptr, 0, nullptr));

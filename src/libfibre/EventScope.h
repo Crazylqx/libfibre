@@ -88,7 +88,7 @@ class EventScope {
       This->fdSyncVector[f].blocking = This->parentScope->fdSyncVector[f].blocking;
       This->fdSyncVector[f].useUring = This->parentScope->fdSyncVector[f].useUring;
     }
-#if __linux__
+#if defined(__linux__)
     SYSCALL(unshare(CLONE_FILES));
 #else
     (void)This->parentScope;
@@ -140,7 +140,7 @@ class EventScope {
   inline bool TestEAGAIN() {
     int serrno = _SysErrno();
     stats->resets.count((int)(serrno == ECONNRESET));
-#if __FreeBSD__
+#if defined(__FreeBSD__)
     // workaround - suspect: https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=129169 - or similar?
     return serrno == EAGAIN || (Input == false && serrno == ENOTCONN);
 #else // __linux__
@@ -276,7 +276,7 @@ public:
   void postFork() {
     new (stats) FredStats::EventScopeStats(this, nullptr);
     timerQueue.reinit(this);
-#if __linux__
+#if defined(__linux__)
     delete masterPoller; // FreeBSD does not copy kqueue across fork()
 #endif
     masterPoller = new MasterPoller(*this, fdCount, _friend<EventScope>()); // start master poller & timer handling
