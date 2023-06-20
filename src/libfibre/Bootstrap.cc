@@ -19,6 +19,7 @@
 #include <atomic>
 #include <csignal>
 #include <iostream>
+#include <list>
 #include <cxxabi.h>   // see _lfAbort
 #include <execinfo.h> // see _lfAbort
 
@@ -51,6 +52,8 @@ static_assert(sizeof(DebugOptions)/sizeof(char*) == DBG::Level::MaxLevel, "debug
 static std::ios_base::fmtflags _ioFormatFlags(std::cout.flags());
 
 int __FibreBootstrap::counter = 0;
+
+static void parselist(char *list, std::list<size_t>& cpulist);
 
 static void _lfPrintStats() {
   char* env = getenv("FibrePrintStats");
@@ -93,7 +96,13 @@ EventScope* FibreInit(size_t pollerCount, size_t workerCount) {
     int cnt = atoi(env);
     if (cnt > 0) workerCount = cnt;
   }
-  return EventScope::bootstrap(pollerCount, workerCount);
+  std::list<size_t> cpulist;
+  env = getenv("FibreCpuSet");
+  if (env) {
+    parselist(env, cpulist);
+    if (cpulist.size() > workerCount) workerCount = cpulist.size();
+  }
+  return EventScope::bootstrap(cpulist, pollerCount, workerCount);
 }
 
 pid_t FibreFork() {
@@ -199,4 +208,74 @@ namespace Runtime {
       return Context::CurrEventScope().getTimerQueue();
     }
   }
+}
+
+// ******************** CONVENIENCE IMPORT *********************
+// freebsd-src/usr.bin/cpuset/cpuset.c - commit 4d846d2 / May 12, 2023
+// FreeBSD license applies
+static void parselist(char *list, std::list<size_t>& cpulist) {
+	enum { NONE, NUM, DASH } state;
+	int lastnum;
+	int curnum;
+	char *l;
+
+	state = NONE;
+	curnum = lastnum = 0;
+	for (l = list; *l != '\0';) {
+		if (isdigit(*l)) {
+			curnum = atoi(l);
+			while (isdigit(*l))
+				l++;
+			switch (state) {
+			case NONE:
+				lastnum = curnum;
+				state = NUM;
+				break;
+			case DASH:
+				for (; lastnum <= curnum; lastnum++)
+				  cpulist.push_back(lastnum);
+				state = NONE;
+				break;
+			case NUM:
+			default:
+				goto parserr;
+			}
+			continue;
+		}
+		switch (*l) {
+		case ',':
+			switch (state) {
+			case NONE:
+				break;
+			case NUM:
+				cpulist.push_back(curnum);
+				state = NONE;
+				break;
+			case DASH:
+				goto parserr;
+				break;
+			}
+			break;
+		case '-':
+			if (state != NUM)
+				goto parserr;
+			state = DASH;
+			break;
+		default:
+			goto parserr;
+		}
+		l++;
+	}
+	switch (state) {
+		case NONE:
+			break;
+		case NUM:
+			cpulist.push_back(curnum);
+			break;
+		case DASH:
+			goto parserr;
+	}
+	return;
+parserr:
+	cpulist.clear();
 }

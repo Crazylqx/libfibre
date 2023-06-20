@@ -219,13 +219,30 @@ class EventScope {
 
 public:
   /** Create an event scope during bootstrap. */
-  static EventScope* bootstrap(size_t pollerCount = 1, size_t workerCount = 1) {
+  static EventScope* bootstrap(std::list<size_t>& cpulist, size_t pollerCount = 1, size_t workerCount = 1) {
     EventScope* es = new EventScope(pollerCount);
     es->mainFibre = es->mainCluster->registerWorker(_friend<EventScope>());
     if (workerCount > 1) es->mainCluster->addWorkers(workerCount - 1);
+    pthread_t* tids = new pthread_t[workerCount];
+    es->mainCluster->getWorkerSysIDs(tids, workerCount);
+    cpu_set_t onecpu;
+    CPU_ZERO(&onecpu);
+    auto it = cpulist.begin();
+    for (size_t i = 0; i < workerCount && it != cpulist.end(); i++, it++) {
+      CPU_SET(*it, &onecpu);
+      SYSCALL(pthread_setaffinity_np(tids[i], sizeof(cpu_set_t), &onecpu));
+      CPU_CLR(*it, &onecpu);
+    }
+    delete [] tids;
     es->initSync();
     es->start();
     return es;
+  }
+
+  /** Create an event scope during bootstrap. */
+  static EventScope* bootstrap(size_t pollerCount = 1, size_t workerCount = 1) {
+    std::list<size_t> dummy;
+    return bootstrap(dummy, pollerCount, workerCount);
   }
 
   /** Create a event scope by cloning the current one.

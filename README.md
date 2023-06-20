@@ -38,6 +38,7 @@ In addition, the following students (in alphabetical order) have helped with var
 - Kai Sun (ARM64, mutex locks)
 - Shuangyi Tong (event scopes)
 - Gan Wang (API/Apache)
+- Xinyi Zhou (worker/core affinity)
 - Zhenyan Zhu (std::thread using fibre)
 
  All bugs are mine though. ;-)

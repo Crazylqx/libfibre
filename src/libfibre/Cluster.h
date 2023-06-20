@@ -165,11 +165,11 @@ public:
   void addWorkers(size_t cnt = 1) { for (size_t i = 0; i < cnt; i += 1) addWorker(); }
 
   /** Obtain system-level ids for workers (pthread_t). */
-  size_t getWorkerSysIDs(pthread_t* tid = nullptr, size_t cnt = 0) {
+  size_t getWorkerSysIDs(pthread_t* tids, size_t cnt = 0) {
     ScopedLock<WorkerLock> sl(ringLock);
     BaseProcessor* p = placeProc;
     for (size_t i = 0; i < cnt && i < ringCount; i += 1) {
-      tid[i] = reinterpret_cast<Worker*>(p)->sysThreadId;
+      tids[i] = reinterpret_cast<Worker*>(p)->sysThreadId;
       p = ProcessorRing::next(*p);
     }
     return ringCount;
