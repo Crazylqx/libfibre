@@ -8,6 +8,11 @@ COBJECTS=$(subst .c,.o,$(notdir $(CSOURCES)))
 ASOURCES=$(wildcard $(addsuffix /*.S,$(SOURCEDIRS)))
 AOBJECTS=$(subst .S,.o,$(notdir $(ASOURCES)))
 
+ifeq ($(TRACING),1)
+TSOURCES=$(subst .tp,.c,$(wildcard tracing/*.tp))
+TOBJECTS=$(subst .tp,.o,$(wildcard tracing/*.tp))
+endif
+
 DEPENDS=$(subst .cc,.d,$(notdir $(SOURCES))) $(subst .c,.d,$(notdir $(CSOURCES))) $(subst .S,.d,$(notdir $(ASOURCES)))
 DEPENDS+=$(subst .c,.d,$(notdir $(CSOURCES)))
 
@@ -35,18 +40,18 @@ else
 	@for f in $^; do diff -y -W 80 --suppress-common-lines $$f.default $$f; done; true
 endif
 
-$(LIBA): $(OBJECTS) $(COBJECTS) $(AOBJECTS)
+$(LIBA): $(OBJECTS) $(COBJECTS) $(AOBJECTS) $(TOBJECTS)
 	$(AR) cr $@ $^
 	ranlib $@
 
-$(LIBSO): $(OBJECTS) $(COBJECTS) $(AOBJECTS)
+$(LIBSO): $(OBJECTS) $(COBJECTS) $(AOBJECTS) $(TOBJECTS)
 	$(CXX) -shared -pthread $^ -o $@
 
 $(GENHEADERS): %: %.default
 	@cp $< $@
 
 # also creates dependencies
-$(OBJECTS): %.o: %.cc $(GENHEADERS)
+$(OBJECTS): %.o: %.cc $(GENHEADERS) $(TSOURCES)
 	$(CXX) $(CXXFLAGS) -MMD -c $< -o $@
 
 $(COBJECTS): %.o: %.c
@@ -55,13 +60,16 @@ $(COBJECTS): %.o: %.c
 $(AOBJECTS): %.o: %.S
 	$(CC) $(CFLAGS) -MMD -c $< -o $@
 
+$(TSOURCES): %.c: %.tp
+	lttng-gen-tp $< -o $@ -o $(subst .c,.h,$@)
+
 $(OBJECTS) errnoname/errnoname.c: errnoname/errnoname.h
 
 errnoname/errnoname.h:
 	git submodule update --init errnoname
 
 clean:
-	rm -f $(LIBA) $(LIBSO) $(OBJECTS) $(COBJECTS) $(AOBJECTS) $(DEPENDS)
+	rm -f $(LIBA) $(LIBSO) $(OBJECTS) $(COBJECTS) $(AOBJECTS) $(DEPENDS) tracing/*.?
 
 vclean: clean
 	rm -f $(GENHEADERS)

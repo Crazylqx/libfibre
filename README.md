@@ -36,6 +36,7 @@ In addition, the following students (in alphabetical order) have helped with var
 - Vrajang Parikh (gdb names & watchpoints)
 - Wen Shi (gdb extension)
 - Kai Sun (ARM64, mutex locks)
+- JinYang (Luke) Tao (LTTng)
 - Shuangyi Tong (event scopes)
 - Gan Wang (API/Apache)
 - Xinyi Zhou (worker/core affinity)

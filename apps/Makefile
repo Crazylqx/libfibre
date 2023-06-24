@@ -19,6 +19,10 @@ LIBS+=-L/usr/local/lib -Wl,-rpath=/usr/local/lib -luring
 endif
 endif
 
+ifeq ($(TRACING),1)
+LIBS+=-llttng-ust -ldl
+endif
+
 ifeq ($(shell uname),FreeBSD)
 LIBS+=-lpthread -lexecinfo # needed for backtrace_symbols()
 endif

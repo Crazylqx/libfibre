@@ -28,6 +28,12 @@
 
 #include <map>
 
+#if TRACING
+#include "tracing/BlockingSyncTrace.h"
+#else
+#define lttng_ust_tracepoint(provider, name, ...)
+#endif
+
 /****************************** Basics ******************************/
 
 struct Suspender { // funnel suspend calls through this class for access control
@@ -165,7 +171,9 @@ class BlockingQueue {
     queue.push_back(node);
     lock.release();
     // block, potentially with timeout
+    lttng_ust_tracepoint(BlockingSyncTrace, blocking, (uintptr_t)Context::CurrFred(), (uintptr_t)this, "block");
     ptr_t winner = blockHelper(*cf, args...);
+    lttng_ust_tracepoint(BlockingSyncTrace, blocking, (uintptr_t)Context::CurrFred(), (uintptr_t)this, "unblock");
     if (winner == &queue) return true; // blocking completed;
     // clean up
     ScopedLock<Lock> sl(lock);
@@ -177,7 +185,9 @@ class BlockingQueue {
   BlockingQueue& operator=(const BlockingQueue&) = delete; // no assignment
 
 public:
-  BlockingQueue() = default;
+  BlockingQueue() {
+    lttng_ust_tracepoint(BlockingSyncTrace, blocking, (uintptr_t)Context::CurrFred(), (uintptr_t)this, "init");
+  }
   ~BlockingQueue() { RASSERT0(empty()); }
   bool empty() const { return queue.empty(); }
 
@@ -207,12 +217,14 @@ public:
 
   template<bool Enqueue>
   Fred* unblock() {                     // Note that caller must hold lock
+    lttng_ust_tracepoint(BlockingSyncTrace, blocking, (uintptr_t)Context::CurrFred(), (uintptr_t)this, "resume");
     for (Node* node = queue.front(); node != queue.edge(); node = IntrusiveList<Node>::next(*node)) {
       Fred* f = &node->fred;
       if (f->raceResume(&queue)) {
         IntrusiveList<Node>::remove(*node);
         DBG::outl(DBG::Level::Blocking, "Fred ", FmtHex(f), " resume from ", FmtHex(&queue));
         if (Enqueue) f->resume();
+        lttng_ust_tracepoint(BlockingSyncTrace, blocking, (uintptr_t)f, (uintptr_t)this, "resumed");
         return f;
       }
     }
