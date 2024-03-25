@@ -96,13 +96,14 @@ typedef IntrusiveList<BaseProcessor,0,2> ProcessorList;
 typedef IntrusiveRing<BaseProcessor,1,2> ProcessorRing;
 
 class BaseProcessor : public DoubleLink<BaseProcessor,2> {
-  ReadyQueue    readyQueue;
+    friend class Fred;
+    ReadyQueue readyQueue;
 
-  static const size_t HaltSpinMax =   64;
-  static const size_t IdleSpinMax = 1024;
+    static const size_t HaltSpinMax = 64;
+    static const size_t IdleSpinMax = 1024;
 
-  inline Fred*   searchAll();
-  inline Fred*   searchLocal();
+    inline Fred* searchAll();
+    inline Fred* searchLocal();
 #if TESTING_LOADBALANCING
   inline Fred*   searchSteal();
 #else
@@ -164,6 +165,7 @@ public:
 
   Fred* tryScheduleLocal(_friend<Fred>);
   Fred* tryScheduleGlobal(_friend<Fred>);
+  Fred* tryScheduleSteal(_friend<Fred>);
   Fred& scheduleFull(_friend<Fred>);
 
   void enqueueYield(Fred& f, _friend<Fred>) { enqueueFred(f); }

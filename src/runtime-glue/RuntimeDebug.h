@@ -61,6 +61,18 @@ static inline void dprinttid() {
 
 extern WorkerLock* _lfDebugOutputLock;
 
+#if 1
+template <typename... Args>
+inline void DBG::out1(DBG::Level, const Args&...) {}
+
+template <typename... Args>
+inline void DBG::outs(DBG::Level, const Args&...) {}
+
+template <typename... Args>
+inline void DBG::outl(DBG::Level, const Args&...) {}
+
+inline void DBG::outl(DBG::Level) {}
+#else
 template<typename... Args>
 inline void DBG::out1(DBG::Level c, const Args&... a) {
   if (c && !test(c)) return;
@@ -87,5 +99,6 @@ inline void DBG::outl(DBG::Level c) {
   if (c && !test(c)) return;
   dprintl();
 }
+#endif
 
 #endif /* _RuntimeDebug_h_ */

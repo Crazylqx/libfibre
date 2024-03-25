@@ -138,6 +138,8 @@ Fred* BaseProcessor::tryScheduleGlobal(_friend<Fred>) {
   return searchAll();
 }
 
+Fred* BaseProcessor::tryScheduleSteal(_friend<Fred>) { return searchSteal(); }
+
 Fred& BaseProcessor::scheduleFull(_friend<Fred>) {
   Fred* nextFred = scheduleNonblocking();
   return nextFred ? *nextFred : *idleFred;

@@ -113,15 +113,33 @@ inline void Fred::yieldResume(Fred& nextFred) {
 }
 
 bool Fred::yield() {
+#if 0
   Fred* nextFred = Context::CurrProcessor().tryScheduleLocal(_friend<Fred>());
   if (nextFred) Context::CurrFred()->yieldTo(*nextFred);
-  return nextFred;
+#else
+    CHECK_PREEMPTION(1);  // expect preemption still enabled
+    RuntimeDisablePreemption();
+    BaseProcessor& current = Context::CurrProcessor();
+    Fred* nextFred = current.readyQueue.dequeue();
+    if (nextFred) {
+        Fred* currFred = Context::CurrFred();
+        RuntimePreFredSwitch(*currFred, *nextFred, _friend<Fred>());
+        stackSwitch(currFred, postYield, &currFred->stackPointer,
+                    nextFred->stackPointer);
+        currFred->stackPointer = 0;  // mark stack in use for gdb
+        RuntimePostFredSwitch(
+            *currFred, _friend<Fred>());  // runtime-specific functionality
+    }
+    RuntimeEnablePreemption();
+#endif
+    return nextFred;
 }
 
 bool Fred::yieldGlobal() {
-  Fred* nextFred = Context::CurrProcessor().tryScheduleGlobal(_friend<Fred>());
-  if (nextFred) Context::CurrFred()->yieldTo(*nextFred);
-  return nextFred;
+    if (yield()) return true;
+    Fred* nextFred = Context::CurrProcessor().tryScheduleSteal(_friend<Fred>());
+    if (nextFred) Context::CurrFred()->yieldTo(*nextFred);
+    return nextFred;
 }
 
 void Fred::idleYieldTo(Fred& nextFred, _friend<BaseProcessor>) {

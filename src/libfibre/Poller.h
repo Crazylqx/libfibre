@@ -98,7 +98,7 @@ public:
     SYSCALL(kevent(pollFD, &ev, 1, nullptr, 0, nullptr));
 #else // __linux__ below
     epoll_event ev;
-    ev.events = dir | var;
+    ev.events = (uint32_t)dir | (uint32_t)var;
     ev.data.fd = fd;
     SYSCALL(epoll_ctl(pollFD, op, fd, op == Remove ? nullptr : &ev));
 #endif
