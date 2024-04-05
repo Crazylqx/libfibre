@@ -73,6 +73,7 @@ class EventScope {
   void *clientData;
 
   FredStats::EventScopeStats *stats;
+  pthread_t *tids;
 
   // TODO: not available until cluster deletion implemented
   ~EventScope() {
@@ -81,6 +82,7 @@ class EventScope {
     masterPoller->terminate(_friend<EventScope>());
     delete masterPoller;
     delete[] fdSyncVector;
+    delete tids;
   }
 
   static void cloneInternal(EventScope *This) {
@@ -101,7 +103,7 @@ class EventScope {
   }
 
   EventScope(size_t pollerCount, EventScope *ps = nullptr)
-      : parentScope(ps), timerQueue(this), diskCluster(nullptr) {
+      : parentScope(ps), timerQueue(this), diskCluster(nullptr), tids(nullptr) {
     RASSERT0(pollerCount > 0);
     stats = new FredStats::EventScopeStats(this, nullptr);
     mainCluster = new Cluster(*this, pollerCount,
@@ -244,6 +246,7 @@ class EventScope {
   }
 
 public:
+  pthread_t *get_tids() const { return tids; }
   /** Create an event scope during bootstrap. */
   static EventScope *bootstrap(std::list<size_t> &cpulist,
                                size_t pollerCount = 1, size_t workerCount = 1) {
@@ -261,7 +264,9 @@ public:
       SYSCALL(pthread_setaffinity_np(tids[i], sizeof(cpu_set_t), &onecpu));
       CPU_CLR(*it, &onecpu);
     }
-    delete[] tids;
+    // delete[] tids;
+    // store tids
+    es->tids = tids;
     es->initSync();
     es->start();
     return es;
