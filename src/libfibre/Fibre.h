@@ -102,8 +102,12 @@ public:
   }
 };
 
+struct FibreLocalVariables {
+  int scope_state = 0;
+};
+
 /** A Fibre object represents an independent execution context backed by a stack. */
-class Fibre : public Fred, public FibreSpecific {
+class Fibre : public Fred, public FibreSpecific, public FibreLocalVariables {
 public:
 #ifdef SPLIT_STACK
   static const size_t DefaultStackSize  = 4096;
